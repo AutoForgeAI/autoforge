@@ -48,6 +48,20 @@ export function useDeleteProject() {
   })
 }
 
+export function useResetProject() {
+  const queryClient = useQueryClient()
+
+  return useMutation({
+    mutationFn: (name: string) => api.resetProject(name),
+    onSuccess: (_, name) => {
+      // Invalidate both projects and features queries
+      queryClient.invalidateQueries({ queryKey: ['projects'] })
+      queryClient.invalidateQueries({ queryKey: ['features', name] })
+      queryClient.invalidateQueries({ queryKey: ['project', name] })
+    },
+  })
+}
+
 // ============================================================================
 // Features
 // ============================================================================

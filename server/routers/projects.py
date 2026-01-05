@@ -259,6 +259,77 @@ async def delete_project(name: str, delete_files: bool = False):
     }
 
 
+@router.post("/{name}/reset")
+async def reset_project(name: str):
+    """
+    Reset a project to its initial state.
+
+    This clears all features, assistant chat history, and settings while
+    preserving the prompts directory. Use this to restart a project from scratch
+    without having to re-register it.
+
+    Deletes:
+    - features.db (feature tracking database)
+    - assistant.db (assistant chat history)
+    - .claude_settings.json (agent settings)
+    - .claude_assistant_settings.json (assistant settings)
+
+    Preserves:
+    - prompts/ directory (app_spec.txt, initializer_prompt.md, coding_prompt.md)
+    """
+    _init_imports()
+    _, _, get_project_path, _, _ = _get_registry_functions()
+
+    name = validate_project_name(name)
+    project_dir = get_project_path(name)
+
+    if not project_dir:
+        raise HTTPException(status_code=404, detail=f"Project '{name}' not found")
+
+    if not project_dir.exists():
+        raise HTTPException(status_code=404, detail=f"Project directory not found")
+
+    # Check if agent is running
+    lock_file = project_dir / ".agent.lock"
+    if lock_file.exists():
+        raise HTTPException(
+            status_code=409,
+            detail="Cannot reset project while agent is running. Stop the agent first."
+        )
+
+    # Files to delete
+    files_to_delete = [
+        "features.db",
+        "assistant.db",
+        ".claude_settings.json",
+        ".claude_assistant_settings.json",
+    ]
+
+    deleted_files = []
+    errors = []
+
+    for filename in files_to_delete:
+        filepath = project_dir / filename
+        if filepath.exists():
+            try:
+                filepath.unlink()
+                deleted_files.append(filename)
+            except Exception as e:
+                errors.append(f"{filename}: {e}")
+
+    if errors:
+        raise HTTPException(
+            status_code=500,
+            detail=f"Failed to delete some files: {'; '.join(errors)}"
+        )
+
+    return {
+        "success": True,
+        "message": f"Project '{name}' has been reset",
+        "deleted_files": deleted_files,
+    }
+
+
 @router.get("/{name}/prompts", response_model=ProjectPrompts)
 async def get_project_prompts(name: str):
     """Get the content of project prompt files."""

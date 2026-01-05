@@ -16,7 +16,8 @@ import { DebugLogViewer } from './components/DebugLogViewer'
 import { AgentThought } from './components/AgentThought'
 import { AssistantFAB } from './components/AssistantFAB'
 import { AssistantPanel } from './components/AssistantPanel'
-import { Plus, Loader2 } from 'lucide-react'
+import { ResetProjectModal } from './components/ResetProjectModal'
+import { Plus, Loader2, RotateCcw } from 'lucide-react'
 import type { Feature } from './lib/types'
 
 function App() {
@@ -34,6 +35,7 @@ function App() {
   const [debugOpen, setDebugOpen] = useState(false)
   const [debugPanelHeight, setDebugPanelHeight] = useState(288) // Default height
   const [assistantOpen, setAssistantOpen] = useState(false)
+  const [showResetModal, setShowResetModal] = useState(false)
 
   const { data: projects, isLoading: projectsLoading } = useProjects()
   const { data: features } = useFeatures(selectedProject)
@@ -93,9 +95,17 @@ function App() {
         setAssistantOpen(prev => !prev)
       }
 
+      // R : Reset project (when project selected and agent not running)
+      if ((e.key === 'r' || e.key === 'R') && selectedProject && wsState.agentStatus !== 'running') {
+        e.preventDefault()
+        setShowResetModal(true)
+      }
+
       // Escape : Close modals
       if (e.key === 'Escape') {
-        if (assistantOpen) {
+        if (showResetModal) {
+          setShowResetModal(false)
+        } else if (assistantOpen) {
           setAssistantOpen(false)
         } else if (showAddFeature) {
           setShowAddFeature(false)
@@ -109,7 +119,7 @@ function App() {
 
     window.addEventListener('keydown', handleKeyDown)
     return () => window.removeEventListener('keydown', handleKeyDown)
-  }, [selectedProject, showAddFeature, selectedFeature, debugOpen, assistantOpen])
+  }, [selectedProject, showAddFeature, selectedFeature, debugOpen, assistantOpen, showResetModal, wsState.agentStatus])
 
   // Combine WebSocket progress with feature data
   const progress = wsState.progress.total > 0 ? wsState.progress : {
@@ -157,6 +167,19 @@ function App() {
                     Add Feature
                     <kbd className="ml-1.5 px-1.5 py-0.5 text-xs bg-black/20 rounded font-mono">
                       N
+                    </kbd>
+                  </button>
+
+                  <button
+                    onClick={() => setShowResetModal(true)}
+                    className="neo-btn bg-[var(--color-neo-pending)] text-[var(--color-neo-text)] text-sm"
+                    title="Reset project to start fresh (Press R)"
+                    disabled={wsState.agentStatus === 'running'}
+                  >
+                    <RotateCcw size={18} />
+                    Reset
+                    <kbd className="ml-1.5 px-1.5 py-0.5 text-xs bg-black/20 rounded font-mono">
+                      R
                     </kbd>
                   </button>
 
@@ -242,6 +265,14 @@ function App() {
           feature={selectedFeature}
           projectName={selectedProject}
           onClose={() => setSelectedFeature(null)}
+        />
+      )}
+
+      {/* Reset Project Modal */}
+      {showResetModal && selectedProject && (
+        <ResetProjectModal
+          projectName={selectedProject}
+          onClose={() => setShowResetModal(false)}
         />
       )}
 
