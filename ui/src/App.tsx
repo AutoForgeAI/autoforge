@@ -17,6 +17,7 @@ import { AgentThought } from './components/AgentThought'
 import { AssistantFAB } from './components/AssistantFAB'
 import { AssistantPanel } from './components/AssistantPanel'
 import { ResetProjectModal } from './components/ResetProjectModal'
+import { ProjectSetupRequired } from './components/ProjectSetupRequired'
 import { Plus, Loader2, RotateCcw } from 'lucide-react'
 import type { Feature } from './lib/types'
 
@@ -37,10 +38,16 @@ function App() {
   const [assistantOpen, setAssistantOpen] = useState(false)
   const [showResetModal, setShowResetModal] = useState(false)
 
-  const { data: projects, isLoading: projectsLoading } = useProjects()
+  const { data: projects, isLoading: projectsLoading, refetch: refetchProjects } = useProjects()
   const { data: features } = useFeatures(selectedProject)
   const { data: agentStatusData } = useAgentStatus(selectedProject)
   const wsState = useProjectWebSocket(selectedProject)
+
+  // Get the selected project's has_spec status
+  const selectedProjectData = selectedProject
+    ? projects?.find(p => p.name === selectedProject)
+    : null
+  const needsSetup = selectedProjectData?.has_spec === false
 
   // Play sounds when features move between columns
   useFeatureSound(features)
@@ -200,6 +207,14 @@ function App() {
               Select a project from the dropdown above or create a new one to get started.
             </p>
           </div>
+        ) : needsSetup ? (
+          <ProjectSetupRequired
+            projectName={selectedProject}
+            onSetupComplete={() => {
+              // Refetch projects to update has_spec status
+              refetchProjects()
+            }}
+          />
         ) : (
           <div className="space-y-8">
             {/* Progress Dashboard */}
