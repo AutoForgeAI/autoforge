@@ -12,6 +12,9 @@ import sys
 from pathlib import Path
 
 from claude_agent_sdk import ClaudeAgentOptions, ClaudeSDKClient
+
+# Root directory of the autocoder project (where this file lives)
+ROOT_DIR = Path(__file__).parent.resolve()
 from claude_agent_sdk.types import HookMatcher
 
 from security import bash_security_hook
@@ -162,12 +165,13 @@ def create_client(project_dir: Path, model: str, yolo_mode: bool = False):
     # Build MCP servers config - features is always included, playwright only in standard mode
     # NOTE: Don't specify env - let subprocess inherit parent environment.
     # This avoids Windows command line limits while keeping necessary env vars.
-    # PROJECT_DIR is passed as CLI argument instead of env var.
+    # IMPORTANT: Use absolute path to feature_mcp.py since cwd may be different from autocoder root
+    mcp_script = ROOT_DIR / "mcp_server" / "feature_mcp.py"
     mcp_servers = {
         "features": {
             "command": sys.executable,  # Use the same Python that's running this script
             "args": [
-                "-m", "mcp_server.feature_mcp",
+                str(mcp_script),
                 "--project-dir", str(project_dir.resolve()),
             ],
         },
