@@ -168,15 +168,15 @@ class AssistantChatSession:
             json.dump(security_settings, f, indent=2)
 
         # Build MCP servers config - only features MCP for read-only access
+        # NOTE: Don't pass env - subprocess inherits parent environment.
+        # Passing **os.environ exceeds Windows command line limits (~8KB).
         mcp_servers = {
             "features": {
                 "command": sys.executable,
-                "args": ["-m", "mcp_server.feature_mcp"],
-                "env": {
-                    **os.environ,
-                    "PROJECT_DIR": str(self.project_dir.resolve()),
-                    "PYTHONPATH": str(ROOT_DIR.resolve()),
-                },
+                "args": [
+                    "-m", "mcp_server.feature_mcp",
+                    "--project-dir", str(self.project_dir.resolve()),
+                ],
             },
         }
 
