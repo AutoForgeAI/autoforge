@@ -8,6 +8,7 @@ const STORAGE_KEY = 'autonomous-coder-selected-project'
 import { ProjectSelector } from './components/ProjectSelector'
 import { KanbanBoard } from './components/KanbanBoard'
 import { AgentControl } from './components/AgentControl'
+import { ParallelAgentControl } from './components/ParallelAgentControl'
 import { ProgressDashboard } from './components/ProgressDashboard'
 import { SetupWizard } from './components/SetupWizard'
 import { AddFeatureForm } from './components/AddFeatureForm'
@@ -34,6 +35,7 @@ function App() {
   const [debugOpen, setDebugOpen] = useState(false)
   const [debugPanelHeight, setDebugPanelHeight] = useState(288) // Default height
   const [assistantOpen, setAssistantOpen] = useState(false)
+  const [parallelMode, setParallelMode] = useState(false)
 
   const { data: projects, isLoading: projectsLoading } = useProjects()
   const { data: features } = useFeatures(selectedProject)
@@ -160,11 +162,24 @@ function App() {
                     </kbd>
                   </button>
 
-                  <AgentControl
-                    projectName={selectedProject}
-                    status={wsState.agentStatus}
-                    yoloMode={agentStatusData?.yolo_mode ?? false}
-                  />
+                  {!parallelMode ? (
+                    <>
+                      <AgentControl
+                        projectName={selectedProject}
+                        status={wsState.agentStatus}
+                        yoloMode={agentStatusData?.yolo_mode ?? false}
+                      />
+                      <ParallelAgentControl
+                        projectName={selectedProject}
+                        onModeChange={setParallelMode}
+                      />
+                    </>
+                  ) : (
+                    <ParallelAgentControl
+                      projectName={selectedProject}
+                      onModeChange={setParallelMode}
+                    />
+                  )}
                 </>
               )}
             </div>
