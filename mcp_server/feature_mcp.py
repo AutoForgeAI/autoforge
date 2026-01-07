@@ -22,17 +22,19 @@ import json
 import os
 import sys
 from contextlib import asynccontextmanager
+from datetime import datetime
 from pathlib import Path
 from typing import Annotated
 
 from mcp.server.fastmcp import FastMCP
 from pydantic import BaseModel, Field
+from sqlalchemy import text
 from sqlalchemy.sql.expression import func
 
 # Add parent directory to path so we can import from api module
 sys.path.insert(0, str(Path(__file__).parent.parent))
 
-from api.database import Feature, create_database
+from api.database import Feature, FeatureStatus, create_database
 from api.migration import migrate_json_to_sqlite
 
 
@@ -142,22 +144,33 @@ def get_session():
 def feature_get_stats() -> str:
     """Get statistics about feature completion progress.
 
-    Returns the number of passing features, in-progress features, total features,
+    Returns the number of features by status, total features,
     and completion percentage. Use this to track overall progress of the implementation.
 
     Returns:
-        JSON with: passing (int), in_progress (int), total (int), percentage (float)
+        JSON with: passing, in_progress, pending, conflict, failed, total, percentage
     """
     session = get_session()
     try:
         total = session.query(Feature).count()
+
+        # Legacy boolean counts (for backward compatibility)
         passing = session.query(Feature).filter(Feature.passes == True).count()
         in_progress = session.query(Feature).filter(Feature.in_progress == True).count()
+
+        # New status-based counts (for parallel execution)
+        pending = session.query(Feature).filter(Feature.status == FeatureStatus.PENDING).count()
+        conflict = session.query(Feature).filter(Feature.status == FeatureStatus.CONFLICT).count()
+        failed = session.query(Feature).filter(Feature.status == FeatureStatus.FAILED).count()
+
         percentage = round((passing / total) * 100, 1) if total > 0 else 0.0
 
         return json.dumps({
             "passing": passing,
             "in_progress": in_progress,
+            "pending": pending,
+            "conflict": conflict,
+            "failed": failed,
             "total": total,
             "percentage": percentage
         }, indent=2)
@@ -229,15 +242,18 @@ def feature_get_for_regression(
 
 @mcp.tool()
 def feature_mark_passing(
-    feature_id: Annotated[int, Field(description="The ID of the feature to mark as passing", ge=1)]
+    feature_id: Annotated[int, Field(description="The ID of the feature to mark as passing", ge=1)],
+    worker_id: Annotated[str, Field(default="", description="Worker ID that completed the feature (optional)")] = ""
 ) -> str:
     """Mark a feature as passing after successful implementation.
 
-    Updates the feature's passes field to true and clears the in_progress flag.
+    Updates the feature's passes field to true, sets status to PASSING,
+    and clears the in_progress flag and lease fields.
     Use this after you have implemented the feature and verified it works correctly.
 
     Args:
         feature_id: The ID of the feature to mark as passing
+        worker_id: Optional worker ID that completed this feature
 
     Returns:
         JSON with the updated feature details, or error if not found.
@@ -249,8 +265,19 @@ def feature_mark_passing(
         if feature is None:
             return json.dumps({"error": f"Feature with ID {feature_id} not found"})
 
+        # Update status and passes flag
+        feature.status = FeatureStatus.PASSING
         feature.passes = True
         feature.in_progress = False
+
+        # Clear lease fields
+        feature.claimed_by = None
+        feature.claimed_at = None
+
+        # Set completion audit
+        feature.completed_at = datetime.utcnow()
+        feature.completed_by = worker_id if worker_id else None
+
         session.commit()
         session.refresh(feature)
 
@@ -433,6 +460,314 @@ def feature_create_bulk(
     except Exception as e:
         session.rollback()
         return json.dumps({"error": str(e)})
+    finally:
+        session.close()
+
+
+# =============================================================================
+# Parallel Execution Tools
+# =============================================================================
+
+
+@mcp.tool()
+def feature_claim_next(
+    worker_id: Annotated[str, Field(description="Worker ID claiming the feature", min_length=1)]
+) -> str:
+    """Atomically claim the next available feature for a worker.
+
+    Uses SQLite's CTE with conditional UPDATE to ensure only one worker
+    can claim each feature (race-condition safe). This should be used
+    instead of feature_get_next + feature_mark_in_progress in parallel mode.
+
+    Args:
+        worker_id: Unique identifier for the worker claiming the feature
+
+    Returns:
+        JSON with claimed feature details, or {"status": "no_features_available"}
+        if no pending features exist.
+    """
+    session = get_session()
+    try:
+        now = datetime.utcnow()
+
+        # Atomic claim using CTE + conditional UPDATE with RETURNING
+        # This ensures only one worker can claim each feature
+        result = session.execute(text("""
+            WITH next AS (
+                SELECT id FROM features
+                WHERE status = 'pending'
+                ORDER BY priority ASC, id ASC
+                LIMIT 1
+            )
+            UPDATE features
+            SET status = 'in_progress',
+                in_progress = 1,
+                claimed_by = :worker_id,
+                claimed_at = :now
+            WHERE id IN (SELECT id FROM next)
+              AND status = 'pending'
+            RETURNING *
+        """), {"worker_id": worker_id, "now": now})
+
+        row = result.fetchone()
+        if row is None:
+            session.rollback()
+            return json.dumps({"status": "no_features_available"})
+
+        session.commit()
+
+        # Convert row to dict
+        columns = result.keys()
+        feature_dict = dict(zip(columns, row))
+
+        return json.dumps(feature_dict, indent=2, default=str)
+    except Exception as e:
+        session.rollback()
+        return json.dumps({"error": str(e)})
+    finally:
+        session.close()
+
+
+@mcp.tool()
+def feature_heartbeat(
+    feature_id: Annotated[int, Field(description="The ID of the feature to heartbeat", ge=1)],
+    worker_id: Annotated[str, Field(description="Worker ID that owns the feature", min_length=1)]
+) -> str:
+    """Extend lease on a claimed feature. Call every ~5 minutes while working.
+
+    Updates the claimed_at timestamp to prevent stale claim recovery
+    from reclaiming this feature.
+
+    Args:
+        feature_id: The ID of the feature
+        worker_id: Worker ID that should own this feature
+
+    Returns:
+        JSON with {"status": "renewed"} on success,
+        or {"status": "lease_lost"} if this worker no longer owns the feature.
+    """
+    session = get_session()
+    try:
+        now = datetime.utcnow()
+
+        result = session.execute(text("""
+            UPDATE features
+            SET claimed_at = :now
+            WHERE id = :feature_id
+              AND claimed_by = :worker_id
+              AND status = 'in_progress'
+        """), {"feature_id": feature_id, "worker_id": worker_id, "now": now})
+
+        if result.rowcount == 0:
+            session.rollback()
+            return json.dumps({"status": "lease_lost"})
+
+        session.commit()
+        return json.dumps({"status": "renewed"})
+    except Exception as e:
+        session.rollback()
+        return json.dumps({"error": str(e)})
+    finally:
+        session.close()
+
+
+@mcp.tool()
+def feature_release_claim(
+    feature_id: Annotated[int, Field(description="The ID of the feature to release", ge=1)],
+    worker_id: Annotated[str, Field(description="Worker ID releasing the feature", min_length=1)]
+) -> str:
+    """Release claim on a feature, returning it to pending status.
+
+    Use this when abandoning a feature (e.g., agent failure, worker restart).
+    Only releases if the specified worker currently owns the feature.
+
+    Args:
+        feature_id: The ID of the feature to release
+        worker_id: Worker ID that should own this feature
+
+    Returns:
+        JSON with {"status": "released"} on success,
+        or {"status": "not_owner"} if this worker doesn't own the feature.
+    """
+    session = get_session()
+    try:
+        result = session.execute(text("""
+            UPDATE features
+            SET status = 'pending',
+                in_progress = 0,
+                claimed_by = NULL,
+                claimed_at = NULL
+            WHERE id = :feature_id
+              AND claimed_by = :worker_id
+              AND status = 'in_progress'
+        """), {"feature_id": feature_id, "worker_id": worker_id})
+
+        if result.rowcount == 0:
+            session.rollback()
+            return json.dumps({"status": "not_owner"})
+
+        session.commit()
+        return json.dumps({"status": "released"})
+    except Exception as e:
+        session.rollback()
+        return json.dumps({"error": str(e)})
+    finally:
+        session.close()
+
+
+@mcp.tool()
+def feature_mark_conflict(
+    feature_id: Annotated[int, Field(description="The ID of the feature with merge conflict", ge=1)],
+    worker_id: Annotated[str, Field(description="Worker ID that encountered the conflict", min_length=1)]
+) -> str:
+    """Mark a feature as having a merge conflict.
+
+    Use this when the feature's changes could not be merged into main.
+    The feature will require manual resolution.
+
+    Args:
+        feature_id: The ID of the feature with conflict
+        worker_id: Worker ID that encountered the conflict
+
+    Returns:
+        JSON with {"status": "marked_conflict"} on success,
+        or {"status": "not_owner"} if this worker doesn't own the feature.
+    """
+    session = get_session()
+    try:
+        result = session.execute(text("""
+            UPDATE features
+            SET status = 'conflict',
+                passes = 0,
+                in_progress = 0,
+                claimed_by = NULL,
+                claimed_at = NULL
+            WHERE id = :feature_id
+              AND claimed_by = :worker_id
+        """), {"feature_id": feature_id, "worker_id": worker_id})
+
+        if result.rowcount == 0:
+            session.rollback()
+            return json.dumps({"status": "not_owner"})
+
+        session.commit()
+        return json.dumps({"status": "marked_conflict"})
+    except Exception as e:
+        session.rollback()
+        return json.dumps({"error": str(e)})
+    finally:
+        session.close()
+
+
+@mcp.tool()
+def feature_mark_failed(
+    feature_id: Annotated[int, Field(description="The ID of the feature that failed", ge=1)],
+    worker_id: Annotated[str, Field(description="Worker ID that encountered the failure", min_length=1)]
+) -> str:
+    """Mark a feature as permanently failed.
+
+    Use this when the agent cannot complete the feature and it should
+    not be retried automatically.
+
+    Args:
+        feature_id: The ID of the failed feature
+        worker_id: Worker ID that encountered the failure
+
+    Returns:
+        JSON with {"status": "marked_failed"} on success,
+        or {"status": "not_owner"} if this worker doesn't own the feature.
+    """
+    session = get_session()
+    try:
+        result = session.execute(text("""
+            UPDATE features
+            SET status = 'failed',
+                passes = 0,
+                in_progress = 0,
+                claimed_by = NULL,
+                claimed_at = NULL
+            WHERE id = :feature_id
+              AND claimed_by = :worker_id
+        """), {"feature_id": feature_id, "worker_id": worker_id})
+
+        if result.rowcount == 0:
+            session.rollback()
+            return json.dumps({"status": "not_owner"})
+
+        session.commit()
+        return json.dumps({"status": "marked_failed"})
+    except Exception as e:
+        session.rollback()
+        return json.dumps({"error": str(e)})
+    finally:
+        session.close()
+
+
+@mcp.tool()
+def feature_reclaim_stale(
+    lease_timeout_minutes: Annotated[int, Field(default=30, ge=5, le=120, description="Minutes after which a claim is considered stale")] = 30
+) -> str:
+    """Reclaim features with expired leases.
+
+    Used by the coordinator to recover from worker crashes.
+    Features that have been in_progress for longer than lease_timeout
+    without a heartbeat are returned to pending status.
+
+    Args:
+        lease_timeout_minutes: Minutes after which a claim is considered stale (5-120, default 30)
+
+    Returns:
+        JSON with {"reclaimed": count} indicating how many features were reclaimed.
+    """
+    session = get_session()
+    try:
+        # Calculate cutoff time
+        cutoff = datetime.utcnow()
+        # Subtract minutes manually since SQLite doesn't have great datetime math
+        from datetime import timedelta
+        cutoff = cutoff - timedelta(minutes=lease_timeout_minutes)
+
+        result = session.execute(text("""
+            UPDATE features
+            SET status = 'pending',
+                in_progress = 0,
+                claimed_by = NULL,
+                claimed_at = NULL
+            WHERE status = 'in_progress'
+              AND claimed_at < :cutoff
+        """), {"cutoff": cutoff})
+
+        reclaimed = result.rowcount
+        session.commit()
+
+        return json.dumps({"reclaimed": reclaimed})
+    except Exception as e:
+        session.rollback()
+        return json.dumps({"error": str(e)})
+    finally:
+        session.close()
+
+
+@mcp.tool()
+def feature_is_project_complete() -> str:
+    """Check if the project has no more automated work remaining.
+
+    Returns true when there are no PENDING and no IN_PROGRESS features.
+    Note: CONFLICT and FAILED features don't block completion.
+
+    Returns:
+        JSON with {"complete": bool, "pending": int, "in_progress": int}
+    """
+    session = get_session()
+    try:
+        pending = session.query(Feature).filter(Feature.status == FeatureStatus.PENDING).count()
+        in_progress = session.query(Feature).filter(Feature.status == FeatureStatus.IN_PROGRESS).count()
+
+        return json.dumps({
+            "complete": pending == 0 and in_progress == 0,
+            "pending": pending,
+            "in_progress": in_progress
+        })
     finally:
         session.close()
 

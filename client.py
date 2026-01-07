@@ -6,7 +6,6 @@ Functions for creating and configuring the Claude Agent SDK client.
 """
 
 import json
-import os
 import shutil
 import sys
 from pathlib import Path

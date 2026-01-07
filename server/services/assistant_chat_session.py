@@ -9,7 +9,6 @@ but cannot modify any files.
 
 import json
 import logging
-import os
 import shutil
 import sys
 import threading
@@ -22,7 +21,6 @@ from claude_agent_sdk import ClaudeAgentOptions, ClaudeSDKClient
 from .assistant_database import (
     create_conversation,
     add_message,
-    get_conversation,
 )
 
 logger = logging.getLogger(__name__)

@@ -26,7 +26,6 @@ from prompts import (
     get_coding_prompt,
     get_coding_prompt_yolo,
     copy_spec_to_project,
-    has_project_prompts,
 )
 
 
