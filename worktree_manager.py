@@ -15,6 +15,15 @@ from typing import Optional
 logger = logging.getLogger(__name__)
 
 
+# Files to copy from project_dir to worktrees for agent access
+# These files may not be committed to git but are needed by agents
+WORKTREE_SYNC_FILES = [
+    "app_spec.txt",                    # Project specification
+    "prompts/app_spec.txt",            # Alternative location
+    "claude-progress.txt",             # Progress notes
+]
+
+
 class WorktreeManager:
     """Manages git worktrees for parallel workers."""
 
@@ -124,7 +133,33 @@ class WorktreeManager:
         self._created_worktrees.append(worktree_path)
         logger.info(f"Created worktree: {worktree_path}")
 
+        # Sync required files from project_dir to worktree
+        self._sync_files_to_worktree(worktree_path)
+
         return worktree_path
+
+    def _sync_files_to_worktree(self, worktree_path: Path) -> None:
+        """
+        Copy required files from project_dir to worktree.
+
+        These files may not be committed to git but are needed by agents
+        (e.g., app_spec.txt, claude-progress.txt).
+
+        Args:
+            worktree_path: Destination worktree directory
+        """
+        for rel_path in WORKTREE_SYNC_FILES:
+            src = self.project_dir / rel_path
+            dst = worktree_path / rel_path
+
+            if src.exists() and src.is_file():
+                # Create parent directories if needed
+                dst.parent.mkdir(parents=True, exist_ok=True)
+
+                # Only copy if source is newer or dest doesn't exist
+                if not dst.exists():
+                    shutil.copy2(src, dst)
+                    logger.debug(f"Synced to worktree: {rel_path}")
 
     async def setup_all_worktrees(self) -> dict[int, Path]:
         """
