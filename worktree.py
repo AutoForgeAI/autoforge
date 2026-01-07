@@ -68,11 +68,13 @@ class WorktreeManager:
         # Create initial commit so worktrees can branch from it
         result = self._run_git("add", "-A")
         if result.returncode != 0:
-            logger.warning(f"Git add failed: {result.stderr}")
+            logger.error(f"Git add failed: {result.stderr}")
+            return False
 
         result = self._run_git("commit", "-m", "Initial commit for parallel agents", "--allow-empty")
         if result.returncode != 0:
-            logger.warning(f"Git commit failed: {result.stderr}")
+            logger.error(f"Git commit failed: {result.stderr}")
+            return False
 
         return True
 
@@ -149,6 +151,10 @@ class WorktreeManager:
         Set up shared resources in the worktree.
 
         The features.db is shared across all worktrees via symlink.
+        This is critical for atomic feature claiming via feature_claim_next().
+
+        Raises:
+            RuntimeError: If features.db cannot be shared with the worktree.
         """
         # Create symlink to shared features.db
         features_db = self.project_dir / "features.db"
@@ -159,9 +165,18 @@ class WorktreeManager:
                 # Try symlink first (preferred)
                 worktree_db.symlink_to(features_db)
                 logger.debug(f"Created symlink to features.db in {worktree_path}")
-            except OSError:
-                # Fallback: use the same path in MCP server config
-                logger.debug("Symlink not supported, MCP server will use main project path")
+            except OSError as e:
+                # Symlink failed - this breaks shared DB coordination
+                # The MCP server uses PROJECT_DIR env var which points to worktree,
+                # so we need the features.db to be accessible there
+                logger.warning(
+                    f"Symlink creation failed ({e}). "
+                    f"Ensure MCP server is configured to use {features_db} directly."
+                )
+                # Write a marker file to indicate the absolute DB path
+                db_path_file = worktree_path / ".features_db_path"
+                db_path_file.write_text(str(features_db))
+                logger.info(f"Wrote features.db path to {db_path_file}")
 
         # Copy prompts directory if it exists
         prompts_dir = self.project_dir / "prompts"
@@ -268,16 +283,28 @@ class WorktreeManager:
         msg = commit_message or f"Agent {agent_id} changes"
         self._run_git("commit", "-m", msg, "--allow-empty", cwd=worktree_path)
 
-        # Get current branch in main repo
+        # Get the target branch to merge into (default to "main")
         result = self._run_git("branch", "--show-current")
-        main_branch = result.stdout.strip() or "main"
+        target_branch = result.stdout.strip() or "main"
 
-        # Merge the agent branch into main
+        # Ensure we're on the target branch before merging
+        result = self._run_git("checkout", target_branch)
+        if result.returncode != 0:
+            logger.error(f"Failed to checkout {target_branch}: {result.stderr}")
+            return False
+
+        # Merge the agent branch into the target branch
         result = self._run_git("merge", branch, "--no-edit")
 
         if result.returncode != 0:
-            logger.warning(f"Merge conflict for agent {agent_id}: {result.stderr}")
-            # Abort the merge
+            logger.warning(
+                f"Merge conflict for agent {agent_id}. "
+                f"Agent branch: {branch}. Error: {result.stderr}"
+            )
+            logger.warning(
+                f"Manual resolution required. Worktree at: {worktree_path}"
+            )
+            # Abort the merge to clean up
             self._run_git("merge", "--abort")
             return False
 

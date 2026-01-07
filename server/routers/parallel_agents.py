@@ -148,10 +148,11 @@ async def start_single_agent(
 
     success = await orchestrator.start_agent(agent_id, yolo_mode=yolo_mode)
 
+    agent = orchestrator.agents.get(agent_id)
     return {
         "success": success,
         "agent_id": agent_id,
-        "status": orchestrator.agents.get(agent_id, {}).status if agent_id in orchestrator.agents else "unknown",
+        "status": agent.status if agent else "unknown",
     }
 
 

@@ -166,7 +166,6 @@ def feature_get_next(
         if agent_id:
             query = query.filter(
                 (Feature.assigned_agent_id == None) |
-                (Feature.assigned_agent_id == "") |
                 (Feature.assigned_agent_id == agent_id)
             )
 
@@ -397,13 +396,14 @@ def feature_claim_next(
     session = get_session()
     try:
         # Find the next available feature not assigned to another agent
+        # A feature is available if:
+        # 1. Not in progress AND not assigned to anyone, OR
+        # 2. Already assigned to this agent (allow re-claiming own feature)
         feature = (
             session.query(Feature)
             .filter(Feature.passes == False)
             .filter(
-                (Feature.in_progress == False) |
-                (Feature.assigned_agent_id == None) |
-                (Feature.assigned_agent_id == "") |
+                ((Feature.in_progress == False) & (Feature.assigned_agent_id == None)) |
                 (Feature.assigned_agent_id == agent_id)
             )
             .order_by(Feature.priority.asc(), Feature.id.asc())

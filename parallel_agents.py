@@ -123,11 +123,19 @@ class ParallelAgentOrchestrator:
             logger.error("Failed to initialize git repository")
             return {self.generate_agent_id(i): False for i in range(num_agents)}
 
-        # Start agents
-        for i in range(num_agents):
-            agent_id = self.generate_agent_id(i)
-            success = await self.start_agent(agent_id, yolo_mode, model)
-            results[agent_id] = success
+        # Start agents concurrently for faster initialization
+        agent_ids = [self.generate_agent_id(i) for i in range(num_agents)]
+        tasks = [self.start_agent(agent_id, yolo_mode, model) for agent_id in agent_ids]
+
+        # Gather results, allowing individual failures
+        start_results = await asyncio.gather(*tasks, return_exceptions=True)
+
+        for agent_id, result in zip(agent_ids, start_results):
+            if isinstance(result, Exception):
+                logger.error(f"Failed to start {agent_id}: {result}")
+                results[agent_id] = False
+            else:
+                results[agent_id] = result
 
         return results
 
@@ -283,7 +291,18 @@ class ParallelAgentOrchestrator:
             await asyncio.gather(*tasks, return_exceptions=True)
 
     async def pause_agent(self, agent_id: str) -> bool:
-        """Pause an agent using psutil."""
+        """
+        Pause an agent using psutil suspend (SIGSTOP on Unix).
+
+        WARNING: This uses SIGSTOP/SIGCONT which has known limitations:
+        - The entire process and asyncio event loop are frozen
+        - On resume, pending signals, timeouts, and callbacks fire in a burst
+        - Outstanding async operations (API requests, I/O) may timeout or fail
+        - Child watcher and signal handling may have unpredictable behavior
+
+        For production use, consider stop/start semantics instead if the agent
+        has long-running async operations that could be interrupted.
+        """
         agent = self.agents.get(agent_id)
         if not agent or not agent.process or agent.status != "running":
             return False
@@ -299,7 +318,15 @@ class ParallelAgentOrchestrator:
             return False
 
     async def resume_agent(self, agent_id: str) -> bool:
-        """Resume a paused agent."""
+        """
+        Resume a paused agent using psutil resume (SIGCONT on Unix).
+
+        WARNING: See pause_agent docstring for important caveats about
+        SIGSTOP/SIGCONT and asyncio. After resume, the agent may experience:
+        - Burst of delayed timer/callback executions
+        - Potential connection timeouts or stale state
+        - Signal delivery ordering issues
+        """
         agent = self.agents.get(agent_id)
         if not agent or not agent.process or agent.status != "paused":
             return False
