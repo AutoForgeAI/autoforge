@@ -4,13 +4,13 @@ Security Hook Tests
 ===================
 
 Tests for the bash command security validation logic.
-Run with: python test_security.py
+Run with: pytest tests/test_security.py
 """
 
 import asyncio
 import sys
 
-from security import (
+from autocoder.agent.security import (
     bash_security_hook,
     extract_commands,
     validate_chmod_command,
