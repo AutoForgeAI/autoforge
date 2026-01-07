@@ -317,7 +317,9 @@ class WorktreeManager:
 
         for wt in worktrees:
             path = Path(wt.get("path", ""))
-            if path != self.project_dir and str(self.worktrees_dir) in str(path):
+            # Use is_relative_to() for robust path matching instead of string matching
+            # This avoids false positives from substring matches
+            if path != self.project_dir and path.is_relative_to(self.worktrees_dir):
                 # Extract agent_id from path
                 agent_id = path.name.replace("agent_", "")
                 self.remove_worktree(agent_id)

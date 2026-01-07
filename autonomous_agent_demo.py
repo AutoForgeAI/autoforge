@@ -161,6 +161,7 @@ def main() -> None:
         )
 
         async def run_parallel():
+            """Run multiple agents in parallel and wait for completion."""
             try:
                 results = await orchestrator.start_agents(
                     num_agents=num_agents,
