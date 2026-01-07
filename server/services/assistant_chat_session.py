@@ -20,9 +20,8 @@ from typing import AsyncGenerator, Optional
 from claude_agent_sdk import ClaudeAgentOptions, ClaudeSDKClient
 
 from .assistant_database import (
-    create_conversation,
     add_message,
-    get_conversation,
+    create_conversation,
 )
 
 logger = logging.getLogger(__name__)

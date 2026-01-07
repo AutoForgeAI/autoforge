@@ -11,21 +11,21 @@ import re
 from pathlib import Path
 from typing import Optional
 
-from fastapi import APIRouter, WebSocket, WebSocketDisconnect, HTTPException
+from fastapi import APIRouter, HTTPException, WebSocket, WebSocketDisconnect
 from pydantic import BaseModel
 
 from ..services.assistant_chat_session import (
     AssistantChatSession,
-    get_session,
     create_session,
-    remove_session,
+    get_session,
     list_sessions,
+    remove_session,
 )
 from ..services.assistant_database import (
-    get_conversations,
-    get_conversation,
-    delete_conversation,
     create_conversation,
+    delete_conversation,
+    get_conversation,
+    get_conversations,
 )
 
 logger = logging.getLogger(__name__)

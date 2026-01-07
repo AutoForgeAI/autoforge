@@ -5,23 +5,22 @@ Spec Creation Router
 WebSocket and REST endpoints for interactive spec creation with Claude.
 """
 
-import asyncio
 import json
 import logging
 import re
 from pathlib import Path
-from typing import Any, Optional
+from typing import Optional
 
-from fastapi import APIRouter, WebSocket, WebSocketDisconnect, HTTPException
+from fastapi import APIRouter, HTTPException, WebSocket, WebSocketDisconnect
 from pydantic import BaseModel, ValidationError
 
 from ..schemas import ImageAttachment
 from ..services.spec_chat_session import (
     SpecChatSession,
-    get_session,
     create_session,
-    remove_session,
+    get_session,
     list_sessions,
+    remove_session,
 )
 
 logger = logging.getLogger(__name__)

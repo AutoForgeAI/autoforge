@@ -1,7 +1,7 @@
 #!/usr/bin/env python3
 """
-Autonomous Coder UI Launcher
-=============================
+AutoCoder UI Launcher
+=====================
 
 Automated launcher that handles all setup:
 1. Creates/activates Python virtual environment
@@ -27,7 +27,6 @@ import sys
 import time
 import webbrowser
 from pathlib import Path
-
 
 ROOT = Path(__file__).parent.absolute()
 VENV_DIR = ROOT / "venv"
@@ -158,9 +157,9 @@ def start_dev_server(port: int) -> tuple:
     """Start both Vite and FastAPI in development mode."""
     venv_python = get_venv_python()
 
-    print(f"\n  Starting development servers...")
+    print("\n  Starting development servers...")
     print(f"  - FastAPI backend: http://127.0.0.1:{port}")
-    print(f"  - Vite frontend:   http://127.0.0.1:5173")
+    print("  - Vite frontend:   http://127.0.0.1:5173")
 
     # Start FastAPI
     backend = subprocess.Popen([
@@ -201,7 +200,7 @@ def main() -> None:
     dev_mode = "--dev" in sys.argv
 
     print("=" * 50)
-    print("  Autonomous Coder UI Setup")
+    print("  AutoCoder UI Setup")
     print("=" * 50)
 
     total_steps = 6 if not dev_mode else 5

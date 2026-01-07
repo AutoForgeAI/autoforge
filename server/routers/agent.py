@@ -11,7 +11,7 @@ from pathlib import Path
 
 from fastapi import APIRouter, HTTPException
 
-from ..schemas import AgentStatus, AgentActionResponse, AgentStartRequest
+from ..schemas import AgentActionResponse, AgentStartRequest, AgentStatus
 from ..services.process_manager import get_manager
 
 

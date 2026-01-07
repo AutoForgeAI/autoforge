@@ -11,7 +11,7 @@ from datetime import datetime
 from pathlib import Path
 from typing import Optional
 
-from sqlalchemy.orm import sessionmaker, Session
+from sqlalchemy.orm import Session, sessionmaker
 
 from api.database import Feature
 

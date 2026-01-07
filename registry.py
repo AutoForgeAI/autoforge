@@ -14,7 +14,7 @@ from datetime import datetime
 from pathlib import Path
 from typing import Any
 
-from sqlalchemy import Column, String, DateTime, create_engine
+from sqlalchemy import Column, DateTime, String, create_engine
 from sqlalchemy.ext.declarative import declarative_base
 from sqlalchemy.orm import sessionmaker
 

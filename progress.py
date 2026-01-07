@@ -13,7 +13,6 @@ import urllib.request
 from datetime import datetime
 from pathlib import Path
 
-
 WEBHOOK_URL = os.environ.get("PROGRESS_N8N_WEBHOOK_URL")
 PROGRESS_CACHE_FILE = ".progress_cache"
 

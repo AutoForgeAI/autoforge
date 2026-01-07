@@ -12,7 +12,6 @@ Fallback chain:
 import shutil
 from pathlib import Path
 
-
 # Base templates location (generic templates)
 TEMPLATES_DIR = Path(__file__).parent / ".claude" / "templates"
 

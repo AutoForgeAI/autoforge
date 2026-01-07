@@ -10,17 +10,24 @@ import shutil
 from contextlib import asynccontextmanager
 from pathlib import Path
 
-from fastapi import FastAPI, Request, WebSocket, HTTPException
+from fastapi import FastAPI, HTTPException, Request, WebSocket
 from fastapi.middleware.cors import CORSMiddleware
-from fastapi.staticfiles import StaticFiles
 from fastapi.responses import FileResponse
+from fastapi.staticfiles import StaticFiles
 
-from .routers import projects_router, features_router, agent_router, spec_creation_router, filesystem_router, assistant_chat_router, parallel_agents_router
-from .websocket import project_websocket
-from .services.process_manager import cleanup_all_managers
-from .services.assistant_chat_session import cleanup_all_sessions as cleanup_assistant_sessions
+from .routers import (
+    agent_router,
+    assistant_chat_router,
+    features_router,
+    filesystem_router,
+    parallel_agents_router,
+    projects_router,
+    spec_creation_router,
+)
 from .schemas import SetupStatus
-
+from .services.assistant_chat_session import cleanup_all_sessions as cleanup_assistant_sessions
+from .services.process_manager import cleanup_all_managers
+from .websocket import project_websocket
 
 # Paths
 ROOT_DIR = Path(__file__).parent.parent

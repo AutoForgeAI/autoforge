@@ -1,0 +1,17 @@
+[tool.ruff]
+line-length = 120
+target-version = "py311"
+
+[tool.ruff.lint]
+select = ["E", "F", "I", "W"]
+ignore = [
+    "E501",  # Line length handled separately
+    "E402",  # Allow imports after load_dotenv()
+    "E712",  # SQLAlchemy requires == True/False syntax
+]
+
+[tool.mypy]
+python_version = "3.11"
+ignore_missing_imports = true
+warn_return_any = true
+warn_unused_ignores = true

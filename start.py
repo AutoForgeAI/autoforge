@@ -9,19 +9,19 @@ Supports two paths for new projects:
 """
 
 import os
-import sys
 import subprocess
+import sys
 from pathlib import Path
 
 from prompts import (
-    scaffold_project_prompts,
-    has_project_prompts,
     get_project_prompts_dir,
+    has_project_prompts,
+    scaffold_project_prompts,
 )
 from registry import (
-    register_project,
     get_project_path,
     list_registered_projects,
+    register_project,
 )
 
 
@@ -256,9 +256,9 @@ def run_manual_spec_flow(project_dir: Path) -> bool:
     print("  Manual Specification Setup")
     print("-" * 50)
     print("\nTemplate files have been created. Edit these files in your editor:")
-    print(f"\n  Required:")
+    print("\n  Required:")
     print(f"    {prompts_dir / 'app_spec.txt'}")
-    print(f"\n  Optional (customize agent behavior):")
+    print("\n  Optional (customize agent behavior):")
     print(f"    {prompts_dir / 'initializer_prompt.md'}")
     print(f"    {prompts_dir / 'coding_prompt.md'}")
     print("\n" + "-" * 50)

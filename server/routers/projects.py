@@ -14,11 +14,11 @@ from fastapi import APIRouter, HTTPException
 
 from ..schemas import (
     ProjectCreate,
-    ProjectSummary,
     ProjectDetail,
     ProjectPrompts,
     ProjectPromptsUpdate,
     ProjectStats,
+    ProjectSummary,
 )
 
 # Lazy imports to avoid circular dependencies
@@ -43,8 +43,8 @@ def _init_imports():
     if str(root) not in sys.path:
         sys.path.insert(0, str(root))
 
-    from prompts import scaffold_project_prompts, get_project_prompts_dir
     from progress import count_passing_tests
+    from prompts import get_project_prompts_dir, scaffold_project_prompts
     from start import check_spec_exists
 
     _check_spec_exists = check_spec_exists
@@ -62,10 +62,10 @@ def _get_registry_functions():
         sys.path.insert(0, str(root))
 
     from registry import (
-        register_project,
-        unregister_project,
         get_project_path,
         list_registered_projects,
+        register_project,
+        unregister_project,
         validate_project_path,
     )
     return register_project, unregister_project, get_project_path, list_registered_projects, validate_project_path
@@ -272,7 +272,7 @@ async def get_project_prompts(name: str):
         raise HTTPException(status_code=404, detail=f"Project '{name}' not found")
 
     if not project_dir.exists():
-        raise HTTPException(status_code=404, detail=f"Project directory not found")
+        raise HTTPException(status_code=404, detail="Project directory not found")
 
     prompts_dir = _get_project_prompts_dir(project_dir)
 
@@ -305,7 +305,7 @@ async def update_project_prompts(name: str, prompts: ProjectPromptsUpdate):
         raise HTTPException(status_code=404, detail=f"Project '{name}' not found")
 
     if not project_dir.exists():
-        raise HTTPException(status_code=404, detail=f"Project directory not found")
+        raise HTTPException(status_code=404, detail="Project directory not found")
 
     prompts_dir = _get_project_prompts_dir(project_dir)
     prompts_dir.mkdir(parents=True, exist_ok=True)
@@ -335,6 +335,6 @@ async def get_project_stats_endpoint(name: str):
         raise HTTPException(status_code=404, detail=f"Project '{name}' not found")
 
     if not project_dir.exists():
-        raise HTTPException(status_code=404, detail=f"Project directory not found")
+        raise HTTPException(status_code=404, detail="Project directory not found")
 
     return get_project_stats(project_dir)

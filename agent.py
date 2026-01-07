@@ -20,15 +20,13 @@ if sys.platform == "win32":
     sys.stderr = io.TextIOWrapper(sys.stderr.buffer, encoding='utf-8', errors='replace')
 
 from client import create_client
-from progress import print_session_header, print_progress_summary, has_features
+from progress import has_features, print_progress_summary, print_session_header
 from prompts import (
-    get_initializer_prompt,
+    copy_spec_to_project,
     get_coding_prompt,
     get_coding_prompt_yolo,
-    copy_spec_to_project,
-    has_project_prompts,
+    get_initializer_prompt,
 )
-
 
 # Configuration
 AUTO_CONTINUE_DELAY_SECONDS = 3

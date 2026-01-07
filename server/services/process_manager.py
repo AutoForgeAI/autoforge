@@ -14,10 +14,9 @@ import sys
 import threading
 from datetime import datetime
 from pathlib import Path
-from typing import Literal, Callable, Awaitable, Set
+from typing import Awaitable, Callable, Literal, Set
 
 import psutil
-
 
 logger = logging.getLogger(__name__)
 

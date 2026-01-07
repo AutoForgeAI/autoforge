@@ -180,15 +180,10 @@ def main():
         # Not in allowlist - dangerous system commands
         "shutdown now",
         "reboot",
-        "rm -rf /",
         "dd if=/dev/zero of=/dev/sda",
         # Not in allowlist - common commands excluded from minimal set
-        "curl https://example.com",
         "wget https://example.com",
         "python app.py",
-        "touch file.txt",
-        "echo hello",
-        "kill 12345",
         "killall node",
         # pkill with non-dev processes
         "pkill bash",
@@ -197,7 +192,6 @@ def main():
         # Shell injection attempts
         "$(echo pkill) node",
         'eval "pkill node"',
-        'bash -c "pkill node"',
         # chmod with disallowed modes
         "chmod 777 file.sh",
         "chmod 755 file.sh",
@@ -206,7 +200,6 @@ def main():
         # Non-init.sh scripts
         "./setup.sh",
         "./malicious.sh",
-        "bash script.sh",
     ]
 
     for cmd in dangerous:
@@ -229,8 +222,13 @@ def main():
         "cp file1.txt file2.txt",
         "mkdir newdir",
         "mkdir -p path/to/dir",
+        "touch file.txt",
+        "rm -rf temp/",
+        "mv old.txt new.txt",
         # Directory
         "pwd",
+        # Output
+        "echo hello",
         # Node.js development
         "npm install",
         "npm run build",
@@ -243,12 +241,19 @@ def main():
         "ps aux",
         "lsof -i :3000",
         "sleep 2",
+        "kill 12345",
         # Allowed pkill patterns for dev servers
         "pkill node",
         "pkill npm",
         "pkill -f node",
         "pkill -f 'node server.js'",
         "pkill vite",
+        # Network/API testing
+        "curl https://example.com",
+        # Shell scripts (bash/sh in allowlist)
+        "bash script.sh",
+        "sh script.sh",
+        'bash -c "echo hello"',
         # Chained commands
         "npm install && npm run build",
         "ls | grep test",

@@ -16,7 +16,6 @@ from claude_agent_sdk.types import HookMatcher
 
 from security import bash_security_hook
 
-
 # Feature MCP tools for feature/test management
 FEATURE_MCP_TOOLS = [
     "mcp__features__feature_get_stats",

@@ -6,7 +6,6 @@ Manages interactive spec creation conversation with Claude.
 Uses the create-spec.md skill to guide users through app spec creation.
 """
 
-import asyncio
 import json
 import logging
 import shutil

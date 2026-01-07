@@ -9,7 +9,6 @@ Uses an allowlist approach - only explicitly permitted commands can run.
 import os
 import shlex
 
-
 # Allowed commands for development tasks
 # Minimal set needed for the autonomous coding demo
 ALLOWED_COMMANDS = {
@@ -20,7 +19,6 @@ ALLOWED_COMMANDS = {
     "tail",
     "wc",
     "grep",
-    "eof",
     # File operations (agent uses SDK tools for most file ops, but cp/mkdir needed occasionally)
     "cp",
     "mkdir",

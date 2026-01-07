@@ -10,7 +10,7 @@ from typing import Optional
 
 from sqlalchemy import Boolean, Column, Integer, String, Text, create_engine
 from sqlalchemy.ext.declarative import declarative_base
-from sqlalchemy.orm import sessionmaker, Session
+from sqlalchemy.orm import Session, sessionmaker
 from sqlalchemy.types import JSON
 
 Base = declarative_base()

@@ -11,8 +11,8 @@ from datetime import datetime
 from pathlib import Path
 from typing import Optional
 
-from sqlalchemy import create_engine, Column, Integer, String, Text, DateTime, ForeignKey
-from sqlalchemy.orm import sessionmaker, relationship, declarative_base
+from sqlalchemy import Column, DateTime, ForeignKey, Integer, String, Text, create_engine
+from sqlalchemy.orm import declarative_base, relationship, sessionmaker
 
 logger = logging.getLogger(__name__)
 
