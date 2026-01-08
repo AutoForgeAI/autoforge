@@ -89,6 +89,25 @@ def count_passing_tests(project_dir: Path) -> tuple[int, int, int]:
         return 0, 0, 0
 
 
+def is_project_complete(project_dir: Path) -> bool:
+    """
+    Check if all features are passing (project is complete).
+
+    Args:
+        project_dir: Directory containing the project
+
+    Returns:
+        True if all features are passing, False otherwise
+    """
+    passing, in_progress, total = count_passing_tests(project_dir)
+
+    # Project is complete if:
+    # 1. There are features (total > 0)
+    # 2. All features are passing (passing == total)
+    # 3. No features are in progress
+    return total > 0 and passing == total and in_progress == 0
+
+
 def get_all_passing_features(project_dir: Path) -> list[dict]:
     """
     Get all passing features for webhook notifications.

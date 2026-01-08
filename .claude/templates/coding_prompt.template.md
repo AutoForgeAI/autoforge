@@ -101,6 +101,21 @@ Get the next feature to implement:
 Use the feature_get_next tool
 ```
 
+**IMPORTANT:** If `feature_get_next` returns:
+```json
+{"error": "All features are passing! No more work to do."}
+```
+
+This means the project is **COMPLETE**. You should:
+1. Congratulate yourself - all features have been implemented!
+2. Run a final round of regression tests using `feature_get_for_regression`
+3. Make a final commit with the current state
+4. Update `claude-progress.txt` noting completion
+5. **END THE SESSION** - do not continue working
+
+The orchestrator will detect completion and stop the agent automatically.
+Do NOT loop endlessly looking for more work when all features are passing.
+
 Once you've retrieved the feature, **immediately mark it as in-progress**:
 
 ```
