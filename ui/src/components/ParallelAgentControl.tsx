@@ -32,6 +32,11 @@ const AGENT_COLORS = [
   '#8338ec', // purple - agent-3
   '#ff5400', // orange - agent-4
   '#ff006e', // pink - agent-5
+  '#3a86ff', // blue - agent-6
+  '#ffd60a', // yellow - agent-7
+  '#06d6a0', // teal - agent-8
+  '#ef476f', // red - agent-9
+  '#118ab2', // dark cyan - agent-10
 ]
 
 function getAgentColor(agentId: string): string {
@@ -123,7 +128,7 @@ export function ParallelAgentControl({
 
       {/* Agent Status Grid */}
       {status && status.agents.length > 0 && (
-        <div className="grid grid-cols-5 gap-2">
+        <div className="grid grid-cols-5 sm:grid-cols-5 gap-2">
           {status.agents.map((agent) => (
             <AgentStatusBadge key={agent.agent_id} agent={agent} />
           ))}
@@ -146,9 +151,9 @@ export function ParallelAgentControl({
               </button>
               <span className="w-8 text-center font-bold text-lg">{numAgents}</span>
               <button
-                onClick={() => setNumAgents(Math.min(5, numAgents + 1))}
+                onClick={() => setNumAgents(Math.min(10, numAgents + 1))}
                 className="neo-btn neo-btn-secondary p-1"
-                disabled={numAgents >= 5}
+                disabled={numAgents >= 10}
               >
                 <Plus size={14} />
               </button>

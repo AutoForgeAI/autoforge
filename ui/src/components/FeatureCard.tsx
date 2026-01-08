@@ -35,6 +35,11 @@ function getAgentColor(agentId: string): string {
     '#8338ec', // purple - agent-3
     '#ff5400', // orange - agent-4
     '#ff006e', // pink - agent-5
+    '#3a86ff', // blue - agent-6
+    '#ffd60a', // yellow - agent-7
+    '#06d6a0', // teal - agent-8
+    '#ef476f', // red - agent-9
+    '#118ab2', // dark cyan - agent-10
   ]
 
   // Extract number from agent-N format

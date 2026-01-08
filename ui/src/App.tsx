@@ -162,24 +162,18 @@ function App() {
                     </kbd>
                   </button>
 
-                  {!parallelMode ? (
-                    <>
-                      <AgentControl
-                        projectName={selectedProject}
-                        status={wsState.agentStatus}
-                        yoloMode={agentStatusData?.yolo_mode ?? false}
-                      />
-                      <ParallelAgentControl
-                        projectName={selectedProject}
-                        onModeChange={setParallelMode}
-                      />
-                    </>
-                  ) : (
-                    <ParallelAgentControl
+                  {/* Always render both, but hide AgentControl in parallel mode */}
+                  {!parallelMode && (
+                    <AgentControl
                       projectName={selectedProject}
-                      onModeChange={setParallelMode}
+                      status={wsState.agentStatus}
+                      yoloMode={agentStatusData?.yolo_mode ?? false}
                     />
                   )}
+                  <ParallelAgentControl
+                    projectName={selectedProject}
+                    onModeChange={setParallelMode}
+                  />
                 </>
               )}
             </div>

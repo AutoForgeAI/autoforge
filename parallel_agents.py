@@ -48,7 +48,7 @@ class ParallelAgentOrchestrator:
         self,
         project_dir: Path,
         root_dir: Path,
-        max_agents: int = 3,
+        max_agents: int = 10,
     ):
         """
         Initialize the orchestrator.
