@@ -158,7 +158,7 @@ export function useChatToFeatures({
 
     const protocol = window.location.protocol === 'https:' ? 'wss:' : 'ws:'
     const host = window.location.host
-    const wsUrl = `${protocol}//${host}/api/chat/${encodeURIComponent(projectName)}`
+    const wsUrl = `${protocol}//${host}/api/projects/${encodeURIComponent(projectName)}/chat`
 
     const ws = new WebSocket(wsUrl)
     wsRef.current = ws

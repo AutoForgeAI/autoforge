@@ -245,6 +245,15 @@ async def import_project(project: ProjectImport):
             detail="Directory does not appear to contain source code files"
         )
 
+    # Check for existing Claude settings that could conflict with autocoder
+    claude_settings = project_path / ".claude" / "settings.local.json"
+    if claude_settings.exists():
+        raise HTTPException(
+            status_code=400,
+            detail="Project contains existing Claude settings (.claude/settings.local.json). "
+                   "Please backup and remove this file before importing to avoid permission conflicts."
+        )
+
     # Set up prompts for imported project (analyzer mode)
     _migrate_project_prompts(project_path)
 
