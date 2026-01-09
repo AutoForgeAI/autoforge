@@ -269,6 +269,10 @@ export function useAssistantChat({
       connect();
 
       // Wait for connection then send start message
+      // Add retry limit to prevent infinite polling if connection never opens
+      const maxRetries = 50; // 50 * 100ms = 5 seconds max wait
+      let retryCount = 0;
+
       const checkAndSend = () => {
         if (wsRef.current?.readyState === WebSocket.OPEN) {
           checkAndSendTimeoutRef.current = null;
@@ -293,7 +297,7 @@ export function useAssistantChat({
 
       checkAndSendTimeoutRef.current = window.setTimeout(checkAndSend, 100);
     },
-    [connect],
+    [connect, onError],
   );
 
   const sendMessage = useCallback(
