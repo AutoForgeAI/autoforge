@@ -98,6 +98,7 @@ export function useAssistantChat({
   const maxReconnectAttempts = 3;
   const pingIntervalRef = useRef<number | null>(null);
   const reconnectTimeoutRef = useRef<number | null>(null);
+  const connectTimeoutRef = useRef<number | null>(null);
 
   // Clean up on unmount
   useEffect(() => {
@@ -107,6 +108,10 @@ export function useAssistantChat({
       }
       if (reconnectTimeoutRef.current) {
         clearTimeout(reconnectTimeoutRef.current);
+      }
+      if (connectTimeoutRef.current) {
+        clearTimeout(connectTimeoutRef.current);
+        connectTimeoutRef.current = null;
       }
       if (wsRef.current) {
         wsRef.current.close();
@@ -296,6 +301,12 @@ export function useAssistantChat({
 
   const start = useCallback(
     (existingConversationId?: number | null) => {
+      // Clear any existing connect timeout before starting
+      if (connectTimeoutRef.current) {
+        clearTimeout(connectTimeoutRef.current);
+        connectTimeoutRef.current = null;
+      }
+
       connect();
 
       // Wait for connection then send start message
@@ -305,6 +316,8 @@ export function useAssistantChat({
 
       const checkAndSend = () => {
         if (wsRef.current?.readyState === WebSocket.OPEN) {
+          // Connection succeeded - clear timeout ref
+          connectTimeoutRef.current = null;
           setIsLoading(true);
           const payload: { type: string; conversation_id?: number } = {
             type: "start",
@@ -317,20 +330,22 @@ export function useAssistantChat({
         } else if (wsRef.current?.readyState === WebSocket.CONNECTING) {
           retryCount++;
           if (retryCount >= maxRetries) {
-            // Connection timeout - stop polling and report error
+            // Connection timeout - clear ref and report error
+            connectTimeoutRef.current = null;
             setIsLoading(false);
             onError?.("Connection timeout: WebSocket failed to open");
             return;
           }
-          setTimeout(checkAndSend, 100);
+          connectTimeoutRef.current = window.setTimeout(checkAndSend, 100);
         } else {
-          // WebSocket is closed or in an error state
+          // WebSocket is closed or in an error state - clear ref
+          connectTimeoutRef.current = null;
           setIsLoading(false);
           onError?.("Failed to establish WebSocket connection");
         }
       };
 
-      setTimeout(checkAndSend, 100);
+      connectTimeoutRef.current = window.setTimeout(checkAndSend, 100);
     },
     [connect, onError],
   );
@@ -368,6 +383,12 @@ export function useAssistantChat({
 
   const disconnect = useCallback(() => {
     reconnectAttempts.current = maxReconnectAttempts; // Prevent reconnection
+
+    // Clear any pending connect timeout (from start polling)
+    if (connectTimeoutRef.current) {
+      clearTimeout(connectTimeoutRef.current);
+      connectTimeoutRef.current = null;
+    }
 
     // Clear any pending reconnect timeout
     if (reconnectTimeoutRef.current) {
