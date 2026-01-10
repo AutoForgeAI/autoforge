@@ -45,7 +45,7 @@ def safe_print(*args, **kwargs) -> None:
                     pass  # Give up silently
 
 from client import create_client
-from progress import has_features, print_progress_summary, print_session_header
+from progress import all_features_complete, has_features, print_progress_summary, print_session_header
 from prompts import (
     copy_spec_to_project,
     get_coding_prompt,
@@ -194,6 +194,17 @@ async def run_autonomous_agent(
         if max_iterations and iteration > max_iterations:
             print(f"\nReached max iterations ({max_iterations})")
             print("To continue, run the script again without --max-iterations")
+            break
+
+        # Check if all features are complete (skip on first run - initializer hasn't created features yet)
+        if not is_first_run and all_features_complete(project_dir):
+            print("\n" + "=" * 70)
+            print("  ALL FEATURES COMPLETE!")
+            print("=" * 70)
+            print("\nAll features have been implemented and are passing.")
+            print("The agent will now stop to save API credits.")
+            print("\nTo add more features, use the UI or add them to the database,")
+            print("then restart the agent.")
             break
 
         # Print session header
