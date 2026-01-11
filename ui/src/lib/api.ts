@@ -9,6 +9,8 @@ import type {
   FeatureListResponse,
   Feature,
   FeatureCreate,
+  FeatureBulkCreate,
+  FeatureBulkCreateResponse,
   AgentStatusResponse,
   AgentActionResponse,
   SetupStatus,
@@ -111,6 +113,16 @@ export async function deleteFeature(projectName: string, featureId: number): Pro
 export async function skipFeature(projectName: string, featureId: number): Promise<void> {
   await fetchJSON(`/projects/${encodeURIComponent(projectName)}/features/${featureId}/skip`, {
     method: 'PATCH',
+  })
+}
+
+export async function createFeaturesBulk(
+  projectName: string,
+  bulk: FeatureBulkCreate
+): Promise<FeatureBulkCreateResponse> {
+  return fetchJSON(`/projects/${encodeURIComponent(projectName)}/features/bulk`, {
+    method: 'POST',
+    body: JSON.stringify(bulk),
   })
 }
 
