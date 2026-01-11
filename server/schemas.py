@@ -260,8 +260,8 @@ class WSAgentStatusMessage(BaseModel):
 # Spec Chat Schemas
 # ============================================================================
 
-# Maximum image file size: 5 MB
-MAX_IMAGE_SIZE = 5 * 1024 * 1024
+# Maximum file size: 5 MB (shared for all file types)
+MAX_FILE_SIZE = 5 * 1024 * 1024
 
 
 class ImageAttachment(BaseModel):
@@ -276,16 +276,48 @@ class ImageAttachment(BaseModel):
         """Validate that base64 data is valid and within size limit."""
         try:
             decoded = base64.b64decode(v)
-            if len(decoded) > MAX_IMAGE_SIZE:
+            if len(decoded) > MAX_FILE_SIZE:
                 raise ValueError(
                     f'Image size ({len(decoded) / (1024 * 1024):.1f} MB) exceeds '
-                    f'maximum of {MAX_IMAGE_SIZE // (1024 * 1024)} MB'
+                    f'maximum of {MAX_FILE_SIZE // (1024 * 1024)} MB'
                 )
             return v
         except Exception as e:
             if 'Image size' in str(e):
                 raise
             raise ValueError(f'Invalid base64 data: {e}')
+
+
+class TextFileAttachment(BaseModel):
+    """Text file attachment (.md, .txt) from client for spec creation chat."""
+    filename: str = Field(..., min_length=1, max_length=255)
+    mimeType: Literal['text/plain', 'text/markdown']
+    base64Data: str
+
+    @field_validator('base64Data')
+    @classmethod
+    def validate_base64_and_size(cls, v: str) -> str:
+        """Validate that base64 data is valid UTF-8 text and within size limit."""
+        try:
+            decoded = base64.b64decode(v)
+            if len(decoded) > MAX_FILE_SIZE:
+                raise ValueError(
+                    f'File size ({len(decoded) / (1024 * 1024):.1f} MB) exceeds '
+                    f'maximum of {MAX_FILE_SIZE // (1024 * 1024)} MB'
+                )
+            # Validate it's valid UTF-8 text
+            decoded.decode('utf-8')
+            return v
+        except UnicodeDecodeError:
+            raise ValueError('File is not valid UTF-8 text')
+        except Exception as e:
+            if 'File size' in str(e) or 'not valid UTF-8' in str(e):
+                raise
+            raise ValueError(f'Invalid base64 data: {e}')
+
+
+# Type alias for any attachment type
+FileAttachment = ImageAttachment | TextFileAttachment
 
 
 # ============================================================================
