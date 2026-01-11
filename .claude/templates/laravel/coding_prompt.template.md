@@ -318,8 +318,15 @@ For ANY data displayed in UI:
 
 #### 3. Database Verification
 
+Use Laravel Boost MCP tools for efficient database verification:
+
+- `database_query` - Run `SELECT * FROM items` to check records
+- `database_schema` - View table structure
+- `tinker` MCP tool - Execute `App\Models\Item::all()` directly
+
+Or use bash for interactive exploration:
+
 ```bash
-# Check database contents directly
 php artisan tinker
 >>> App\Models\Item::all()
 >>> App\Models\User::count()
@@ -440,6 +447,12 @@ php artisan test --parallel          # Parallel test execution
 
 ### Laravel Log
 
+**Quick access (MCP tools - preferred):**
+- `last_error` - Get the most recent error instantly
+- `read_log_entries` - Read log without bash
+
+**Bash commands (for full log context):**
+
 ```bash
 # View recent log entries
 tail -100 storage/logs/laravel.log
@@ -447,6 +460,34 @@ tail -100 storage/logs/laravel.log
 # Clear log file
 echo "" > storage/logs/laravel.log
 ```
+
+### Laravel Boost MCP Tools
+
+You have access to Laravel Boost MCP tools for efficient development:
+
+| Tool | Purpose | Example |
+|------|---------|---------|
+| `database_query` | Execute SQL queries | `SELECT * FROM users LIMIT 5` |
+| `database_schema` | View table structure | See columns, types, indexes |
+| `database_connections` | List DB connections | Check available databases |
+| `list_routes` | List all routes | Faster than `php artisan route:list` |
+| `list_artisan_commands` | List Artisan commands | Discover available commands |
+| `read_log_entries` | Read Laravel log | Faster than `tail` command |
+| `last_error` | Get last error from logs | Quick debugging |
+| `browser_logs` | Access browser console | JS debugging without DevTools |
+| `get_config` | Get config values | Check app settings |
+| `list_available_config_keys` | List config keys | Discover options |
+| `list_available_env_vars` | List .env variables | See environment setup |
+| `search_docs` | Search Laravel docs | Get contextual help |
+| `tinker` | Execute PHP code | One-liner queries (vs interactive REPL) |
+| `get_absolute_url` | Convert relative URLs | Build full URLs for testing |
+| `application_info` | Get app info | Laravel/PHP versions, packages |
+
+**When to use MCP tools vs bash commands:**
+- Use `tinker` MCP for quick one-liners → Use `php artisan tinker` bash for interactive REPL
+- Use `last_error` MCP for quick debugging → Use `tail -100 storage/logs/laravel.log` for full log context
+- Use `list_routes` MCP for quick lookup → Use `php artisan route:list --name=x` for filtered search
+- Use `database_query` MCP for direct queries → Use migrations/seeders for schema changes
 
 ---
 
