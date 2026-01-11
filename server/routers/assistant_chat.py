@@ -293,6 +293,15 @@ async def assistant_chat_websocket(websocket: WebSocket, project_name: str):
                     # Resume an existing conversation without sending greeting
                     conversation_id = message.get("conversation_id")
 
+                    # Validate conversation_id is present and valid
+                    if not conversation_id or not isinstance(conversation_id, int):
+                        logger.warning(f"Invalid resume request for {project_name}: missing or invalid conversation_id")
+                        await websocket.send_json({
+                            "type": "error",
+                            "content": "Missing or invalid conversation_id for resume"
+                        })
+                        continue
+
                     try:
                         # Create session
                         session = await create_session(

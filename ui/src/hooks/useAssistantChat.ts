@@ -65,6 +65,7 @@ export function useAssistantChat({
   const reconnectTimeoutRef = useRef<number | null>(null);
   const checkAndSendTimeoutRef = useRef<number | null>(null);
   const hasInitializedRef = useRef(false);
+  const resumeTimeoutRef = useRef<number | null>(null);
 
   // Clean up on unmount
   useEffect(() => {
@@ -77,6 +78,9 @@ export function useAssistantChat({
       }
       if (checkAndSendTimeoutRef.current) {
         clearTimeout(checkAndSendTimeoutRef.current);
+      }
+      if (resumeTimeoutRef.current) {
+        clearTimeout(resumeTimeoutRef.current);
       }
       if (wsRef.current) {
         wsRef.current.close();
@@ -452,6 +456,12 @@ export function useAssistantChat({
   // Resume an existing conversation - just connect WebSocket, no greeting
   const resumeConversation = useCallback(
     (convId: number) => {
+      // Clear any pending resume timeout
+      if (resumeTimeoutRef.current) {
+        clearTimeout(resumeTimeoutRef.current);
+        resumeTimeoutRef.current = null;
+      }
+
       connect();
       setConversationId(convId);
 
@@ -461,6 +471,8 @@ export function useAssistantChat({
 
       const checkAndResume = () => {
         if (wsRef.current?.readyState === WebSocket.OPEN) {
+          // Clear timeout ref since we're done
+          resumeTimeoutRef.current = null;
           // Send start with conversation_id but backend won't send greeting
           // for resumed conversations with messages
           wsRef.current.send(
@@ -472,12 +484,16 @@ export function useAssistantChat({
         } else if (wsRef.current?.readyState === WebSocket.CONNECTING) {
           retryCount++;
           if (retryCount < maxRetries) {
-            setTimeout(checkAndResume, 100);
+            resumeTimeoutRef.current = window.setTimeout(checkAndResume, 100);
+          } else {
+            resumeTimeoutRef.current = null;
           }
+        } else {
+          resumeTimeoutRef.current = null;
         }
       };
 
-      setTimeout(checkAndResume, 100);
+      resumeTimeoutRef.current = window.setTimeout(checkAndResume, 100);
     },
     [connect],
   );
