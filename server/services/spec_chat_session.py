@@ -2,21 +2,21 @@
 Spec Creation Chat Session
 ==========================
 
-Manages interactive spec creation conversation with Claude.
+Manages interactive spec creation conversation using Opencode.
 Uses the create-spec.md skill to guide users through app spec creation.
 """
 
 import json
 import logging
 import os
-import shutil
 import threading
 from datetime import datetime
 from pathlib import Path
 from typing import AsyncGenerator, Optional
 
-from claude_agent_sdk import ClaudeAgentOptions, ClaudeSDKClient
 from dotenv import load_dotenv
+
+from opencode_adapter import OpencodeClient
 
 from ..schemas import ImageAttachment
 
@@ -28,10 +28,8 @@ def get_cli_command() -> str:
     """
     Get the CLI command to use for the agent.
 
-    Reads from CLI_COMMAND environment variable, defaults to 'claude'.
-    This allows users to use alternative CLIs like 'glm'.
-    """
-    return os.getenv("CLI_COMMAND", "claude")
+    Reads from CLI_COMMAND environment variable (legacy helper)."""
+    return os.getenv("CLI_COMMAND", "opencode")
 
 logger = logging.getLogger(__name__)
 
@@ -40,7 +38,7 @@ async def _make_multimodal_message(content_blocks: list[dict]) -> AsyncGenerator
     """
     Create an async generator that yields a properly formatted multimodal message.
 
-    The Claude Agent SDK's query() method accepts either:
+    The Opencode client's message format supports:
     - A string (simple text)
     - An AsyncIterable[dict] (for custom message formats)
 
@@ -80,7 +78,7 @@ class SpecChatSession:
         """
         self.project_name = project_name
         self.project_dir = project_dir
-        self.client: Optional[ClaudeSDKClient] = None
+        self.client: Optional[OpencodeClient] = None
         self.messages: list[dict] = []
         self.complete: bool = False
         self.created_at = datetime.now()
@@ -88,24 +86,24 @@ class SpecChatSession:
         self._client_entered: bool = False  # Track if context manager is active
 
     async def close(self) -> None:
-        """Clean up resources and close the Claude client."""
+        """Clean up resources and close the Opencode client."""
         if self.client and self._client_entered:
             try:
                 await self.client.__aexit__(None, None, None)
             except Exception as e:
-                logger.warning(f"Error closing Claude client: {e}")
+                logger.warning(f"Error closing Opencode client: {e}")
             finally:
                 self._client_entered = False
                 self.client = None
 
     async def start(self) -> AsyncGenerator[dict, None]:
         """
-        Initialize session and get initial greeting from Claude.
+        Initialize session and get initial greeting from Opencode.
 
         Yields message chunks as they stream in.
         """
         # Load the create-spec skill
-        skill_path = ROOT_DIR / ".claude" / "commands" / "create-spec.md"
+        skill_path = ROOT_DIR / ".opencode" / "commands" / "create-spec.md"
 
         if not skill_path.exists():
             yield {
@@ -122,9 +120,9 @@ class SpecChatSession:
         # Ensure project directory exists (like CLI does in start.py)
         self.project_dir.mkdir(parents=True, exist_ok=True)
 
-        # Delete app_spec.txt so Claude can create it fresh
+        # Delete app_spec.txt so Opencode can create it fresh
         # The SDK requires reading existing files before writing, but app_spec.txt is created new
-        # Note: We keep initializer_prompt.md so Claude can read and update the template
+        # Note: We keep initializer_prompt.md so Opencode can read and update the template
         prompts_dir = self.project_dir / "prompts"
         app_spec_path = prompts_dir / "app_spec.txt"
         if app_spec_path.exists():
@@ -145,53 +143,34 @@ class SpecChatSession:
                 ],
             },
         }
-        settings_file = self.project_dir / ".claude_settings.json"
+        settings_file = self.project_dir / ".opencode_settings.json"
         with open(settings_file, "w") as f:
             json.dump(security_settings, f, indent=2)
 
         # Replace $ARGUMENTS with absolute project path (like CLI does in start.py:184)
         # Using absolute path avoids confusion when project folder name differs from app name
         project_path = str(self.project_dir.resolve())
-        system_prompt = skill_content.replace("$ARGUMENTS", project_path)
+        skill_content = skill_content.replace("$ARGUMENTS", project_path)
 
-        # Create Claude SDK client with limited tools for spec creation
+        # Create an Opencode client with limited tools for spec creation
         # Use Opus for best quality spec generation
         # Use system CLI to avoid bundled Bun runtime crash (exit code 3) on Windows
-        # CLI command is configurable via CLI_COMMAND environment variable
-        cli_command = get_cli_command()
-        system_cli = shutil.which(cli_command)
         try:
-            self.client = ClaudeSDKClient(
-                options=ClaudeAgentOptions(
-                    model="claude-opus-4-5-20251101",
-                    cli_path=system_cli,
-                    system_prompt=system_prompt,
-                    allowed_tools=[
-                        "Read",
-                        "Write",
-                        "Edit",
-                        "Glob",
-                    ],
-                    permission_mode="acceptEdits",  # Auto-approve file writes for spec creation
-                    max_turns=100,
-                    cwd=str(self.project_dir.resolve()),
-                    settings=str(settings_file.resolve()),
-                )
-            )
-            # Enter the async context and track it
+            # Use Opencode adapter
+            self.client = OpencodeClient(self.project_dir, model="default", yolo_mode=False)
             await self.client.__aenter__()
             self._client_entered = True
         except Exception as e:
-            logger.exception("Failed to create Claude client")
+            logger.exception("Failed to create Opencode client")
             yield {
                 "type": "error",
-                "content": f"Failed to initialize Claude: {str(e)}"
+                "content": f"Failed to initialize Opencode: {str(e)}"
             }
             return
 
-        # Start the conversation - Claude will send the Phase 1 greeting
+        # Start the conversation - Opencode will send the Phase 1 greeting
         try:
-            async for chunk in self._query_claude("Begin the spec creation process."):
+            async for chunk in self._query_opencode("Begin the spec creation process."):
                 yield chunk
             # Signal that the response is complete (for UI to hide loading indicator)
             yield {"type": "response_done"}
@@ -208,7 +187,7 @@ class SpecChatSession:
         attachments: list[ImageAttachment] | None = None
     ) -> AsyncGenerator[dict, None]:
         """
-        Send user message and stream Claude's response.
+        Send user message and stream Opencode's response.
 
         Args:
             user_message: The user's response
@@ -237,24 +216,24 @@ class SpecChatSession:
         })
 
         try:
-            async for chunk in self._query_claude(user_message, attachments):
+            async for chunk in self._query_opencode(user_message, attachments):
                 yield chunk
             # Signal that the response is complete (for UI to hide loading indicator)
             yield {"type": "response_done"}
         except Exception as e:
-            logger.exception("Error during Claude query")
+            logger.exception("Error during Opencode query")
             yield {
                 "type": "error",
                 "content": f"Error: {str(e)}"
             }
 
-    async def _query_claude(
+    async def _query_opencode(
         self,
         message: str,
         attachments: list[ImageAttachment] | None = None
     ) -> AsyncGenerator[dict, None]:
         """
-        Internal method to query Claude and stream responses.
+        Internal method to query Opencode and stream responses.
 
         Handles tool calls (Write) and text responses.
         Supports multimodal content with image attachments.
@@ -288,8 +267,8 @@ class SpecChatSession:
                     }
                 })
 
-            # Send multimodal content to Claude using async generator format
-            # The SDK's query() accepts AsyncIterable[dict] for custom message formats
+            # Send multimodal content to Opencode using async generator format
+            # The client's query() accepts AsyncIterable[dict] for custom message formats
             await self.client.query(_make_multimodal_message(content_blocks))
             logger.info(f"Sent multimodal message with {len(attachments)} image(s)")
         else:

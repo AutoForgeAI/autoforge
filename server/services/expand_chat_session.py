@@ -2,7 +2,7 @@
 Expand Chat Session
 ===================
 
-Manages interactive project expansion conversation with Claude.
+Manages interactive project expansion conversation with Opencode.
 Uses the expand-project.md skill to help users add features to existing projects.
 """
 
@@ -11,15 +11,15 @@ import json
 import logging
 import os
 import re
-import shutil
 import threading
 import uuid
 from datetime import datetime
 from pathlib import Path
 from typing import AsyncGenerator, Optional
 
-from claude_agent_sdk import ClaudeAgentOptions, ClaudeSDKClient
 from dotenv import load_dotenv
+
+from opencode_adapter import OpencodeClient
 
 from ..schemas import ImageAttachment
 
@@ -31,10 +31,10 @@ def get_cli_command() -> str:
     """
     Get the CLI command to use for the agent.
 
-    Reads from CLI_COMMAND environment variable, defaults to 'claude'.
+    Reads from CLI_COMMAND environment variable, defaults to 'opencode'.
     This allows users to use alternative CLIs like 'glm'.
     """
-    return os.getenv("CLI_COMMAND", "claude")
+    return os.getenv("CLI_COMMAND", "opencode")
 
 logger = logging.getLogger(__name__)
 
@@ -61,7 +61,7 @@ class ExpandChatSession:
 
     Unlike SpecChatSession which writes spec files, this session:
     1. Reads existing app_spec.txt for context
-    2. Parses feature definitions from Claude's output
+    2. Parses feature definitions from Opencode's output
     3. Creates features via REST API
     4. Tracks which features were created during the session
     """
@@ -76,7 +76,7 @@ class ExpandChatSession:
         """
         self.project_name = project_name
         self.project_dir = project_dir
-        self.client: Optional[ClaudeSDKClient] = None
+        self.client: Optional[OpencodeClient] = None
         self.messages: list[dict] = []
         self.complete: bool = False
         self.created_at = datetime.now()
@@ -88,12 +88,12 @@ class ExpandChatSession:
         self._query_lock = asyncio.Lock()
 
     async def close(self) -> None:
-        """Clean up resources and close the Claude client."""
+        """Clean up resources and close the Opencode client."""
         if self.client and self._client_entered:
             try:
                 await self.client.__aexit__(None, None, None)
             except Exception as e:
-                logger.warning(f"Error closing Claude client: {e}")
+                logger.warning(f"Error closing Opencode client: {e}")
             finally:
                 self._client_entered = False
                 self.client = None
@@ -107,12 +107,12 @@ class ExpandChatSession:
 
     async def start(self) -> AsyncGenerator[dict, None]:
         """
-        Initialize session and get initial greeting from Claude.
+        Initialize session and get initial greeting from Opencode.
 
         Yields message chunks as they stream in.
         """
         # Load the expand-project skill
-        skill_path = ROOT_DIR / ".claude" / "commands" / "expand-project.md"
+        skill_path = ROOT_DIR / ".opencode" / "commands" / "expand-project.md"
 
         if not skill_path.exists():
             yield {
@@ -135,16 +135,8 @@ class ExpandChatSession:
         except UnicodeDecodeError:
             skill_content = skill_path.read_text(encoding="utf-8", errors="replace")
 
-        # Find and validate CLI before creating temp files
-        # CLI command is configurable via CLI_COMMAND environment variable
-        cli_command = get_cli_command()
-        system_cli = shutil.which(cli_command)
-        if not system_cli:
-            yield {
-                "type": "error",
-                "content": f"CLI '{cli_command}' not found. Please install it or check your CLI_COMMAND setting."
-            }
-            return
+        # Opencode SDK (REST) is used; no local CLI required for this operation
+        # Ensure opencode_ai is importable in the running environment.
 
         # Create temporary security settings file (unique per session to avoid conflicts)
         security_settings = {
@@ -157,46 +149,33 @@ class ExpandChatSession:
                 ],
             },
         }
-        settings_file = self.project_dir / f".claude_settings.expand.{uuid.uuid4().hex}.json"
+        settings_file = self.project_dir / f".opencode_settings.expand.{uuid.uuid4().hex}.json"
         self._settings_file = settings_file
         with open(settings_file, "w", encoding="utf-8") as f:
             json.dump(security_settings, f, indent=2)
 
         # Replace $ARGUMENTS with absolute project path
         project_path = str(self.project_dir.resolve())
-        system_prompt = skill_content.replace("$ARGUMENTS", project_path)
+        skill_content = skill_content.replace("$ARGUMENTS", project_path)
 
-        # Create Claude SDK client
+        # Create Opencode client
         try:
-            self.client = ClaudeSDKClient(
-                options=ClaudeAgentOptions(
-                    model="claude-opus-4-5-20251101",
-                    cli_path=system_cli,
-                    system_prompt=system_prompt,
-                    allowed_tools=[
-                        "Read",
-                        "Glob",
-                    ],
-                    permission_mode="acceptEdits",
-                    max_turns=100,
-                    cwd=str(self.project_dir.resolve()),
-                    settings=str(settings_file.resolve()),
-                )
-            )
+            # Use Opencode adapter
+            self.client = OpencodeClient(self.project_dir, model="default", yolo_mode=False)
             await self.client.__aenter__()
             self._client_entered = True
         except Exception:
-            logger.exception("Failed to create Claude client")
+            logger.exception("Failed to create Opencode client")
             yield {
                 "type": "error",
-                "content": "Failed to initialize Claude"
+                "content": "Failed to initialize Opencode"
             }
             return
 
         # Start the conversation
         try:
             async with self._query_lock:
-                async for chunk in self._query_claude("Begin the project expansion process."):
+                async for chunk in self._query_opencode("Begin the project expansion process."):
                     yield chunk
             yield {"type": "response_done"}
         except Exception:
@@ -212,7 +191,7 @@ class ExpandChatSession:
         attachments: list[ImageAttachment] | None = None
     ) -> AsyncGenerator[dict, None]:
         """
-        Send user message and stream Claude's response.
+        Send user message and stream Opencode's response.
 
         Args:
             user_message: The user's response
@@ -243,23 +222,23 @@ class ExpandChatSession:
         try:
             # Use lock to prevent concurrent queries from corrupting the response stream
             async with self._query_lock:
-                async for chunk in self._query_claude(user_message, attachments):
+                async for chunk in self._query_opencode(user_message, attachments):
                     yield chunk
             yield {"type": "response_done"}
         except Exception:
-            logger.exception("Error during Claude query")
+            logger.exception("Error during Opencode query")
             yield {
                 "type": "error",
                 "content": "Error while processing message"
             }
 
-    async def _query_claude(
+    async def _query_opencode(
         self,
         message: str,
         attachments: list[ImageAttachment] | None = None
     ) -> AsyncGenerator[dict, None]:
         """
-        Internal method to query Claude and stream responses.
+        Internal method to query Opencode and stream responses.
 
         Handles text responses and detects feature creation blocks.
         """

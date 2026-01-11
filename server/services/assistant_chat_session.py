@@ -9,16 +9,14 @@ but cannot modify any files.
 
 import json
 import logging
-import os
-import shutil
-import sys
 import threading
 from datetime import datetime
 from pathlib import Path
 from typing import AsyncGenerator, Optional
 
-from claude_agent_sdk import ClaudeAgentOptions, ClaudeSDKClient
 from dotenv import load_dotenv
+
+from opencode_adapter import OpencodeClient
 
 from .assistant_database import (
     add_message,
@@ -27,16 +25,6 @@ from .assistant_database import (
 
 # Load environment variables from .env file if present
 load_dotenv()
-
-
-def get_cli_command() -> str:
-    """
-    Get the CLI command to use for the agent.
-
-    Reads from CLI_COMMAND environment variable, defaults to 'claude'.
-    This allows users to use alternative CLIs like 'glm'.
-    """
-    return os.getenv("CLI_COMMAND", "claude")
 
 
 logger = logging.getLogger(__name__)
@@ -160,7 +148,7 @@ class AssistantChatSession:
     """
     Manages a read-only assistant conversation for a project.
 
-    Uses Claude Opus 4.5 with only read-only tools enabled.
+    Uses Opencode with only read-only tools enabled.
     Persists conversation history to SQLite.
     """
 
@@ -176,24 +164,23 @@ class AssistantChatSession:
         self.project_name = project_name
         self.project_dir = project_dir
         self.conversation_id = conversation_id
-        self.client: Optional[ClaudeSDKClient] = None
+        self.client: Optional[OpencodeClient] = None
         self._client_entered: bool = False
         self.created_at = datetime.now()
 
     async def close(self) -> None:
-        """Clean up resources and close the Claude client."""
+        """Clean up resources and close the Opencode client."""
         if self.client and self._client_entered:
             try:
                 await self.client.__aexit__(None, None, None)
             except Exception as e:
-                logger.warning(f"Error closing Claude client: {e}")
+                logger.warning(f"Error closing Opencode client: {e}")
             finally:
                 self._client_entered = False
                 self.client = None
 
     async def start(self) -> AsyncGenerator[dict, None]:
-        """
-        Initialize session with the Claude client.
+        """Initialize session with the Opencode client.
 
         Creates a new conversation if none exists, then sends an initial greeting.
         Yields message chunks as they stream in.
@@ -222,48 +209,19 @@ class AssistantChatSession:
                 "allow": permissions_list,
             },
         }
-        settings_file = self.project_dir / ".claude_assistant_settings.json"
+        settings_file = self.project_dir / ".opencode_assistant_settings.json"
         with open(settings_file, "w") as f:
             json.dump(security_settings, f, indent=2)
 
-        # Build MCP servers config - only features MCP for read-only access
-        mcp_servers = {
-            "features": {
-                "command": sys.executable,
-                "args": ["-m", "mcp_server.feature_mcp"],
-                "env": {
-                    **os.environ,
-                    "PROJECT_DIR": str(self.project_dir.resolve()),
-                    "PYTHONPATH": str(ROOT_DIR.resolve()),
-                },
-            },
-        }
-
-        # Get system prompt with project context
-        system_prompt = get_system_prompt(self.project_name, self.project_dir)
-
-        # Use system CLI (configurable via CLI_COMMAND environment variable)
-        cli_command = get_cli_command()
-        system_cli = shutil.which(cli_command)
+        # (local MCP servers and CLI detection are not needed for assistant sessions)
 
         try:
-            self.client = ClaudeSDKClient(
-                options=ClaudeAgentOptions(
-                    model="claude-opus-4-5-20251101",
-                    cli_path=system_cli,
-                    system_prompt=system_prompt,
-                    allowed_tools=[*READONLY_BUILTIN_TOOLS, *ASSISTANT_FEATURE_TOOLS],
-                    mcp_servers=mcp_servers,
-                    permission_mode="bypassPermissions",
-                    max_turns=100,
-                    cwd=str(self.project_dir.resolve()),
-                    settings=str(settings_file.resolve()),
-                )
-            )
+            # Use Opencode adapter
+            self.client = OpencodeClient(self.project_dir, model="default", yolo_mode=False)
             await self.client.__aenter__()
             self._client_entered = True
         except Exception as e:
-            logger.exception("Failed to create Claude client")
+            logger.exception("Failed to create Opencode client")
             yield {"type": "error", "content": f"Failed to initialize assistant: {str(e)}"}
             return
 
@@ -282,7 +240,7 @@ class AssistantChatSession:
 
     async def send_message(self, user_message: str) -> AsyncGenerator[dict, None]:
         """
-        Send user message and stream Claude's response.
+        Send user message and stream Opencode's response.
 
         Args:
             user_message: The user's message
@@ -306,23 +264,23 @@ class AssistantChatSession:
         add_message(self.project_dir, self.conversation_id, "user", user_message)
 
         try:
-            async for chunk in self._query_claude(user_message):
+            async for chunk in self._query_opencode(user_message):
                 yield chunk
             yield {"type": "response_done"}
         except Exception as e:
-            logger.exception("Error during Claude query")
+            logger.exception("Error during Opencode query")
             yield {"type": "error", "content": f"Error: {str(e)}"}
 
-    async def _query_claude(self, message: str) -> AsyncGenerator[dict, None]:
+    async def _query_opencode(self, message: str) -> AsyncGenerator[dict, None]:
         """
-        Internal method to query Claude and stream responses.
+        Internal method to query Opencode and stream responses.
 
         Handles tool calls and text responses.
         """
         if not self.client:
             return
 
-        # Send message to Claude
+        # Send message to Opencode
         await self.client.query(message)
 
         full_response = ""
@@ -349,6 +307,12 @@ class AssistantChatSession:
                             "tool": tool_name,
                             "input": tool_input,
                         }
+
+                    elif block_type == "ToolResultBlock" and hasattr(block, "content"):
+                        # Tool results are returned by Opencode tool executions
+                        result = getattr(block, "content", "")
+                        is_error = getattr(block, "is_error", False)
+                        yield {"type": "tool_result", "result": result, "is_error": is_error}
 
         # Store the complete response in the database
         if full_response and self.conversation_id:
