@@ -105,6 +105,65 @@ export interface DependencyGraph {
   edges: DependencyEdge[]
 }
 
+// Phase types (v2 hierarchical system)
+export type PhaseStatus = 'pending' | 'in_progress' | 'awaiting_approval' | 'completed' | 'rejected'
+
+export interface Phase {
+  id: number
+  project_name: string
+  name: string
+  description?: string | null
+  order: number
+  status: PhaseStatus
+  created_at?: string | null
+  completed_at?: string | null
+}
+
+export interface PhaseWithStats extends Phase {
+  total_tasks: number
+  passing_tasks: number
+  in_progress_tasks: number
+  blocked_tasks: number
+  reviewed_tasks: number
+  percentage: number
+  average_review_score?: number | null
+}
+
+export interface PhasesOverview {
+  project_name: string
+  total_phases: number
+  total_tasks: number
+  total_passing: number
+  overall_percentage: number
+  phases: PhaseWithStats[]
+}
+
+// Feature group (v2 - contains tasks)
+export interface FeatureGroup {
+  id: number
+  name: string
+  description?: string | null
+  phase_id: number
+  order: number
+  tasks: Feature[]
+  total_tasks: number
+  passing_tasks: number
+  percentage: number
+}
+
+// YOLO mode types
+export type YoloMode = 'standard' | 'yolo' | 'yolo_review' | 'yolo_parallel' | 'yolo_staged'
+
+export interface YoloModeInfo {
+  value: YoloMode
+  label: string
+  description: string
+  icon: string
+  skip_testing: boolean
+  has_review: boolean
+  parallel: boolean
+}
+
 export interface FeatureListResponse {
   pending: Feature[]
   in_progress: Feature[]
