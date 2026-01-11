@@ -55,6 +55,12 @@ function App() {
 
   // Persist selected project to localStorage
   const handleSelectProject = useCallback((project: string | null) => {
+    // Invalidate old project's cached data to prevent stale data showing
+    if (selectedProject && selectedProject !== project) {
+      queryClient.removeQueries({ queryKey: ['features', selectedProject] })
+      queryClient.removeQueries({ queryKey: ['agent-status', selectedProject] })
+    }
+
     setSelectedProject(project)
     try {
       if (project) {
@@ -65,7 +71,7 @@ function App() {
     } catch {
       // localStorage not available
     }
-  }, [])
+  }, [selectedProject, queryClient])
 
   // Validate stored project exists (clear if project was deleted)
   useEffect(() => {
