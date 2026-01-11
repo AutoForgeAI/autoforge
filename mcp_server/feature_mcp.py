@@ -15,11 +15,13 @@ Tools:
 - feature_mark_in_progress: Mark a feature as in-progress
 - feature_clear_in_progress: Clear in-progress status
 - feature_create_bulk: Create multiple features at once
+- feature_create: Create a single feature
 """
 
 import json
 import os
 import sys
+import threading
 from contextlib import asynccontextmanager
 from pathlib import Path
 from typing import Annotated
@@ -80,6 +82,9 @@ class BulkCreateInput(BaseModel):
 # Global database session maker (initialized on startup)
 _session_maker = None
 _engine = None
+
+# Lock for priority assignment to prevent race conditions
+_priority_lock = threading.Lock()
 
 
 @asynccontextmanager
@@ -268,13 +273,16 @@ def feature_skip(
 
         old_priority = feature.priority
 
-        # Get max priority and set this feature to max + 1
-        max_priority_result = session.query(Feature.priority).order_by(Feature.priority.desc()).first()
-        new_priority = (max_priority_result[0] + 1) if max_priority_result else 1
+        # Use lock to prevent race condition in priority assignment
+        with _priority_lock:
+            # Get max priority and set this feature to max + 1
+            max_priority_result = session.query(Feature.priority).order_by(Feature.priority.desc()).first()
+            new_priority = (max_priority_result[0] + 1) if max_priority_result else 1
 
-        feature.priority = new_priority
-        feature.in_progress = False
-        session.commit()
+            feature.priority = new_priority
+            feature.in_progress = False
+            session.commit()
+
         session.refresh(feature)
 
         return json.dumps({
@@ -383,47 +391,49 @@ def feature_create_bulk(
     """
     session = get_session()
     try:
-        # Get existing feature names for duplicate detection
-        existing_names = set(
-            name[0] for name in session.query(Feature.name).all()
-        )
-
-        # Get the starting priority
-        max_priority_result = session.query(Feature.priority).order_by(Feature.priority.desc()).first()
-        start_priority = (max_priority_result[0] + 1) if max_priority_result else 1
-
-        created_count = 0
-        skipped_count = 0
-        skipped_names = []
-
-        for i, feature_data in enumerate(features):
-            # Validate required fields
-            if not all(key in feature_data for key in ["category", "name", "description", "steps"]):
-                return json.dumps({
-                    "error": f"Feature at index {i} missing required fields (category, name, description, steps)"
-                })
-
-            # Skip duplicates
-            if feature_data["name"] in existing_names:
-                skipped_count += 1
-                skipped_names.append(feature_data["name"])
-                continue
-
-            # Add to existing names to catch duplicates within this batch
-            existing_names.add(feature_data["name"])
-
-            db_feature = Feature(
-                priority=start_priority + created_count,
-                category=feature_data["category"],
-                name=feature_data["name"],
-                description=feature_data["description"],
-                steps=feature_data["steps"],
-                passes=False,
+        # Use lock to prevent race condition in priority assignment
+        with _priority_lock:
+            # Get existing feature names for duplicate detection
+            existing_names = set(
+                name[0] for name in session.query(Feature.name).all()
             )
-            session.add(db_feature)
-            created_count += 1
 
-        session.commit()
+            # Get the starting priority
+            max_priority_result = session.query(Feature.priority).order_by(Feature.priority.desc()).first()
+            start_priority = (max_priority_result[0] + 1) if max_priority_result else 1
+
+            created_count = 0
+            skipped_count = 0
+            skipped_names = []
+
+            for i, feature_data in enumerate(features):
+                # Validate required fields
+                if not all(key in feature_data for key in ["category", "name", "description", "steps"]):
+                    return json.dumps({
+                        "error": f"Feature at index {i} missing required fields (category, name, description, steps)"
+                    })
+
+                # Skip duplicates
+                if feature_data["name"] in existing_names:
+                    skipped_count += 1
+                    skipped_names.append(feature_data["name"])
+                    continue
+
+                # Add to existing names to catch duplicates within this batch
+                existing_names.add(feature_data["name"])
+
+                db_feature = Feature(
+                    priority=start_priority + created_count,
+                    category=feature_data["category"],
+                    name=feature_data["name"],
+                    description=feature_data["description"],
+                    steps=feature_data["steps"],
+                    passes=False,
+                )
+                session.add(db_feature)
+                created_count += 1
+
+            session.commit()
 
         result = {"created": created_count, "skipped": skipped_count}
         if skipped_names:
@@ -509,6 +519,60 @@ def feature_db_repair() -> str:
             "old_max_id": old_max_id,
             "new_max_id": new_max_id,
             "total_features": total_features
+        }, indent=2)
+    except Exception as e:
+        session.rollback()
+        return json.dumps({"error": str(e)})
+    finally:
+        session.close()
+
+
+@mcp.tool()
+def feature_create(
+    category: Annotated[str, Field(min_length=1, max_length=100, description="Feature category (e.g., 'Authentication', 'API', 'UI')")],
+    name: Annotated[str, Field(min_length=1, max_length=255, description="Feature name")],
+    description: Annotated[str, Field(min_length=1, description="Detailed description of the feature")],
+    steps: Annotated[list[str], Field(min_length=1, description="List of implementation/verification steps")]
+) -> str:
+    """Create a single feature in the project backlog.
+
+    Use this when the user asks to add a new feature, capability, or test case.
+    The feature will be added with the next available priority number.
+
+    Args:
+        category: Feature category for grouping (e.g., 'Authentication', 'API', 'UI')
+        name: Descriptive name for the feature
+        description: Detailed description of what this feature should do
+        steps: List of steps to implement or verify the feature
+
+    Returns:
+        JSON with the created feature details including its ID
+    """
+    session = get_session()
+    try:
+        # Use lock to prevent race condition in priority assignment
+        with _priority_lock:
+            # Get the next priority
+            max_priority_result = session.query(Feature.priority).order_by(Feature.priority.desc()).first()
+            next_priority = (max_priority_result[0] + 1) if max_priority_result else 1
+
+            db_feature = Feature(
+                priority=next_priority,
+                category=category,
+                name=name,
+                description=description,
+                steps=steps,
+                passes=False,
+            )
+            session.add(db_feature)
+            session.commit()
+
+        session.refresh(db_feature)
+
+        return json.dumps({
+            "success": True,
+            "message": f"Created feature: {name}",
+            "feature": db_feature.to_dict()
         }, indent=2)
     except Exception as e:
         session.rollback()
