@@ -36,6 +36,25 @@ READONLY_FEATURE_MCP_TOOLS = [
     "mcp__features__feature_get_for_regression",
 ]
 
+# Action tools for the Architect Assistant
+ASSISTANT_ACTION_TOOLS = [
+    "mcp__assistant__assistant_create_feature",
+    "mcp__assistant__assistant_list_phases",
+    "mcp__assistant__assistant_create_phase",
+    "mcp__assistant__assistant_get_project_status",
+    "mcp__assistant__assistant_get_agent_status",
+    "mcp__assistant__assistant_start_agent",
+    "mcp__assistant__assistant_stop_agent",
+    "mcp__assistant__assistant_pause_agent",
+    "mcp__assistant__assistant_resume_agent",
+    "mcp__assistant__assistant_check_migration",
+    "mcp__assistant__assistant_run_migration",
+    "mcp__assistant__assistant_add_task",
+    "mcp__assistant__assistant_set_task_dependencies",
+    "mcp__assistant__assistant_submit_phase",
+    "mcp__assistant__assistant_approve_phase",
+]
+
 # Read-only built-in tools (no Write, Edit, Bash)
 READONLY_BUILTIN_TOOLS = [
     "Read",
@@ -47,7 +66,7 @@ READONLY_BUILTIN_TOOLS = [
 
 
 def get_system_prompt(project_name: str, project_dir: Path) -> str:
-    """Generate the system prompt for the assistant with project context."""
+    """Generate the system prompt for the Architect Assistant with project context."""
     # Try to load app_spec.txt for context
     app_spec_content = ""
     app_spec_path = project_dir / "prompts" / "app_spec.txt"
@@ -60,40 +79,81 @@ def get_system_prompt(project_name: str, project_dir: Path) -> str:
         except Exception as e:
             logger.warning(f"Failed to read app_spec.txt: {e}")
 
-    return f"""You are a helpful project assistant for the "{project_name}" project.
+    return f"""You are the **Architect Assistant** for the "{project_name}" project.
 
-Your role is to help users understand the codebase, answer questions about features, and explain how code works. You have READ-ONLY access to the project files.
-
-IMPORTANT: You CANNOT modify any files. You can only:
-- Read and analyze source code files
-- Search for patterns in the codebase
-- Look up documentation online
-- Check feature progress and status
-
-If the user asks you to make changes, politely explain that you're a read-only assistant and they should use the main coding agent for modifications.
+You are the central command hub for project management. Your role is to:
+1. **Understand the Project**: Answer questions about the codebase, architecture, and progress
+2. **Plan Features**: Help design and create new features with tasks
+3. **Manage Development**: Control coding agents, set YOLO modes, manage phases
+4. **Facilitate Migration**: Help upgrade projects to the v2 schema
+5. **Coordinate Work**: Set task dependencies, submit phases for approval
 
 ## Project Specification
 
 {app_spec_content if app_spec_content else "(No app specification found)"}
 
-## Available Tools
+## Your Capabilities
 
-You have access to these read-only tools:
-- **Read**: Read file contents
+### Reading & Understanding
+- **Read**: Read file contents to understand code
 - **Glob**: Find files by pattern (e.g., "**/*.tsx")
 - **Grep**: Search file contents with regex
 - **WebFetch/WebSearch**: Look up documentation online
 - **feature_get_stats**: Get feature completion progress
-- **feature_get_next**: See the next pending feature
-- **feature_get_for_regression**: See passing features
+
+### Creating & Managing Features
+- **assistant_create_feature**: Create a new feature with tasks
+- **assistant_add_task**: Add tasks to existing features
+- **assistant_set_task_dependencies**: Set which tasks depend on others
+- **assistant_list_phases**: See all development phases
+- **assistant_create_phase**: Create new development phases
+
+### Agent Control
+- **assistant_get_agent_status**: Check if coding agent is running
+- **assistant_start_agent**: Start the coding agent (with optional YOLO mode)
+- **assistant_stop_agent**: Stop the coding agent
+- **assistant_pause_agent**: Pause the agent
+- **assistant_resume_agent**: Resume a paused agent
+
+### Phase Workflow
+- **assistant_get_project_status**: Get full project overview
+- **assistant_submit_phase**: Submit a phase for approval
+- **assistant_approve_phase**: Approve a completed phase
+
+### Migration
+- **assistant_check_migration**: Check if migration is needed
+- **assistant_run_migration**: Migrate to v2 schema
+
+## How to Help Users
+
+### When asked about the project:
+1. Use `assistant_get_project_status` to get an overview
+2. Read relevant files to understand architecture
+3. Provide clear, actionable information
+
+### When asked to add a feature:
+1. Discuss what the feature should accomplish
+2. Break it down into logical tasks
+3. Use `assistant_create_feature` to create it with tasks
+4. Suggest dependencies if tasks should run in order
+
+### When asked to start development:
+1. Check current status with `assistant_get_project_status`
+2. Ask about YOLO mode preference if not specified
+3. Start the agent with `assistant_start_agent`
+
+### When asked about migration:
+1. Use `assistant_check_migration` to assess
+2. Explain what migration does
+3. Run migration with `assistant_run_migration` if requested
 
 ## Guidelines
 
-1. Be concise and helpful
-2. When explaining code, reference specific file paths and line numbers
-3. Use the feature tools to answer questions about project progress
-4. Search the codebase to find relevant information before answering
-5. If you're unsure, say so rather than guessing"""
+1. Be proactive - suggest next steps after completing actions
+2. Confirm understanding before creating features with many tasks
+3. Provide progress updates when performing multi-step operations
+4. If an action fails, explain why and suggest alternatives
+5. Reference specific file paths when discussing code"""
 
 
 class AssistantChatSession:
@@ -144,7 +204,7 @@ class AssistantChatSession:
             self.conversation_id = conv.id
             yield {"type": "conversation_created", "conversation_id": self.conversation_id}
 
-        # Build permissions list for read-only access
+        # Build permissions list for Architect Assistant
         permissions_list = [
             "Read(./**)",
             "Glob(./**)",
@@ -152,6 +212,7 @@ class AssistantChatSession:
             "WebFetch",
             "WebSearch",
             *READONLY_FEATURE_MCP_TOOLS,
+            *ASSISTANT_ACTION_TOOLS,
         ]
 
         # Create security settings file
@@ -166,11 +227,20 @@ class AssistantChatSession:
         with open(settings_file, "w") as f:
             json.dump(security_settings, f, indent=2)
 
-        # Build MCP servers config - only features MCP for read-only access
+        # Build MCP servers config - features MCP for reading, assistant for actions
         mcp_servers = {
             "features": {
                 "command": sys.executable,
                 "args": ["-m", "mcp_server.feature_mcp"],
+                "env": {
+                    **os.environ,
+                    "PROJECT_DIR": str(self.project_dir.resolve()),
+                    "PYTHONPATH": str(ROOT_DIR.resolve()),
+                },
+            },
+            "assistant": {
+                "command": sys.executable,
+                "args": ["-m", "mcp_server.assistant_actions_mcp"],
                 "env": {
                     **os.environ,
                     "PROJECT_DIR": str(self.project_dir.resolve()),
@@ -191,7 +261,11 @@ class AssistantChatSession:
                     model="claude-opus-4-5-20251101",
                     cli_path=system_cli,
                     system_prompt=system_prompt,
-                    allowed_tools=[*READONLY_BUILTIN_TOOLS, *READONLY_FEATURE_MCP_TOOLS],
+                    allowed_tools=[
+                        *READONLY_BUILTIN_TOOLS,
+                        *READONLY_FEATURE_MCP_TOOLS,
+                        *ASSISTANT_ACTION_TOOLS,
+                    ],
                     mcp_servers=mcp_servers,
                     permission_mode="bypassPermissions",
                     max_turns=100,
@@ -208,7 +282,17 @@ class AssistantChatSession:
 
         # Send initial greeting
         try:
-            greeting = f"Hello! I'm your project assistant for **{self.project_name}**. I can help you understand the codebase, explain features, and answer questions about the project. What would you like to know?"
+            greeting = f"""Hello! I'm your **Architect Assistant** for **{self.project_name}**.
+
+I'm your central command hub for managing this project. I can help you:
+
+- **Understand the codebase** - Ask me about any file, feature, or architecture decision
+- **Add new features** - Describe what you want to build and I'll create features with tasks
+- **Manage development** - Start/stop/pause the coding agent, set YOLO modes
+- **Track progress** - View phase status, task completion, dependencies
+- **Handle migrations** - Upgrade to the v2 schema if needed
+
+What would you like to do?"""
 
             # Store the greeting in the database
             add_message(self.project_dir, self.conversation_id, "assistant", greeting)

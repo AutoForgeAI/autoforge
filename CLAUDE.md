@@ -239,6 +239,12 @@ pending → in_progress → awaiting_approval → completed
 - `src/components/AgentDashboard.tsx` - Multi-agent status view
 - `src/components/AgentTimeline.tsx` - Agent activity events
 
+**Architect Assistant:**
+- `src/components/AssistantPanel.tsx` - Slide-in panel for the Architect Assistant
+- `src/components/AssistantChat.tsx` - Chat interface with streaming responses
+- `src/components/AssistantQuickActions.tsx` - Quick action buttons
+- `src/components/ChatMessage.tsx` - Message display with markdown
+
 **Usage Monitoring:**
 - `src/components/UsageDashboard.tsx` - Usage overview with budgets
 - `src/components/UsageChart.tsx` - Usage timeline visualization
@@ -360,3 +366,36 @@ The system supports both legacy (v1) and new (v2) schema:
 - New projects use `Phase → Feature → Task` hierarchy
 - Migration script available: `python -m api.migration --project-dir <path>`
 - Schema version tracked in database metadata
+
+### Architect Assistant
+
+The Architect Assistant is the central command hub for project management. Access it via the chat icon in the UI.
+
+**Capabilities:**
+- **Read & Understand**: Browse code, search patterns, view documentation
+- **Create Features**: Design features with tasks through conversation
+- **Manage Agents**: Start/stop/pause coding agents, set YOLO modes
+- **Track Progress**: View phase status, task completion, dependencies
+- **Handle Migrations**: Check and run schema migrations
+
+**Backend Components:**
+- `server/services/assistant_chat_session.py` - Claude SDK session with MCP tools
+- `server/routers/assistant_chat.py` - WebSocket endpoint for streaming
+- `mcp_server/assistant_actions_mcp.py` - Action tools for project management
+
+**Example Interactions:**
+```
+User: "Add a feature for user authentication"
+Assistant: [Creates feature with login, registration, session tasks]
+
+User: "Start the agent in YOLO mode"
+Assistant: [Starts coding agent with yolo_mode="yolo"]
+
+User: "What's the project status?"
+Assistant: [Shows phases, tasks, completion percentage]
+```
+
+**Quick Actions:**
+The assistant provides contextual quick action buttons:
+- Project Status, Add Feature, Start/Stop Agent
+- YOLO Mode, Check Dependencies, Submit Phase
