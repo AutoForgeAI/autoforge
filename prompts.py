@@ -79,6 +79,11 @@ def get_coding_prompt_yolo(project_dir: Path | None = None) -> str:
     return load_prompt("coding_prompt_yolo", project_dir)
 
 
+def get_coding_prompt_yolo_review(project_dir: Path | None = None) -> str:
+    """Load the YOLO+Review mode coding agent prompt (project-specific if available)."""
+    return load_prompt("coding_prompt_yolo_review", project_dir)
+
+
 def get_architect_prompt(project_dir: Path | None = None) -> str:
     """Load the architect agent prompt (project-specific if available)."""
     return load_prompt("architect_prompt", project_dir)

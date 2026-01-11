@@ -738,3 +738,349 @@ def get_critical_path(db: Session, feature_id: int | None = None) -> list[Task]:
             critical_path = path
 
     return [task_map[tid] for tid in critical_path if tid in task_map]
+
+
+# =============================================================================
+# Phase Workflow Management
+# =============================================================================
+
+
+class PhaseStatus:
+    """Phase status constants with transition rules."""
+
+    PENDING = "pending"
+    IN_PROGRESS = "in_progress"
+    AWAITING_APPROVAL = "awaiting_approval"
+    COMPLETED = "completed"
+    REJECTED = "rejected"
+
+    # Valid transitions: current_status -> [allowed_next_statuses]
+    TRANSITIONS = {
+        PENDING: [IN_PROGRESS],
+        IN_PROGRESS: [AWAITING_APPROVAL],
+        AWAITING_APPROVAL: [COMPLETED, REJECTED],
+        REJECTED: [IN_PROGRESS],  # Can restart after rejection
+        COMPLETED: [],  # Terminal state
+    }
+
+    @classmethod
+    def can_transition(cls, current: str, next_status: str) -> bool:
+        """Check if a status transition is valid."""
+        allowed = cls.TRANSITIONS.get(current, [])
+        return next_status in allowed
+
+
+def start_phase(db: Session, phase_id: int) -> Phase:
+    """Start a phase (transition from pending to in_progress).
+
+    Args:
+        db: Database session
+        phase_id: ID of the phase to start
+
+    Returns:
+        Updated phase
+
+    Raises:
+        ValueError: If transition is not valid
+    """
+    phase = db.query(Phase).filter(Phase.id == phase_id).first()
+    if not phase:
+        raise ValueError(f"Phase {phase_id} not found")
+
+    if not PhaseStatus.can_transition(phase.status, PhaseStatus.IN_PROGRESS):
+        raise ValueError(
+            f"Cannot start phase from status '{phase.status}'. "
+            f"Phase must be in 'pending' or 'rejected' status."
+        )
+
+    phase.status = PhaseStatus.IN_PROGRESS
+    db.commit()
+    return phase
+
+
+def submit_phase_for_approval(db: Session, phase_id: int) -> tuple[Phase, dict]:
+    """Submit a phase for approval (transition from in_progress to awaiting_approval).
+
+    Also calculates phase statistics for the approval review.
+
+    Args:
+        db: Database session
+        phase_id: ID of the phase to submit
+
+    Returns:
+        Tuple of (updated phase, stats dict)
+
+    Raises:
+        ValueError: If transition is not valid or phase is incomplete
+    """
+    phase = db.query(Phase).filter(Phase.id == phase_id).first()
+    if not phase:
+        raise ValueError(f"Phase {phase_id} not found")
+
+    if not PhaseStatus.can_transition(phase.status, PhaseStatus.AWAITING_APPROVAL):
+        raise ValueError(
+            f"Cannot submit phase from status '{phase.status}'. "
+            f"Phase must be 'in_progress'."
+        )
+
+    # Calculate phase statistics
+    all_tasks = []
+    for feature in phase.features:
+        all_tasks.extend(feature.tasks)
+
+    total_tasks = len(all_tasks)
+    passing_tasks = sum(1 for t in all_tasks if t.passes)
+    reviewed_tasks = sum(1 for t in all_tasks if t.reviewed)
+    blocked_tasks = sum(1 for t in all_tasks if t.is_blocked)
+
+    # Check if all tasks are complete
+    if passing_tasks < total_tasks:
+        pending = [t.name for t in all_tasks if not t.passes][:5]
+        raise ValueError(
+            f"Cannot submit phase: {total_tasks - passing_tasks} tasks still pending. "
+            f"Pending: {', '.join(pending)}{'...' if len(pending) == 5 else ''}"
+        )
+
+    # Calculate average review score
+    reviewed_with_score = [t for t in all_tasks if t.review_score is not None]
+    avg_review_score = (
+        sum(t.review_score for t in reviewed_with_score) / len(reviewed_with_score)
+        if reviewed_with_score
+        else None
+    )
+
+    phase.status = PhaseStatus.AWAITING_APPROVAL
+    db.commit()
+
+    stats = {
+        "total_tasks": total_tasks,
+        "passing_tasks": passing_tasks,
+        "reviewed_tasks": reviewed_tasks,
+        "blocked_tasks": blocked_tasks,
+        "average_review_score": round(avg_review_score, 2) if avg_review_score else None,
+        "review_coverage": round(reviewed_tasks / total_tasks * 100, 1) if total_tasks > 0 else 0,
+    }
+
+    return phase, stats
+
+
+def approve_phase(
+    db: Session,
+    phase_id: int,
+    approval_notes: str | None = None,
+) -> Phase:
+    """Approve a phase (transition from awaiting_approval to completed).
+
+    Args:
+        db: Database session
+        phase_id: ID of the phase to approve
+        approval_notes: Optional approval notes
+
+    Returns:
+        Updated phase
+
+    Raises:
+        ValueError: If transition is not valid
+    """
+    phase = db.query(Phase).filter(Phase.id == phase_id).first()
+    if not phase:
+        raise ValueError(f"Phase {phase_id} not found")
+
+    if not PhaseStatus.can_transition(phase.status, PhaseStatus.COMPLETED):
+        raise ValueError(
+            f"Cannot approve phase from status '{phase.status}'. "
+            f"Phase must be 'awaiting_approval'."
+        )
+
+    phase.status = PhaseStatus.COMPLETED
+    phase.completed_at = datetime.utcnow()
+    db.commit()
+
+    # Auto-start next phase if exists
+    next_phase = (
+        db.query(Phase)
+        .filter(Phase.project_name == phase.project_name, Phase.order > phase.order)
+        .order_by(Phase.order.asc())
+        .first()
+    )
+
+    if next_phase and next_phase.status == PhaseStatus.PENDING:
+        next_phase.status = PhaseStatus.IN_PROGRESS
+        db.commit()
+
+    return phase
+
+
+def reject_phase(
+    db: Session,
+    phase_id: int,
+    rejection_notes: str,
+) -> Phase:
+    """Reject a phase (transition from awaiting_approval to rejected).
+
+    Args:
+        db: Database session
+        phase_id: ID of the phase to reject
+        rejection_notes: Required notes explaining the rejection
+
+    Returns:
+        Updated phase
+
+    Raises:
+        ValueError: If transition is not valid
+    """
+    phase = db.query(Phase).filter(Phase.id == phase_id).first()
+    if not phase:
+        raise ValueError(f"Phase {phase_id} not found")
+
+    if not PhaseStatus.can_transition(phase.status, PhaseStatus.REJECTED):
+        raise ValueError(
+            f"Cannot reject phase from status '{phase.status}'. "
+            f"Phase must be 'awaiting_approval'."
+        )
+
+    if not rejection_notes or not rejection_notes.strip():
+        raise ValueError("Rejection notes are required")
+
+    phase.status = PhaseStatus.REJECTED
+    db.commit()
+
+    return phase
+
+
+def restart_phase(db: Session, phase_id: int) -> Phase:
+    """Restart a rejected phase (transition from rejected to in_progress).
+
+    Args:
+        db: Database session
+        phase_id: ID of the phase to restart
+
+    Returns:
+        Updated phase
+
+    Raises:
+        ValueError: If transition is not valid
+    """
+    phase = db.query(Phase).filter(Phase.id == phase_id).first()
+    if not phase:
+        raise ValueError(f"Phase {phase_id} not found")
+
+    if not PhaseStatus.can_transition(phase.status, PhaseStatus.IN_PROGRESS):
+        raise ValueError(
+            f"Cannot restart phase from status '{phase.status}'. "
+            f"Phase must be 'rejected' or 'pending'."
+        )
+
+    phase.status = PhaseStatus.IN_PROGRESS
+    db.commit()
+
+    return phase
+
+
+def get_phase_statistics(db: Session, phase_id: int) -> dict:
+    """Get detailed statistics for a phase.
+
+    Args:
+        db: Database session
+        phase_id: ID of the phase
+
+    Returns:
+        Dictionary with phase statistics
+    """
+    phase = db.query(Phase).filter(Phase.id == phase_id).first()
+    if not phase:
+        return {"error": f"Phase {phase_id} not found"}
+
+    all_tasks = []
+    features_stats = []
+
+    for feature in phase.features:
+        feature_tasks = feature.tasks
+        all_tasks.extend(feature_tasks)
+
+        f_total = len(feature_tasks)
+        f_passing = sum(1 for t in feature_tasks if t.passes)
+
+        features_stats.append({
+            "id": feature.id,
+            "name": feature.name,
+            "total_tasks": f_total,
+            "passing_tasks": f_passing,
+            "percentage": round(f_passing / f_total * 100, 1) if f_total > 0 else 0,
+        })
+
+    total_tasks = len(all_tasks)
+    passing_tasks = sum(1 for t in all_tasks if t.passes)
+    in_progress_tasks = sum(1 for t in all_tasks if t.in_progress)
+    blocked_tasks = sum(1 for t in all_tasks if t.is_blocked)
+    reviewed_tasks = sum(1 for t in all_tasks if t.reviewed)
+
+    # Review scores
+    reviewed_with_score = [t for t in all_tasks if t.review_score is not None]
+    avg_score = (
+        sum(t.review_score for t in reviewed_with_score) / len(reviewed_with_score)
+        if reviewed_with_score
+        else None
+    )
+
+    return {
+        "phase_id": phase.id,
+        "phase_name": phase.name,
+        "status": phase.status,
+        "total_tasks": total_tasks,
+        "passing_tasks": passing_tasks,
+        "in_progress_tasks": in_progress_tasks,
+        "blocked_tasks": blocked_tasks,
+        "pending_tasks": total_tasks - passing_tasks - in_progress_tasks,
+        "reviewed_tasks": reviewed_tasks,
+        "percentage": round(passing_tasks / total_tasks * 100, 1) if total_tasks > 0 else 0,
+        "average_review_score": round(avg_score, 2) if avg_score else None,
+        "features": features_stats,
+    }
+
+
+def get_project_phases_overview(db: Session, project_name: str) -> dict:
+    """Get an overview of all phases for a project.
+
+    Args:
+        db: Database session
+        project_name: Name of the project
+
+    Returns:
+        Dictionary with project phases overview
+    """
+    phases = (
+        db.query(Phase)
+        .filter(Phase.project_name == project_name)
+        .order_by(Phase.order.asc())
+        .all()
+    )
+
+    phases_data = []
+    total_tasks = 0
+    total_passing = 0
+
+    for phase in phases:
+        stats = get_phase_statistics(db, phase.id)
+        phases_data.append({
+            "id": phase.id,
+            "name": phase.name,
+            "order": phase.order,
+            "status": phase.status,
+            "total_tasks": stats["total_tasks"],
+            "passing_tasks": stats["passing_tasks"],
+            "percentage": stats["percentage"],
+            "created_at": phase.created_at.isoformat() if phase.created_at else None,
+            "completed_at": phase.completed_at.isoformat() if phase.completed_at else None,
+        })
+        total_tasks += stats["total_tasks"]
+        total_passing += stats["passing_tasks"]
+
+    return {
+        "project_name": project_name,
+        "total_phases": len(phases),
+        "total_tasks": total_tasks,
+        "total_passing": total_passing,
+        "overall_percentage": round(total_passing / total_tasks * 100, 1) if total_tasks > 0 else 0,
+        "phases": phases_data,
+    }
