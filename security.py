@@ -48,6 +48,8 @@ ALLOWED_COMMANDS = {
     # Network/API testing
     "curl",
     "jq",  # JSON parsing
+    # Database
+    "sqlite3",  # SQLite database queries
     # File operations
     "mv",
     "rm",  # Use with caution

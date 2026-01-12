@@ -22,6 +22,17 @@ import { SettingsModal } from './components/SettingsModal'
 import { Loader2, Settings } from 'lucide-react'
 import type { Feature } from './lib/types'
 
+// Apply dark mode on initial load (before React renders)
+function initDarkMode() {
+  const saved = localStorage.getItem('darkMode')
+  const prefersDark = window.matchMedia('(prefers-color-scheme: dark)').matches
+  const isDark = saved !== null ? saved === 'true' : prefersDark
+  if (isDark) {
+    document.documentElement.classList.add('dark')
+  }
+}
+initDarkMode()
+
 function App() {
   // Initialize selected project from localStorage
   const [selectedProject, setSelectedProject] = useState<string | null>(() => {
