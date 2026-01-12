@@ -189,7 +189,7 @@ function App() {
   return (
     <div className="min-h-screen bg-[var(--color-neo-bg)]">
       {/* Header */}
-      <header className="bg-[var(--color-neo-text)] text-white border-b-4 border-[var(--color-neo-border)]">
+      <header className="bg-[var(--color-neo-header)] text-white border-b-4 border-[var(--color-neo-border)]">
         <div className="max-w-7xl mx-auto px-4 py-4">
           <div className="flex items-center justify-between">
             {/* Logo and Title */}

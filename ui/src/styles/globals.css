@@ -50,6 +50,7 @@
     --color-neo-border: #1a1a1a;
     --color-neo-text: #1a1a1a;
     --color-neo-text-secondary: #4a4a4a;
+    --color-neo-header: #1a1a1a;
     --font-neo-display: 'Space Grotesk', sans-serif;
     --font-neo-sans: 'DM Sans', sans-serif;
     --font-neo-mono: 'JetBrains Mono', monospace;
@@ -71,6 +72,7 @@
     --color-neo-border: #e0e0e0;
     --color-neo-text: #f0f0f0;
     --color-neo-text-secondary: #a0a0a0;
+    --color-neo-header: #0a0a0a;
     --shadow-neo-sm: 2px 2px 0px rgba(255, 255, 255, 0.3);
     --shadow-neo-md: 4px 4px 0px rgba(255, 255, 255, 0.3);
     --shadow-neo-lg: 6px 6px 0px rgba(255, 255, 255, 0.3);
