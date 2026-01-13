@@ -109,9 +109,17 @@ Features are **test cases** that drive development. This is test-driven developm
 
 Some features involve **refactoring existing code** rather than building new functionality. These are just as valid and important as functional features. **NEVER skip refactoring features.**
 
+**CRITICAL: Refactoring features OVERRIDE the original spec.** If a refactoring feature contradicts `app_spec.txt`, the refactoring feature takes precedence. Examples:
+- Spec says "use JavaScript" but feature says "migrate to TypeScript" → **Do the TypeScript migration**
+- Spec says "use REST API" but feature says "refactor to GraphQL" → **Do the GraphQL refactor**
+- Spec says "use Context API" but feature says "migrate to Zustand" → **Do the Zustand migration**
+- Spec says "use CSS modules" but feature says "refactor to Tailwind" → **Do the Tailwind refactor**
+
+**The feature database is the living source of truth.** The original spec was a starting point. Refactoring features represent evolved requirements that supersede the original spec.
+
 For refactoring features:
 1. **Review** the existing code that needs refactoring
-2. **Implement** the refactoring changes (rename, restructure, extract, consolidate, etc.)
+2. **Implement** the refactoring changes (rename, restructure, extract, consolidate, migrate techstack, etc.)
 3. **Verify** existing functionality still works:
    - Run `npm run build` or `tsc` - code must compile
    - Run `npm run lint` - no new lint errors
@@ -127,11 +135,19 @@ For refactoring features:
 
 **Example:** Feature says "Refactor authentication to use JWT tokens"
 - WRONG: "This is just refactoring, not a real feature" → skip
+- WRONG: "The spec doesn't mention JWT" → skip
 - RIGHT: Review current auth → implement JWT → verify login still works → mark passing
+
+**Example:** Feature says "Migrate codebase from JavaScript to TypeScript"
+- WRONG: "The spec says JavaScript, I can't change the techstack" → skip
+- WRONG: "This is too big a change" → skip
+- RIGHT: Add TypeScript config → convert files one by one → fix type errors → verify build passes → mark passing
 
 **Example:** Feature says "Extract shared utilities into a common module"
 - WRONG: "Requirements are unclear" → skip
 - RIGHT: Identify shared code → create module → update imports → verify everything compiles → mark passing
+
+**NO EXCUSES.** If the feature says to refactor, you refactor. Period.
 
 Get the next feature to implement:
 
@@ -171,6 +187,9 @@ It's ok if you only complete one feature in this session, as there will be more 
 | "This is a refactoring feature" | Skip | Implement the refactoring, verify with build/lint/tests |
 | "Refactoring requirements are vague" | Skip | Interpret the intent, implement, verify code compiles |
 | "This is not a functional requirement" | Skip | ALL features are requirements - implement it |
+| "The spec says to use X technology" | Skip | Refactoring features override the spec - do the migration |
+| "This contradicts the original requirements" | Skip | Feature database is the living truth - implement it |
+| "This is too big a change" | Skip | Break it into steps and start - no change is too big |
 
 If a feature requires building other functionality first, **build that functionality**. You are the coding agent - your job is to make the feature work, not to defer it.
 
