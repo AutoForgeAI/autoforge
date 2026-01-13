@@ -94,6 +94,34 @@ Features are **test cases** that drive development. This is test-driven developm
 - WRONG: "Flashcard page doesn't exist yet" → skip feature
 - RIGHT: "Flashcard page doesn't exist yet" → build flashcard page → implement filter → test feature
 
+#### REFACTORING FEATURES (IMPORTANT)
+
+Some features involve **refactoring existing code** rather than building new functionality. These are just as valid and important as functional features. **NEVER skip refactoring features.**
+
+For refactoring features:
+1. **Review** the existing code that needs refactoring
+2. **Implement** the refactoring changes (rename, restructure, extract, consolidate, etc.)
+3. **Verify** existing functionality still works:
+   - Run `npm run build` or `tsc` - code must compile
+   - Run `npm run lint` - no new lint errors
+   - Run tests if available
+   - Do a quick regression check on related features
+4. **Mark as passing** when the refactoring is complete and verified
+
+**Refactoring verification criteria:**
+- Code compiles without errors
+- Lint passes
+- Tests pass (if applicable)
+- Related features still work
+
+**Example:** Feature says "Refactor authentication to use JWT tokens"
+- WRONG: "This is just refactoring, not a real feature" → skip
+- RIGHT: Review current auth → implement JWT → verify login still works → mark passing
+
+**Example:** Feature says "Extract shared utilities into a common module"
+- WRONG: "Requirements are unclear" → skip
+- RIGHT: Identify shared code → create module → update imports → verify everything compiles → mark passing
+
 Get the next feature to implement:
 
 ```
@@ -129,6 +157,8 @@ It's ok if you only complete one feature in this session, as there will be more 
 | "Component not built" | Skip | Build the component |
 | "No data to test with" | Skip | Create test data or build data entry flow |
 | "Feature X needs to be done first" | Skip | Build feature X as part of this feature |
+| "This is a refactoring feature" | Skip | Implement the refactoring, verify with build/lint/tests |
+| "Refactoring requirements are vague" | Skip | Interpret the intent, implement, verify code compiles |
 
 If a feature requires building other functionality first, **build that functionality**. You are the coding agent - your job is to make the feature work, not to defer it.
 
