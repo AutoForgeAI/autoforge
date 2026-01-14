@@ -274,6 +274,44 @@ Once the user approves, create features directly.
 
 ---
 
+# EXECUTE FEATURE CREATION (MANDATORY)
+
+**CRITICAL: Outputting JSON is NOT enough! You MUST execute these steps to persist features to the database.**
+
+After outputting the `<features_to_create>` JSON block, **immediately execute** the following:
+
+## Step 1: Save JSON to temp file
+
+Extract ONLY the JSON array (without the tags) and save it:
+
+```bash
+cat > /tmp/features_to_create.json << 'FEATURES_EOF'
+[
+  ... paste the exact JSON array here ...
+]
+FEATURES_EOF
+```
+
+## Step 2: Run the creation script
+
+```bash
+cd ~/projects/autocoder && source venv/bin/activate && python scripts/create_features_from_json.py "{PROJECT_PATH}" /tmp/features_to_create.json
+```
+
+Replace `{PROJECT_PATH}` with the actual project path (e.g., `/home/simon/projects/sanctum-os`).
+
+## Step 3: Verify creation
+
+```bash
+sqlite3 "{PROJECT_PATH}/features.db" "SELECT COUNT(*) as pending FROM features WHERE passes = 0"
+```
+
+**Expected output:** The script should print `SUCCESS: Created N features` and the SQLite query should show the updated count.
+
+**If the script fails:** Report the error to the user and ask if they want to retry or troubleshoot.
+
+---
+
 # FEATURE QUALITY STANDARDS
 
 **Categories to use:**
@@ -304,16 +342,20 @@ Once the user approves, create features directly.
 
 # AFTER FEATURE CREATION
 
-Once features are created, tell the user:
+Once the creation script has run successfully, tell the user:
 
 > "I've created N new features for your project!
+>
+> **Verification:**
+> - Script output: `SUCCESS: Created N features`
+> - Database location: `{PROJECT_PATH}/features.db`
 >
 > **What happens next:**
 > - These features are now in your pending queue
 > - The agent will implement them in priority order
 > - They'll appear in the Pending column on your kanban board
 >
-> **To start implementing:** Close this chat and click the Play button to start the agent.
+> **To start implementing:** Open the Autocoder UI and click the Play button to start the agent.
 >
 > Would you like to add more features, or are you done for now?"
 
