@@ -41,7 +41,7 @@ function App() {
   const [debugOpen, setDebugOpen] = useState(false)
   const [debugPanelHeight, setDebugPanelHeight] = useState(288) // Default height
   const [assistantOpen, setAssistantOpen] = useState(false)
-  const [logsTab, setLogsTab] = useState<'live' | 'workers'>('live')
+  const [logsTab, setLogsTab] = useState<'live' | 'workers' | 'devserver'>('live')
   const [showSettings, setShowSettings] = useState(false)
   const [route, setRoute] = useState<'main' | 'settings'>(() =>
     window.location.hash.startsWith('#/settings') ? 'settings' : 'main'

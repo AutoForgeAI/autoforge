@@ -7,8 +7,9 @@
  */
 
 import { useEffect, useRef, useState, useCallback } from 'react'
-import { ChevronUp, ChevronDown, Trash2, Terminal, GripHorizontal, FileText } from 'lucide-react'
+import { ChevronUp, ChevronDown, Trash2, Terminal, GripHorizontal, FileText, Server } from 'lucide-react'
 import { WorkerLogsPanel } from './WorkerLogsPanel'
+import { DevServerControl } from './DevServerControl'
 
 const MIN_HEIGHT = 150
 const MAX_HEIGHT = 600
@@ -22,7 +23,7 @@ interface DebugLogViewerProps {
   onClear: () => void
   onHeightChange?: (height: number) => void
   projectName?: string | null
-  openTab?: 'live' | 'workers'
+  openTab?: 'live' | 'workers' | 'devserver'
 }
 
 type LogLevel = 'error' | 'warn' | 'debug' | 'info'
@@ -39,7 +40,7 @@ export function DebugLogViewer({
   const scrollRef = useRef<HTMLDivElement>(null)
   const [autoScroll, setAutoScroll] = useState(true)
   const [isResizing, setIsResizing] = useState(false)
-  const [tab, setTab] = useState<'live' | 'workers'>(openTab)
+  const [tab, setTab] = useState<'live' | 'workers' | 'devserver'>(openTab)
   const [panelHeight, setPanelHeight] = useState(() => {
     // Load saved height from localStorage
     const saved = localStorage.getItem(STORAGE_KEY)
@@ -180,6 +181,8 @@ export function DebugLogViewer({
         <div className="flex items-center gap-2">
           {tab === 'workers' ? (
             <FileText size={16} className="text-cyan-300" />
+          ) : tab === 'devserver' ? (
+            <Server size={16} className="text-yellow-300" />
           ) : (
             <Terminal size={16} className="text-green-400" />
           )}
@@ -227,6 +230,18 @@ export function DebugLogViewer({
                 title="Worker log files"
               >
                 Workers
+              </button>
+              <button
+                className={`px-2 py-1 text-xs font-mono rounded border border-[#333] ${
+                  tab === 'devserver' ? 'bg-[#333] text-white' : 'text-gray-400 hover:bg-[#222]'
+                }`}
+                onClick={(e) => {
+                  e.stopPropagation()
+                  setTab('devserver')
+                }}
+                title="Dev server"
+              >
+                Dev
               </button>
             </div>
           )}
@@ -288,13 +303,23 @@ export function DebugLogViewer({
                 </div>
               )}
             </div>
-          ) : (
+          ) : tab === 'workers' ? (
             <div className="h-full p-2 overflow-hidden">
               {projectName ? (
                 <WorkerLogsPanel projectName={projectName} />
               ) : (
                 <div className="flex items-center justify-center h-full text-gray-500 font-mono text-sm">
                   Select a project to view worker logs.
+                </div>
+              )}
+            </div>
+          ) : (
+            <div className="h-full p-2 overflow-hidden">
+              {projectName ? (
+                <DevServerControl projectName={projectName} />
+              ) : (
+                <div className="flex items-center justify-center h-full text-gray-500 font-mono text-sm">
+                  Select a project to manage a dev server.
                 </div>
               )}
             </div>

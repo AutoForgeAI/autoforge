@@ -183,6 +183,16 @@ You can also prune manually:
 
 In the Web UI, use **Logs** (press `L`) to view/tail, prune, or delete worker log files.
 
+### Dev Server Control (Web UI)
+
+For projects with a runnable dev server (e.g. `package.json` has `dev`/`start`, or you set `commands.dev` in `autocoder.yaml`), you can start/stop it from the UI:
+
+- Open the bottom drawer (press `D` or click the logs icon)
+- Switch to the **Dev** tab
+- Click **Start** (optional: provide a command override)
+
+The UI will stream dev server output and show the latest detected localhost URL.
+
 ### Reliability & Retry Loop Prevention
 
 Parallel mode is designed to be self-healing without getting stuck in infinite retries:

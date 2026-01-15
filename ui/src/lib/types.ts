@@ -221,6 +221,54 @@ export interface AdvancedSettings {
   skip_port_check: boolean
 }
 
+// ============================================================================
+// Dev Server Types
+// ============================================================================
+
+export type DevServerStatus = 'stopped' | 'running' | 'crashed'
+
+export interface DevServerStatusResponse {
+  status: DevServerStatus
+  pid: number | null
+  started_at: string | null
+  command: string | null
+  url: string | null
+  api_port: number | null
+  web_port: number | null
+}
+
+export interface DevServerStartRequest {
+  command?: string | null
+  api_port?: number | null
+  web_port?: number | null
+}
+
+export interface DevServerActionResponse {
+  success: boolean
+  status: DevServerStatus
+  message: string
+  url?: string | null
+}
+
+export interface DevServerWSStatusMessage {
+  type: 'devserver_status'
+  status: DevServerStatus
+  pid: number | null
+  started_at: string | null
+  command: string | null
+  url: string | null
+  api_port: number | null
+  web_port: number | null
+}
+
+export interface DevServerWSLogMessage {
+  type: 'devserver_log'
+  line: string
+  timestamp: string
+}
+
+export type DevServerWSMessage = DevServerWSStatusMessage | DevServerWSLogMessage
+
 // WebSocket message types
 export type WSMessageType = 'progress' | 'feature_update' | 'log' | 'agent_status' | 'pong'
 

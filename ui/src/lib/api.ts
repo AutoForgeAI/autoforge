@@ -22,6 +22,9 @@ import type {
   PruneWorkerLogsRequest,
   PruneWorkerLogsResponse,
   AdvancedSettings,
+  DevServerStatusResponse,
+  DevServerStartRequest,
+  DevServerActionResponse,
 } from './types'
 
 const API_BASE = '/api'
@@ -216,6 +219,30 @@ export async function updateAdvancedSettings(settings: AdvancedSettings): Promis
   return fetchJSON('/settings/advanced', {
     method: 'PUT',
     body: JSON.stringify(settings),
+  })
+}
+
+// ============================================================================
+// Dev Server API
+// ============================================================================
+
+export async function getDevServerStatus(projectName: string): Promise<DevServerStatusResponse> {
+  return fetchJSON(`/projects/${encodeURIComponent(projectName)}/devserver/status`)
+}
+
+export async function startDevServer(
+  projectName: string,
+  req: DevServerStartRequest = {}
+): Promise<DevServerActionResponse> {
+  return fetchJSON(`/projects/${encodeURIComponent(projectName)}/devserver/start`, {
+    method: 'POST',
+    body: JSON.stringify(req),
+  })
+}
+
+export async function stopDevServer(projectName: string): Promise<DevServerActionResponse> {
+  return fetchJSON(`/projects/${encodeURIComponent(projectName)}/devserver/stop`, {
+    method: 'POST',
   })
 }
 
