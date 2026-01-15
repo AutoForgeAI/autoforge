@@ -4,10 +4,27 @@ This file provides guidance to Claude Code (claude.ai/code) when working with co
 
 ## Project Overview
 
-This is an autonomous coding agent system with a React-based UI. It uses the Claude Agent SDK to build complete applications over multiple sessions using a two-agent pattern:
+This is an autonomous coding agent system with a React-based UI. It uses the Claude Agent SDK to build complete applications over multiple sessions using a **multi-agent architecture**:
 
-1. **Initializer Agent** - First session reads an app spec and creates features in a SQLite database
-2. **Coding Agent** - Subsequent sessions implement features one by one, marking them as passing
+### Agent Types
+
+1. **Architect Agent** - Designs system architecture, makes high-level technical decisions
+2. **Initializer Agent** - First session reads an app spec and creates phases, features, and tasks
+3. **Coding Agent** - Implements tasks one by one, following architectural decisions
+4. **Reviewer Agent** - Reviews completed code for quality, security, and best practices
+5. **Testing Agent** - Runs tests, validates implementations, and reports issues
+
+### Hierarchical Structure
+
+The system uses a four-level hierarchy:
+```
+Project → Phases → Features → Tasks
+```
+
+- **Projects**: Top-level container, stored anywhere and registered in `~/.autocoder/registry.db`
+- **Phases**: Development stages with approval gates (e.g., "Foundation", "Core Features", "Polish")
+- **Features**: Groupings of related tasks (e.g., "User Authentication", "Dashboard")
+- **Tasks**: Individual implementation items with dependencies, complexity estimates, and verification steps
 
 ## Commands
 
@@ -47,24 +64,31 @@ python autonomous_agent_demo.py --project-dir my-app  # if registered
 python autonomous_agent_demo.py --project-dir my-app --yolo
 ```
 
-### YOLO Mode (Rapid Prototyping)
+### YOLO Modes (Rapid Prototyping)
 
-YOLO mode skips all testing for faster feature iteration:
+YOLO modes offer different trade-offs between speed and verification:
 
 ```bash
-# CLI
+# CLI - Basic YOLO (no browser testing)
 python autonomous_agent_demo.py --project-dir my-app --yolo
 
-# UI: Toggle the lightning bolt button before starting the agent
+# CLI - YOLO with review (AI code review instead of tests)
+python autonomous_agent_demo.py --project-dir my-app --yolo-review
+
+# UI: Use the YOLO mode selector dropdown before starting the agent
 ```
 
-**What's different in YOLO mode:**
-- No regression testing (skips `feature_get_for_regression`)
-- No Playwright MCP server (browser automation disabled)
-- Features marked passing after lint/type-check succeeds
-- Faster iteration for prototyping
+**Available YOLO Modes:**
 
-**What's the same:**
+| Mode | Description | Testing | Review | Use Case |
+|------|-------------|---------|--------|----------|
+| Standard | Full verification | ✅ | ✅ | Production quality |
+| YOLO | Skip browser tests | ❌ | ❌ | Fast prototyping |
+| YOLO + Review | AI code review | ❌ | ✅ | Balance speed/quality |
+| YOLO Parallel | Concurrent tasks | ❌ | ❌ | Independent features |
+| YOLO Staged | Batch verification | Staged | Staged | Large feature sets |
+
+**What's the same across all modes:**
 - Lint and type-check still run to verify code compiles
 - Feature MCP server for tracking progress
 - All other development tools available
@@ -96,6 +120,14 @@ npm run lint     # Run ESLint
 - `progress.py` - Progress tracking, database queries, webhook notifications
 - `registry.py` - Project registry for mapping names to paths (cross-platform)
 
+### Multi-Agent Modules
+
+- `agent_types.py` - Agent type enum, selection logic, and orchestration
+- `shared_context.py` - Inter-agent communication (messages, decisions, findings)
+- `yolo_modes.py` - YOLO mode configurations and feature flags
+- `usage_tracking.py` - API usage monitoring with daily/monthly budgets
+- `smart_scheduler.py` - Usage-aware task scheduling with strategies
+
 ### Project Registry
 
 Projects can be stored in any directory. The registry maps project names to paths using SQLite:
@@ -116,20 +148,62 @@ The FastAPI server provides REST endpoints for the UI:
 - `server/routers/filesystem.py` - Filesystem browser API with security controls
 - `server/routers/spec_creation.py` - WebSocket for interactive spec creation
 
-### Feature Management
+### Task & Feature Management
 
-Features are stored in SQLite (`features.db`) via SQLAlchemy. The agent interacts with features through an MCP server:
+Tasks are stored in SQLite (`features.db`) via SQLAlchemy with a hierarchical structure. The agent interacts through MCP servers:
 
-- `mcp_server/feature_mcp.py` - MCP server exposing feature management tools
-- `api/database.py` - SQLAlchemy models (Feature table with priority, category, name, description, steps, passes)
+- `mcp_server/feature_mcp.py` - MCP server for task/feature management
+- `mcp_server/agent_mcp.py` - MCP server for inter-agent communication
+- `api/database.py` - SQLAlchemy models:
+  - `Phase` - Development stages with approval workflow
+  - `Feature` - Groups of related tasks
+  - `Task` - Individual work items with dependencies
+  - `UsageLog` - API usage tracking
+  - `LegacyFeature` - Backward compatibility with v1 schema
 
-MCP tools available to the agent:
-- `feature_get_stats` - Progress statistics
-- `feature_get_next` - Get highest-priority pending feature
-- `feature_get_for_regression` - Random passing features for regression testing
-- `feature_mark_passing` - Mark feature complete
-- `feature_skip` - Move feature to end of queue
-- `feature_create_bulk` - Initialize all features (used by initializer)
+**Task MCP Tools:**
+- `task_get_stats` - Progress statistics by phase/feature
+- `task_get_next` - Get highest-priority ready task (respects dependencies)
+- `task_get_for_regression` - Random passing tasks for regression testing
+- `task_mark_passing` - Mark task complete
+- `task_skip` - Move task to end of queue
+- `task_create_bulk` - Initialize tasks (used by initializer)
+- `task_validate_dependencies` - Check for dependency cycles
+- `task_get_critical_path` - Calculate critical path for estimation
+
+**Agent Communication MCP Tools:**
+- `agent_send_message` - Send message to another agent type
+- `agent_get_messages` - Retrieve messages for current agent
+- `agent_record_decision` - Record architectural decisions
+- `agent_add_finding` - Add code review findings
+
+### Task Dependencies
+
+Tasks can have dependencies on other tasks, creating a directed acyclic graph (DAG):
+
+```python
+# Example: Task B depends on Task A
+task_b.depends_on = [task_a.id]
+
+# The system ensures:
+# - No circular dependencies (validated on creation)
+# - Blocked tasks are skipped in scheduling
+# - Critical path calculated for estimation
+```
+
+### Phase Workflow
+
+Phases follow a state machine:
+```
+pending → in_progress → awaiting_approval → completed
+                ↓              ↓
+            (restart)      (reject)
+```
+
+- **pending**: Phase not yet started
+- **in_progress**: Tasks being worked on
+- **awaiting_approval**: All tasks complete, waiting for human review
+- **completed**: Approved and finalized
 
 ### React UI (ui/)
 
@@ -139,8 +213,42 @@ MCP tools available to the agent:
 - `src/hooks/useProjects.ts` - React Query hooks for API calls
 - `src/lib/api.ts` - REST API client
 - `src/lib/types.ts` - TypeScript type definitions
-- `src/components/FolderBrowser.tsx` - Server-side filesystem browser for project folder selection
+
+**Core Components:**
+- `src/components/FolderBrowser.tsx` - Server-side filesystem browser
 - `src/components/NewProjectModal.tsx` - Multi-step project creation wizard
+- `src/components/AddFeatureModal.tsx` - Add features with task generation
+
+**Navigation & Drill-Down:**
+- `src/components/Breadcrumb.tsx` - Hierarchical navigation
+- `src/components/DrillDownContainer.tsx` - URL-based navigation state
+- `src/components/ProjectGrid.tsx` - Project overview cards
+- `src/components/FeatureList.tsx` - Expandable feature groups
+
+**Phase Management:**
+- `src/components/PhaseCard.tsx` - Phase status and actions
+- `src/components/PhaseTimeline.tsx` - Visual phase progress
+- `src/components/PhaseApprovalModal.tsx` - Approval workflow
+
+**Task Visualization:**
+- `src/components/FeatureCard.tsx` - Task cards with blocked indicators
+- `src/components/DependencyGraph.tsx` - SVG-based DAG visualization
+- `src/components/YoloModeSelector.tsx` - YOLO mode dropdown
+
+**Agent Monitoring:**
+- `src/components/AgentDashboard.tsx` - Multi-agent status view
+- `src/components/AgentTimeline.tsx` - Agent activity events
+
+**Architect Assistant:**
+- `src/components/AssistantPanel.tsx` - Slide-in panel for the Architect Assistant
+- `src/components/AssistantChat.tsx` - Chat interface with streaming responses
+- `src/components/AssistantQuickActions.tsx` - Quick action buttons
+- `src/components/ChatMessage.tsx` - Message display with markdown
+
+**Usage Monitoring:**
+- `src/components/UsageDashboard.tsx` - Usage overview with budgets
+- `src/components/UsageChart.tsx` - Usage timeline visualization
+- `src/components/UsageWarning.tsx` - Budget alert banners
 
 ### Project Structure for Generated Apps
 
@@ -163,6 +271,15 @@ Defense-in-depth approach configured in `client.py`:
 - `.claude/commands/create-spec.md` - `/create-spec` slash command for interactive spec creation
 - `.claude/skills/frontend-design/SKILL.md` - Skill for distinctive UI design
 - `.claude/templates/` - Prompt templates copied to new projects
+
+### Agent Prompt Templates
+
+- `architect_prompt.template.md` - Architecture design and decisions
+- `initializer_prompt.template.md` - Project setup and task creation
+- `coding_prompt.template.md` - Task implementation
+- `coding_prompt_yolo_review.template.md` - YOLO mode with AI review
+- `reviewer_prompt.template.md` - Code review and findings
+- `testing_prompt.template.md` - Test execution and validation
 
 ## Key Patterns
 
@@ -192,3 +309,93 @@ The UI uses a **neobrutalism** design with Tailwind CSS v4:
 - CSS variables defined in `ui/src/styles/globals.css` via `@theme` directive
 - Custom animations: `animate-slide-in`, `animate-pulse-neo`, `animate-shimmer`
 - Color tokens: `--color-neo-pending` (yellow), `--color-neo-progress` (cyan), `--color-neo-done` (green)
+
+### Usage Tracking & Smart Scheduling
+
+The system monitors API usage and adjusts scheduling behavior:
+
+```python
+# Usage levels determine scheduling strategy
+CRITICAL  # < 5% remaining  → Stop all new work
+LOW       # 5-20% remaining → Wind down, finish in-progress only
+MODERATE  # 20-50% remaining → Focus on completing features
+HEALTHY   # > 50% remaining → Normal operation
+```
+
+**Scheduling Strategies:**
+- `FULL_SPEED` - Normal priority-based scheduling
+- `COMPLETION_FOCUS` - Prioritize nearly-done features
+- `WIND_DOWN` - Only complete in-progress tasks
+- `STOP` - No new tasks, critical usage
+
+### Multi-Agent Communication
+
+Agents communicate through a shared context system:
+
+```python
+# Send message to another agent
+shared_context.add_message(
+    from_agent="coding",
+    to_agent="reviewer",
+    message="Feature X implementation complete",
+    metadata={"feature_id": 123}
+)
+
+# Record architectural decision
+shared_context.add_decision(
+    category="database",
+    decision="Use SQLite for local storage",
+    rationale="Simple setup, sufficient for single-user",
+    made_by="architect"
+)
+
+# Add review finding
+shared_context.add_finding(
+    file_path="src/auth.py",
+    severity="warning",
+    finding="Password not hashed before storage",
+    suggestion="Use bcrypt for password hashing"
+)
+```
+
+### Database Migration
+
+The system supports both legacy (v1) and new (v2) schema:
+
+- Legacy projects use the `LegacyFeature` model
+- New projects use `Phase → Feature → Task` hierarchy
+- Migration script available: `python -m api.migration --project-dir <path>`
+- Schema version tracked in database metadata
+
+### Architect Assistant
+
+The Architect Assistant is the central command hub for project management. Access it via the chat icon in the UI.
+
+**Capabilities:**
+- **Read & Understand**: Browse code, search patterns, view documentation
+- **Create Features**: Design features with tasks through conversation
+- **Manage Agents**: Start/stop/pause coding agents, set YOLO modes
+- **Track Progress**: View phase status, task completion, dependencies
+- **Handle Migrations**: Check and run schema migrations
+
+**Backend Components:**
+- `server/services/assistant_chat_session.py` - Claude SDK session with MCP tools
+- `server/routers/assistant_chat.py` - WebSocket endpoint for streaming
+- `mcp_server/assistant_actions_mcp.py` - Action tools for project management
+
+**Example Interactions:**
+```
+User: "Add a feature for user authentication"
+Assistant: [Creates feature with login, registration, session tasks]
+
+User: "Start the agent in YOLO mode"
+Assistant: [Starts coding agent with yolo_mode="yolo"]
+
+User: "What's the project status?"
+Assistant: [Shows phases, tasks, completion percentage]
+```
+
+**Quick Actions:**
+The assistant provides contextual quick action buttons:
+- Project Status, Add Feature, Start/Stop Agent
+- YOLO Mode, Check Dependencies, Submit Phase

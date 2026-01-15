@@ -9,13 +9,16 @@ import { useState, useRef, useEffect, useCallback } from 'react'
 import { Send, Loader2, Wifi, WifiOff } from 'lucide-react'
 import { useAssistantChat } from '../hooks/useAssistantChat'
 import { ChatMessage } from './ChatMessage'
+import { AssistantQuickActions } from './AssistantQuickActions'
 
 interface AssistantChatProps {
   projectName: string
+  agentStatus?: 'running' | 'paused' | 'stopped'
 }
 
-export function AssistantChat({ projectName }: AssistantChatProps) {
+export function AssistantChat({ projectName, agentStatus = 'stopped' }: AssistantChatProps) {
   const [inputValue, setInputValue] = useState('')
+  const [showQuickActions, setShowQuickActions] = useState(true)
   const messagesEndRef = useRef<HTMLDivElement>(null)
   const inputRef = useRef<HTMLTextAreaElement>(null)
   const hasStartedRef = useRef(false)
@@ -62,6 +65,16 @@ export function AssistantChat({ projectName }: AssistantChatProps) {
 
     sendMessage(content)
     setInputValue('')
+    // Hide quick actions after first message
+    if (showQuickActions) {
+      setShowQuickActions(false)
+    }
+  }
+
+  const handleQuickAction = (message: string) => {
+    if (isLoading || connectionStatus !== 'connected') return
+    sendMessage(message)
+    setShowQuickActions(false)
   }
 
   const handleKeyDown = (e: React.KeyboardEvent<HTMLTextAreaElement>) => {
@@ -92,6 +105,15 @@ export function AssistantChat({ projectName }: AssistantChatProps) {
           </>
         )}
       </div>
+
+      {/* Quick actions panel */}
+      {showQuickActions && connectionStatus === 'connected' && (
+        <AssistantQuickActions
+          onActionClick={handleQuickAction}
+          disabled={isLoading}
+          agentStatus={agentStatus}
+        />
+      )}
 
       {/* Messages area */}
       <div className="flex-1 overflow-y-auto bg-[var(--color-neo-bg)]">

@@ -2,26 +2,134 @@
 Database Models and Connection
 ==============================
 
-SQLite database schema for feature storage using SQLAlchemy.
+SQLite database schema for hierarchical task management using SQLAlchemy.
+
+Hierarchy: Project → Phase → Feature → Task
+
+- Phase: Major milestone in a project (e.g., "Phase 1: Foundation")
+- Feature: Major work item requiring spec creation (e.g., "User Authentication")
+- Task: Actionable item the agent works on (formerly "Feature")
 """
 
+from datetime import datetime
 from pathlib import Path
 from typing import Optional
 
-from sqlalchemy import Boolean, Column, Integer, String, Text, create_engine
+from sqlalchemy import (
+    Boolean,
+    Column,
+    DateTime,
+    ForeignKey,
+    Integer,
+    String,
+    Text,
+    create_engine,
+)
 from sqlalchemy.ext.declarative import declarative_base
-from sqlalchemy.orm import Session, sessionmaker
+from sqlalchemy.orm import Session, relationship, sessionmaker
 from sqlalchemy.types import JSON
 
 Base = declarative_base()
 
 
-class Feature(Base):
-    """Feature model representing a test case/feature to implement."""
+class Phase(Base):
+    """Phase represents a major milestone in the project.
 
-    __tablename__ = "features"
+    Phases contain Features and provide approval gates before
+    the project can proceed to the next phase.
+
+    Status flow: pending → in_progress → awaiting_approval → completed
+    """
+
+    __tablename__ = "phases"
 
     id = Column(Integer, primary_key=True, index=True)
+    project_name = Column(String(255), nullable=False, index=True)
+    name = Column(String(255), nullable=False)
+    description = Column(Text, nullable=True)
+    order = Column(Integer, nullable=False, default=0, index=True)
+    status = Column(String(50), default="pending", index=True)
+    created_at = Column(DateTime, default=datetime.utcnow)
+    completed_at = Column(DateTime, nullable=True)
+
+    # Relationships
+    features = relationship(
+        "Feature", back_populates="phase", cascade="all, delete-orphan"
+    )
+
+    def to_dict(self) -> dict:
+        """Convert phase to dictionary for JSON serialization."""
+        return {
+            "id": self.id,
+            "project_name": self.project_name,
+            "name": self.name,
+            "description": self.description,
+            "order": self.order,
+            "status": self.status,
+            "created_at": self.created_at.isoformat() if self.created_at else None,
+            "completed_at": self.completed_at.isoformat() if self.completed_at else None,
+            "feature_count": len(self.features) if self.features else 0,
+        }
+
+
+class Feature(Base):
+    """Feature represents a major work item requiring spec creation.
+
+    Features group related Tasks and can be assigned to specific agents.
+    When a new Feature is added, it triggers the spec creation workflow.
+
+    Status flow: pending → speccing → ready → in_progress → completed
+    """
+
+    __tablename__ = "features_v2"  # New table to avoid conflict during migration
+
+    id = Column(Integer, primary_key=True, index=True)
+    phase_id = Column(Integer, ForeignKey("phases.id"), nullable=True, index=True)
+    name = Column(String(255), nullable=False)
+    description = Column(Text, nullable=True)
+    spec = Column(Text, nullable=True)  # Generated spec for this feature
+    status = Column(String(50), default="pending", index=True)
+    priority = Column(Integer, default=0, index=True)
+    agent_id = Column(String(100), nullable=True, index=True)  # Assigned agent
+    created_at = Column(DateTime, default=datetime.utcnow)
+    completed_at = Column(DateTime, nullable=True)
+
+    # Relationships
+    phase = relationship("Phase", back_populates="features")
+    tasks = relationship("Task", back_populates="feature", cascade="all, delete-orphan")
+
+    def to_dict(self) -> dict:
+        """Convert feature to dictionary for JSON serialization."""
+        tasks_list = self.tasks if self.tasks else []
+        return {
+            "id": self.id,
+            "phase_id": self.phase_id,
+            "name": self.name,
+            "description": self.description,
+            "spec": self.spec,
+            "status": self.status,
+            "priority": self.priority,
+            "agent_id": self.agent_id,
+            "created_at": self.created_at.isoformat() if self.created_at else None,
+            "completed_at": self.completed_at.isoformat() if self.completed_at else None,
+            "task_count": len(tasks_list),
+            "tasks_completed": sum(1 for t in tasks_list if t.passes),
+        }
+
+
+class Task(Base):
+    """Task represents an actionable item the agent works on.
+
+    This was formerly called "Feature" in the old schema.
+    Tasks are the atomic units of work that agents complete.
+    """
+
+    __tablename__ = "tasks"
+
+    id = Column(Integer, primary_key=True, index=True)
+    feature_id = Column(
+        Integer, ForeignKey("features_v2.id"), nullable=True, index=True
+    )
     priority = Column(Integer, nullable=False, default=999, index=True)
     category = Column(String(100), nullable=False)
     name = Column(String(255), nullable=False)
@@ -30,8 +138,119 @@ class Feature(Base):
     passes = Column(Boolean, default=False, index=True)
     in_progress = Column(Boolean, default=False, index=True)
 
+    # Complexity estimation for usage-based scheduling (1-5 scale)
+    estimated_complexity = Column(Integer, default=2)
+
+    # Dependency tracking
+    depends_on = Column(JSON, nullable=True)  # Array of task IDs this depends on
+    blocks = Column(JSON, nullable=True)  # Array of task IDs blocked by this
+    is_blocked = Column(Boolean, default=False, index=True)
+    blocked_reason = Column(String(500), nullable=True)
+
+    # Review tracking
+    reviewed = Column(Boolean, default=False, index=True)
+    review_notes = Column(Text, nullable=True)
+    review_score = Column(Integer, nullable=True)  # 1-5 quality score
+
+    # Timestamps
+    created_at = Column(DateTime, default=datetime.utcnow)
+    completed_at = Column(DateTime, nullable=True)
+
+    # Relationships
+    feature = relationship("Feature", back_populates="tasks")
+
     def to_dict(self) -> dict:
-        """Convert feature to dictionary for JSON serialization."""
+        """Convert task to dictionary for JSON serialization."""
+        return {
+            "id": self.id,
+            "feature_id": self.feature_id,
+            "priority": self.priority,
+            "category": self.category,
+            "name": self.name,
+            "description": self.description,
+            "steps": self.steps,
+            "passes": self.passes,
+            "in_progress": self.in_progress,
+            "estimated_complexity": self.estimated_complexity,
+            # Dependency fields
+            "depends_on": self.depends_on or [],
+            "blocks": self.blocks or [],
+            "is_blocked": self.is_blocked,
+            "blocked_reason": self.blocked_reason,
+            # Review fields
+            "reviewed": self.reviewed,
+            "review_notes": self.review_notes,
+            "review_score": self.review_score,
+            # Timestamps
+            "created_at": self.created_at.isoformat() if self.created_at else None,
+            "completed_at": self.completed_at.isoformat() if self.completed_at else None,
+        }
+
+
+class UsageLog(Base):
+    """Track Claude API usage for monitoring and smart scheduling.
+
+    Captures token usage per API call to enable:
+    - Usage dashboards
+    - Smart task scheduling based on remaining quota
+    - Per-project usage tracking
+    """
+
+    __tablename__ = "usage_logs"
+
+    id = Column(Integer, primary_key=True, index=True)
+    project_name = Column(String(255), nullable=False, index=True)
+    timestamp = Column(DateTime, default=datetime.utcnow, index=True)
+    input_tokens = Column(Integer, default=0)
+    output_tokens = Column(Integer, default=0)
+    cache_read_tokens = Column(Integer, default=0)
+    cache_write_tokens = Column(Integer, default=0)
+    task_id = Column(Integer, nullable=True)  # Which task triggered this
+    agent_id = Column(String(100), nullable=True)  # Which agent made the call
+    session_id = Column(String(100), nullable=True)  # Agent session identifier
+
+    def to_dict(self) -> dict:
+        """Convert usage log to dictionary for JSON serialization."""
+        return {
+            "id": self.id,
+            "project_name": self.project_name,
+            "timestamp": self.timestamp.isoformat() if self.timestamp else None,
+            "input_tokens": self.input_tokens,
+            "output_tokens": self.output_tokens,
+            "cache_read_tokens": self.cache_read_tokens,
+            "cache_write_tokens": self.cache_write_tokens,
+            "total_tokens": self.input_tokens + self.output_tokens,
+            "task_id": self.task_id,
+            "agent_id": self.agent_id,
+            "session_id": self.session_id,
+        }
+
+
+# =============================================================================
+# Legacy Feature Model (for backward compatibility during migration)
+# =============================================================================
+
+
+class LegacyFeature(Base):
+    """Legacy Feature model - kept for migration purposes.
+
+    This represents the old schema where 'features' were the atomic work items.
+    After migration, these become 'tasks' in the new schema.
+    """
+
+    __tablename__ = "features"
+
+    id = Column(Integer, primary_key=True, index=True)
+    priority = Column(Integer, nullable=False, default=999, index=True)
+    category = Column(String(100), nullable=False)
+    name = Column(String(255), nullable=False)
+    description = Column(Text, nullable=False)
+    steps = Column(JSON, nullable=False)
+    passes = Column(Boolean, default=False, index=True)
+    in_progress = Column(Boolean, default=False, index=True)
+
+    def to_dict(self) -> dict:
+        """Convert legacy feature to dictionary."""
         return {
             "id": self.id,
             "priority": self.priority,
@@ -42,6 +261,11 @@ class Feature(Base):
             "passes": self.passes,
             "in_progress": self.in_progress,
         }
+
+
+# =============================================================================
+# Database Connection and Initialization
+# =============================================================================
 
 
 def get_database_path(project_dir: Path) -> Path:
@@ -69,13 +293,42 @@ def _migrate_add_in_progress_column(engine) -> None:
 
         if "in_progress" not in columns:
             # Add the column with default value
-            conn.execute(text("ALTER TABLE features ADD COLUMN in_progress BOOLEAN DEFAULT 0"))
+            conn.execute(
+                text("ALTER TABLE features ADD COLUMN in_progress BOOLEAN DEFAULT 0")
+            )
             conn.commit()
+
+
+def _check_schema_version(engine) -> str:
+    """Check which schema version the database is using.
+
+    Returns:
+        'legacy': Old schema with only 'features' table
+        'v2': New schema with phases, features_v2, tasks tables
+        'empty': No tables exist yet
+    """
+    from sqlalchemy import text
+
+    with engine.connect() as conn:
+        # Check for tables
+        result = conn.execute(
+            text("SELECT name FROM sqlite_master WHERE type='table'")
+        )
+        tables = {row[0] for row in result.fetchall()}
+
+        if "tasks" in tables and "phases" in tables:
+            return "v2"
+        elif "features" in tables:
+            return "legacy"
+        else:
+            return "empty"
 
 
 def create_database(project_dir: Path) -> tuple:
     """
     Create database and return engine + session maker.
+
+    Automatically detects schema version and handles migrations.
 
     Args:
         project_dir: Directory containing the project
@@ -85,16 +338,26 @@ def create_database(project_dir: Path) -> tuple:
     """
     db_url = get_database_url(project_dir)
     engine = create_engine(db_url, connect_args={"check_same_thread": False})
-    Base.metadata.create_all(bind=engine)
 
-    # Migrate existing databases to add in_progress column
-    _migrate_add_in_progress_column(engine)
+    # Check current schema version
+    schema_version = _check_schema_version(engine)
+
+    if schema_version == "legacy":
+        # Migrate in_progress column if needed (legacy migration)
+        _migrate_add_in_progress_column(engine)
+        # Note: Full migration to v2 schema is handled by migrate_to_v2()
+
+    # Create all tables (new tables will be created, existing ones untouched)
+    Base.metadata.create_all(bind=engine)
 
     SessionLocal = sessionmaker(autocommit=False, autoflush=False, bind=engine)
     return engine, SessionLocal
 
 
-# Global session maker - will be set when server starts
+# =============================================================================
+# Global Session Management
+# =============================================================================
+
 _session_maker: Optional[sessionmaker] = None
 
 
@@ -118,3 +381,706 @@ def get_db() -> Session:
         yield db
     finally:
         db.close()
+
+
+# =============================================================================
+# Dependency Management Utilities
+# =============================================================================
+
+
+def update_blocked_status(db: Session, task: Task) -> None:
+    """Update whether a task is blocked based on its dependencies.
+
+    Args:
+        db: Database session
+        task: Task to update
+    """
+    if not task.depends_on:
+        task.is_blocked = False
+        task.blocked_reason = None
+        return
+
+    # Check if all dependencies are complete
+    deps = db.query(Task).filter(Task.id.in_(task.depends_on)).all()
+    incomplete = [d for d in deps if not d.passes]
+
+    if incomplete:
+        task.is_blocked = True
+        names = ", ".join(d.name[:30] for d in incomplete[:3])
+        if len(incomplete) > 3:
+            names += f" (+{len(incomplete) - 3} more)"
+        task.blocked_reason = f"Waiting on: {names}"
+    else:
+        task.is_blocked = False
+        task.blocked_reason = None
+
+
+def propagate_completion(db: Session, task_id: int) -> list[int]:
+    """When a task completes, unblock dependent tasks.
+
+    Args:
+        db: Database session
+        task_id: ID of the completed task
+
+    Returns:
+        List of task IDs that were unblocked
+    """
+    task = db.query(Task).filter(Task.id == task_id).first()
+    if not task:
+        return []
+
+    unblocked = []
+    for blocked_id in task.blocks or []:
+        blocked_task = db.query(Task).filter(Task.id == blocked_id).first()
+        if blocked_task:
+            was_blocked = blocked_task.is_blocked
+            update_blocked_status(db, blocked_task)
+            if was_blocked and not blocked_task.is_blocked:
+                unblocked.append(blocked_id)
+
+    db.commit()
+    return unblocked
+
+
+def set_task_dependencies(db: Session, task_id: int, depends_on: list[int]) -> Task:
+    """Set dependencies for a task.
+
+    Args:
+        db: Database session
+        task_id: ID of the task to update
+        depends_on: List of task IDs this task depends on
+
+    Returns:
+        Updated task
+    """
+    task = db.query(Task).filter(Task.id == task_id).first()
+    if not task:
+        raise ValueError(f"Task {task_id} not found")
+
+    # Remove this task from old dependencies' blocks lists
+    if task.depends_on:
+        for old_dep_id in task.depends_on:
+            old_dep = db.query(Task).filter(Task.id == old_dep_id).first()
+            if old_dep and old_dep.blocks:
+                blocks = list(old_dep.blocks)
+                if task_id in blocks:
+                    blocks.remove(task_id)
+                    old_dep.blocks = blocks
+
+    # Set new dependencies
+    task.depends_on = depends_on
+
+    # Add this task to new dependencies' blocks lists
+    for dep_id in depends_on:
+        dep_task = db.query(Task).filter(Task.id == dep_id).first()
+        if dep_task:
+            blocks = list(dep_task.blocks or [])
+            if task_id not in blocks:
+                blocks.append(task_id)
+                dep_task.blocks = blocks
+
+    # Update blocked status
+    update_blocked_status(db, task)
+
+    db.commit()
+    return task
+
+
+def validate_no_cycles(db: Session, task_id: int, depends_on: list[int]) -> tuple[bool, str | None]:
+    """Check if adding dependencies would create a cycle.
+
+    Uses DFS to detect if the proposed dependencies would create
+    a circular dependency chain.
+
+    Args:
+        db: Database session
+        task_id: Task that would have dependencies added
+        depends_on: Proposed dependency IDs
+
+    Returns:
+        Tuple of (is_valid, error_message)
+    """
+    # Build adjacency list of current dependencies
+    all_tasks = db.query(Task).all()
+    graph = {t.id: set(t.depends_on or []) for t in all_tasks}
+
+    # Add proposed edges
+    if task_id not in graph:
+        graph[task_id] = set()
+    proposed_graph = {k: set(v) for k, v in graph.items()}
+    proposed_graph[task_id] = set(depends_on)
+
+    # DFS cycle detection
+    visited = set()
+    rec_stack = set()
+
+    def has_cycle(node: int, path: list[int]) -> list[int] | None:
+        """Returns the cycle path if found, None otherwise."""
+        if node in rec_stack:
+            cycle_start = path.index(node)
+            return path[cycle_start:] + [node]
+        if node in visited:
+            return None
+
+        visited.add(node)
+        rec_stack.add(node)
+        path.append(node)
+
+        for neighbor in proposed_graph.get(node, []):
+            cycle = has_cycle(neighbor, path)
+            if cycle:
+                return cycle
+
+        path.pop()
+        rec_stack.remove(node)
+        return None
+
+    # Check from task_id and all its dependencies
+    for start in [task_id] + depends_on:
+        if start not in visited:
+            cycle = has_cycle(start, [])
+            if cycle:
+                task_names = []
+                for tid in cycle:
+                    t = db.query(Task).filter(Task.id == tid).first()
+                    task_names.append(t.name if t else f"Task {tid}")
+                cycle_str = " → ".join(task_names)
+                return False, f"Circular dependency detected: {cycle_str}"
+
+    return True, None
+
+
+def get_dependency_chain(db: Session, task_id: int, direction: str = "upstream") -> list[Task]:
+    """Get the dependency chain for a task.
+
+    Args:
+        db: Database session
+        task_id: Task to get chain for
+        direction: "upstream" (tasks this depends on) or "downstream" (tasks blocked by this)
+
+    Returns:
+        List of tasks in the chain (topologically sorted)
+    """
+    visited = set()
+    result = []
+
+    def traverse(tid: int):
+        if tid in visited:
+            return
+        visited.add(tid)
+
+        task = db.query(Task).filter(Task.id == tid).first()
+        if not task:
+            return
+
+        if direction == "upstream":
+            # Get tasks this task depends on
+            for dep_id in task.depends_on or []:
+                traverse(dep_id)
+        else:
+            # Get tasks blocked by this task
+            for blocked_id in task.blocks or []:
+                traverse(blocked_id)
+
+        result.append(task)
+
+    traverse(task_id)
+
+    # Remove the starting task from results
+    result = [t for t in result if t.id != task_id]
+
+    return result
+
+
+def get_ready_tasks(db: Session, feature_id: int | None = None, limit: int = 10) -> list[Task]:
+    """Get tasks that are ready to work on (not blocked, not complete).
+
+    Args:
+        db: Database session
+        feature_id: Optional filter by feature
+        limit: Maximum number of tasks to return
+
+    Returns:
+        List of ready tasks, ordered by priority
+    """
+    query = db.query(Task).filter(
+        Task.passes == False,
+        Task.in_progress == False,
+        Task.is_blocked == False,
+    )
+
+    if feature_id is not None:
+        query = query.filter(Task.feature_id == feature_id)
+
+    return query.order_by(Task.priority).limit(limit).all()
+
+
+def get_blocked_tasks(db: Session, feature_id: int | None = None) -> list[Task]:
+    """Get all blocked tasks.
+
+    Args:
+        db: Database session
+        feature_id: Optional filter by feature
+
+    Returns:
+        List of blocked tasks
+    """
+    query = db.query(Task).filter(
+        Task.passes == False,
+        Task.is_blocked == True,
+    )
+
+    if feature_id is not None:
+        query = query.filter(Task.feature_id == feature_id)
+
+    return query.order_by(Task.priority).all()
+
+
+def get_dependency_graph(db: Session, feature_id: int | None = None) -> dict:
+    """Get the dependency graph for visualization.
+
+    Args:
+        db: Database session
+        feature_id: Optional filter by feature
+
+    Returns:
+        Dictionary with 'nodes' and 'edges' for graph visualization
+    """
+    query = db.query(Task)
+    if feature_id is not None:
+        query = query.filter(Task.feature_id == feature_id)
+
+    tasks = query.all()
+
+    nodes = []
+    edges = []
+
+    for task in tasks:
+        # Determine node status
+        if task.passes:
+            status = "done"
+        elif task.in_progress:
+            status = "in_progress"
+        elif task.is_blocked:
+            status = "blocked"
+        else:
+            status = "pending"
+
+        nodes.append({
+            "id": task.id,
+            "name": task.name,
+            "category": task.category,
+            "status": status,
+            "priority": task.priority,
+            "blocked_reason": task.blocked_reason,
+        })
+
+        for dep_id in task.depends_on or []:
+            edges.append({
+                "from": dep_id,
+                "to": task.id,
+            })
+
+    return {"nodes": nodes, "edges": edges}
+
+
+def get_critical_path(db: Session, feature_id: int | None = None) -> list[Task]:
+    """Calculate the critical path (longest chain of dependencies).
+
+    The critical path represents the minimum time to complete all tasks.
+
+    Args:
+        db: Database session
+        feature_id: Optional filter by feature
+
+    Returns:
+        List of tasks in the critical path
+    """
+    query = db.query(Task).filter(Task.passes == False)
+    if feature_id is not None:
+        query = query.filter(Task.feature_id == feature_id)
+
+    tasks = query.all()
+    task_map = {t.id: t for t in tasks}
+
+    # Calculate longest path to each task
+    longest_path = {}  # task_id -> (length, path)
+
+    def calc_path(task_id: int) -> tuple[int, list[int]]:
+        if task_id in longest_path:
+            return longest_path[task_id]
+
+        task = task_map.get(task_id)
+        if not task:
+            return (0, [])
+
+        max_len = 0
+        max_path = []
+
+        for dep_id in task.depends_on or []:
+            dep_len, dep_path = calc_path(dep_id)
+            if dep_len >= max_len:
+                max_len = dep_len
+                max_path = dep_path
+
+        result = (max_len + 1, max_path + [task_id])
+        longest_path[task_id] = result
+        return result
+
+    # Find the task with the longest path
+    max_length = 0
+    critical_path = []
+
+    for task in tasks:
+        length, path = calc_path(task.id)
+        if length > max_length:
+            max_length = length
+            critical_path = path
+
+    return [task_map[tid] for tid in critical_path if tid in task_map]
+
+
+# =============================================================================
+# Phase Workflow Management
+# =============================================================================
+
+
+class PhaseStatus:
+    """Phase status constants with transition rules."""
+
+    PENDING = "pending"
+    IN_PROGRESS = "in_progress"
+    AWAITING_APPROVAL = "awaiting_approval"
+    COMPLETED = "completed"
+    REJECTED = "rejected"
+
+    # Valid transitions: current_status -> [allowed_next_statuses]
+    TRANSITIONS = {
+        PENDING: [IN_PROGRESS],
+        IN_PROGRESS: [AWAITING_APPROVAL],
+        AWAITING_APPROVAL: [COMPLETED, REJECTED],
+        REJECTED: [IN_PROGRESS],  # Can restart after rejection
+        COMPLETED: [],  # Terminal state
+    }
+
+    @classmethod
+    def can_transition(cls, current: str, next_status: str) -> bool:
+        """Check if a status transition is valid."""
+        allowed = cls.TRANSITIONS.get(current, [])
+        return next_status in allowed
+
+
+def start_phase(db: Session, phase_id: int) -> Phase:
+    """Start a phase (transition from pending to in_progress).
+
+    Args:
+        db: Database session
+        phase_id: ID of the phase to start
+
+    Returns:
+        Updated phase
+
+    Raises:
+        ValueError: If transition is not valid
+    """
+    phase = db.query(Phase).filter(Phase.id == phase_id).first()
+    if not phase:
+        raise ValueError(f"Phase {phase_id} not found")
+
+    if not PhaseStatus.can_transition(phase.status, PhaseStatus.IN_PROGRESS):
+        raise ValueError(
+            f"Cannot start phase from status '{phase.status}'. "
+            f"Phase must be in 'pending' or 'rejected' status."
+        )
+
+    phase.status = PhaseStatus.IN_PROGRESS
+    db.commit()
+    return phase
+
+
+def submit_phase_for_approval(db: Session, phase_id: int) -> tuple[Phase, dict]:
+    """Submit a phase for approval (transition from in_progress to awaiting_approval).
+
+    Also calculates phase statistics for the approval review.
+
+    Args:
+        db: Database session
+        phase_id: ID of the phase to submit
+
+    Returns:
+        Tuple of (updated phase, stats dict)
+
+    Raises:
+        ValueError: If transition is not valid or phase is incomplete
+    """
+    phase = db.query(Phase).filter(Phase.id == phase_id).first()
+    if not phase:
+        raise ValueError(f"Phase {phase_id} not found")
+
+    if not PhaseStatus.can_transition(phase.status, PhaseStatus.AWAITING_APPROVAL):
+        raise ValueError(
+            f"Cannot submit phase from status '{phase.status}'. "
+            f"Phase must be 'in_progress'."
+        )
+
+    # Calculate phase statistics
+    all_tasks = []
+    for feature in phase.features:
+        all_tasks.extend(feature.tasks)
+
+    total_tasks = len(all_tasks)
+    passing_tasks = sum(1 for t in all_tasks if t.passes)
+    reviewed_tasks = sum(1 for t in all_tasks if t.reviewed)
+    blocked_tasks = sum(1 for t in all_tasks if t.is_blocked)
+
+    # Check if all tasks are complete
+    if passing_tasks < total_tasks:
+        pending = [t.name for t in all_tasks if not t.passes][:5]
+        raise ValueError(
+            f"Cannot submit phase: {total_tasks - passing_tasks} tasks still pending. "
+            f"Pending: {', '.join(pending)}{'...' if len(pending) == 5 else ''}"
+        )
+
+    # Calculate average review score
+    reviewed_with_score = [t for t in all_tasks if t.review_score is not None]
+    avg_review_score = (
+        sum(t.review_score for t in reviewed_with_score) / len(reviewed_with_score)
+        if reviewed_with_score
+        else None
+    )
+
+    phase.status = PhaseStatus.AWAITING_APPROVAL
+    db.commit()
+
+    stats = {
+        "total_tasks": total_tasks,
+        "passing_tasks": passing_tasks,
+        "reviewed_tasks": reviewed_tasks,
+        "blocked_tasks": blocked_tasks,
+        "average_review_score": round(avg_review_score, 2) if avg_review_score else None,
+        "review_coverage": round(reviewed_tasks / total_tasks * 100, 1) if total_tasks > 0 else 0,
+    }
+
+    return phase, stats
+
+
+def approve_phase(
+    db: Session,
+    phase_id: int,
+    approval_notes: str | None = None,
+) -> Phase:
+    """Approve a phase (transition from awaiting_approval to completed).
+
+    Args:
+        db: Database session
+        phase_id: ID of the phase to approve
+        approval_notes: Optional approval notes
+
+    Returns:
+        Updated phase
+
+    Raises:
+        ValueError: If transition is not valid
+    """
+    phase = db.query(Phase).filter(Phase.id == phase_id).first()
+    if not phase:
+        raise ValueError(f"Phase {phase_id} not found")
+
+    if not PhaseStatus.can_transition(phase.status, PhaseStatus.COMPLETED):
+        raise ValueError(
+            f"Cannot approve phase from status '{phase.status}'. "
+            f"Phase must be 'awaiting_approval'."
+        )
+
+    phase.status = PhaseStatus.COMPLETED
+    phase.completed_at = datetime.utcnow()
+    db.commit()
+
+    # Auto-start next phase if exists
+    next_phase = (
+        db.query(Phase)
+        .filter(Phase.project_name == phase.project_name, Phase.order > phase.order)
+        .order_by(Phase.order.asc())
+        .first()
+    )
+
+    if next_phase and next_phase.status == PhaseStatus.PENDING:
+        next_phase.status = PhaseStatus.IN_PROGRESS
+        db.commit()
+
+    return phase
+
+
+def reject_phase(
+    db: Session,
+    phase_id: int,
+    rejection_notes: str,
+) -> Phase:
+    """Reject a phase (transition from awaiting_approval to rejected).
+
+    Args:
+        db: Database session
+        phase_id: ID of the phase to reject
+        rejection_notes: Required notes explaining the rejection
+
+    Returns:
+        Updated phase
+
+    Raises:
+        ValueError: If transition is not valid
+    """
+    phase = db.query(Phase).filter(Phase.id == phase_id).first()
+    if not phase:
+        raise ValueError(f"Phase {phase_id} not found")
+
+    if not PhaseStatus.can_transition(phase.status, PhaseStatus.REJECTED):
+        raise ValueError(
+            f"Cannot reject phase from status '{phase.status}'. "
+            f"Phase must be 'awaiting_approval'."
+        )
+
+    if not rejection_notes or not rejection_notes.strip():
+        raise ValueError("Rejection notes are required")
+
+    phase.status = PhaseStatus.REJECTED
+    db.commit()
+
+    return phase
+
+
+def restart_phase(db: Session, phase_id: int) -> Phase:
+    """Restart a rejected phase (transition from rejected to in_progress).
+
+    Args:
+        db: Database session
+        phase_id: ID of the phase to restart
+
+    Returns:
+        Updated phase
+
+    Raises:
+        ValueError: If transition is not valid
+    """
+    phase = db.query(Phase).filter(Phase.id == phase_id).first()
+    if not phase:
+        raise ValueError(f"Phase {phase_id} not found")
+
+    if not PhaseStatus.can_transition(phase.status, PhaseStatus.IN_PROGRESS):
+        raise ValueError(
+            f"Cannot restart phase from status '{phase.status}'. "
+            f"Phase must be 'rejected' or 'pending'."
+        )
+
+    phase.status = PhaseStatus.IN_PROGRESS
+    db.commit()
+
+    return phase
+
+
+def get_phase_statistics(db: Session, phase_id: int) -> dict:
+    """Get detailed statistics for a phase.
+
+    Args:
+        db: Database session
+        phase_id: ID of the phase
+
+    Returns:
+        Dictionary with phase statistics
+    """
+    phase = db.query(Phase).filter(Phase.id == phase_id).first()
+    if not phase:
+        return {"error": f"Phase {phase_id} not found"}
+
+    all_tasks = []
+    features_stats = []
+
+    for feature in phase.features:
+        feature_tasks = feature.tasks
+        all_tasks.extend(feature_tasks)
+
+        f_total = len(feature_tasks)
+        f_passing = sum(1 for t in feature_tasks if t.passes)
+
+        features_stats.append({
+            "id": feature.id,
+            "name": feature.name,
+            "total_tasks": f_total,
+            "passing_tasks": f_passing,
+            "percentage": round(f_passing / f_total * 100, 1) if f_total > 0 else 0,
+        })
+
+    total_tasks = len(all_tasks)
+    passing_tasks = sum(1 for t in all_tasks if t.passes)
+    in_progress_tasks = sum(1 for t in all_tasks if t.in_progress)
+    blocked_tasks = sum(1 for t in all_tasks if t.is_blocked)
+    reviewed_tasks = sum(1 for t in all_tasks if t.reviewed)
+
+    # Review scores
+    reviewed_with_score = [t for t in all_tasks if t.review_score is not None]
+    avg_score = (
+        sum(t.review_score for t in reviewed_with_score) / len(reviewed_with_score)
+        if reviewed_with_score
+        else None
+    )
+
+    return {
+        "phase_id": phase.id,
+        "phase_name": phase.name,
+        "status": phase.status,
+        "total_tasks": total_tasks,
+        "passing_tasks": passing_tasks,
+        "in_progress_tasks": in_progress_tasks,
+        "blocked_tasks": blocked_tasks,
+        "pending_tasks": total_tasks - passing_tasks - in_progress_tasks,
+        "reviewed_tasks": reviewed_tasks,
+        "percentage": round(passing_tasks / total_tasks * 100, 1) if total_tasks > 0 else 0,
+        "average_review_score": round(avg_score, 2) if avg_score else None,
+        "features": features_stats,
+    }
+
+
+def get_project_phases_overview(db: Session, project_name: str) -> dict:
+    """Get an overview of all phases for a project.
+
+    Args:
+        db: Database session
+        project_name: Name of the project
+
+    Returns:
+        Dictionary with project phases overview
+    """
+    phases = (
+        db.query(Phase)
+        .filter(Phase.project_name == project_name)
+        .order_by(Phase.order.asc())
+        .all()
+    )
+
+    phases_data = []
+    total_tasks = 0
+    total_passing = 0
+
+    for phase in phases:
+        stats = get_phase_statistics(db, phase.id)
+        phases_data.append({
+            "id": phase.id,
+            "name": phase.name,
+            "order": phase.order,
+            "status": phase.status,
+            "total_tasks": stats["total_tasks"],
+            "passing_tasks": stats["passing_tasks"],
+            "percentage": stats["percentage"],
+            "created_at": phase.created_at.isoformat() if phase.created_at else None,
+            "completed_at": phase.completed_at.isoformat() if phase.completed_at else None,
+        })
+        total_tasks += stats["total_tasks"]
+        total_passing += stats["passing_tasks"]
+
+    return {
+        "project_name": project_name,
+        "total_phases": len(phases),
+        "total_tasks": total_tasks,
+        "total_passing": total_passing,
+        "overall_percentage": round(total_passing / total_tasks * 100, 1) if total_tasks > 0 else 0,
+        "phases": phases_data,
+    }

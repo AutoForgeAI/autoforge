@@ -56,7 +56,7 @@ export interface ProjectPrompts {
   coding_prompt: string
 }
 
-// Feature types
+// Feature types (legacy - now also used as Task in v2)
 export interface Feature {
   id: number
   priority: number
@@ -66,6 +66,102 @@ export interface Feature {
   steps: string[]
   passes: boolean
   in_progress: boolean
+  // V2 dependency fields
+  depends_on?: number[]
+  blocks?: number[]
+  is_blocked?: boolean
+  blocked_reason?: string | null
+  // V2 review fields
+  reviewed?: boolean
+  review_notes?: string | null
+  review_score?: number | null
+  // V2 additional fields
+  feature_id?: number | null
+  estimated_complexity?: number
+  created_at?: string | null
+  completed_at?: string | null
+}
+
+// Task type alias for clarity in v2 code
+export type Task = Feature
+
+// Dependency graph types
+export interface DependencyNode {
+  id: number
+  name: string
+  category: string
+  status: 'pending' | 'in_progress' | 'blocked' | 'done'
+  priority: number
+  blocked_reason?: string | null
+}
+
+export interface DependencyEdge {
+  from: number
+  to: number
+}
+
+export interface DependencyGraph {
+  nodes: DependencyNode[]
+  edges: DependencyEdge[]
+}
+
+// Phase types (v2 hierarchical system)
+export type PhaseStatus = 'pending' | 'in_progress' | 'awaiting_approval' | 'completed' | 'rejected'
+
+export interface Phase {
+  id: number
+  project_name: string
+  name: string
+  description?: string | null
+  order: number
+  status: PhaseStatus
+  created_at?: string | null
+  completed_at?: string | null
+}
+
+export interface PhaseWithStats extends Phase {
+  total_tasks: number
+  passing_tasks: number
+  in_progress_tasks: number
+  blocked_tasks: number
+  reviewed_tasks: number
+  percentage: number
+  average_review_score?: number | null
+}
+
+export interface PhasesOverview {
+  project_name: string
+  total_phases: number
+  total_tasks: number
+  total_passing: number
+  overall_percentage: number
+  phases: PhaseWithStats[]
+}
+
+// Feature group (v2 - contains tasks)
+export interface FeatureGroup {
+  id: number
+  name: string
+  description?: string | null
+  phase_id: number
+  order: number
+  tasks: Feature[]
+  total_tasks: number
+  passing_tasks: number
+  percentage: number
+}
+
+// YOLO mode types
+export type YoloMode = 'standard' | 'yolo' | 'yolo_review' | 'yolo_parallel' | 'yolo_staged'
+
+export interface YoloModeInfo {
+  value: YoloMode
+  label: string
+  description: string
+  icon: string
+  skip_testing: boolean
+  has_review: boolean
+  parallel: boolean
 }
 
 export interface FeatureListResponse {
