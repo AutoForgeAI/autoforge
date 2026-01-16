@@ -14,16 +14,26 @@ if exist .env (
     )
 )
 
+REM Verify autocoder CLI exists before running
+where autocoder >nul 2>nul
+if %errorlevel% neq 0 (
+  echo.
+  echo [ERROR] autocoder command not found
+  echo.
+  echo Please install the package first:
+  echo   pip install -e '.[dev]'
+  echo.
+  pause
+  exit /b 1
+)
+
 REM Run autocoder CLI
 autocoder
-
-if %errorlevel% neq 0 (
-    echo.
-    echo [ERROR] autocoder command not found
-    echo.
-    echo Please install the package first:
-    echo   pip install -e '.[dev]'
-    echo.
-    pause
-    exit /b 1
+set EXIT_CODE=%errorlevel%
+if %EXIT_CODE% neq 0 (
+  echo.
+  echo [ERROR] autocoder exited with code %EXIT_CODE%
+  echo.
+  pause
+  exit /b %EXIT_CODE%
 )

@@ -84,6 +84,8 @@ Just run `autocoder` with no arguments:
 autocoder
 ```
 
+On Windows, you can also use `start.bat` / `start_ui.bat`. These scripts now first check the command exists (so a non-zero exit code isn’t misreported as “command not found”).
+
 ### New Project Setup Wizard (Web UI)
 
 When creating a new project in the Web UI, AutoCoder includes an optional **Project Setup** step that can create (or copy) a per-project `autocoder.yaml`, including the `worker:` defaults (feature worker provider, patch iterations/order). You can always edit this later in Settings → Project Config.
