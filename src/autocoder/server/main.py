@@ -282,7 +282,7 @@ npm -C ui run dev</pre>
 if __name__ == "__main__":
     import uvicorn
     uvicorn.run(
-        "server.main:app",
+        "autocoder.server.main:app",
         host="127.0.0.1",  # Localhost only for security
         port=API_PORT,
         reload=True,
