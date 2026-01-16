@@ -168,6 +168,9 @@ class SetupStatus(BaseModel):
     npm: bool
     codex_cli: bool = False
     gemini_cli: bool = False
+    env_auth: bool = False
+    custom_api: bool = False
+    glm_mode: bool = False
 
 
 # ============================================================================

@@ -123,6 +123,9 @@ export interface SetupStatus {
   npm: boolean
   codex_cli?: boolean
   gemini_cli?: boolean
+  env_auth?: boolean
+  custom_api?: boolean
+  glm_mode?: boolean
 }
 
 // Worker logs (parallel agents)

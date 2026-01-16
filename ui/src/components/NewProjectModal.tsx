@@ -25,12 +25,14 @@ interface NewProjectModalProps {
   isOpen: boolean
   onClose: () => void
   onProjectCreated: (projectName: string) => void
+  onStepChange?: (step: Step) => void
 }
 
 export function NewProjectModal({
   isOpen,
   onClose,
   onProjectCreated,
+  onStepChange,
 }: NewProjectModalProps) {
   const [step, setStep] = useState<Step>('name')
   const [projectName, setProjectName] = useState('')
@@ -55,6 +57,11 @@ export function NewProjectModal({
 
   if (!isOpen) return null
 
+  const setStepAndNotify = (next: Step) => {
+    setStep(next)
+    onStepChange?.(next)
+  }
+
   const handleNameSubmit = (e: React.FormEvent) => {
     e.preventDefault()
     const trimmed = projectName.trim()
@@ -70,18 +77,18 @@ export function NewProjectModal({
     }
 
     setError(null)
-    setStep('folder')
+    setStepAndNotify('folder')
   }
 
   const handleFolderSelect = (path: string) => {
     // Append project name to the selected path
     const fullPath = path.endsWith('/') ? `${path}${projectName.trim()}` : `${path}/${projectName.trim()}`
     setProjectPath(fullPath)
-    setStep('setup')
+    setStepAndNotify('setup')
   }
 
   const handleFolderCancel = () => {
-    setStep('name')
+    setStepAndNotify('name')
   }
 
   const buildAutocoderYamlTemplate = (): string => {
@@ -143,7 +150,7 @@ export function NewProjectModal({
           specMethod: 'manual',
         })
         await maybeInitProjectConfig(project.name)
-        setStep('complete')
+        setStepAndNotify('complete')
         setTimeout(() => {
           onProjectCreated(project.name)
           handleClose()
@@ -160,7 +167,7 @@ export function NewProjectModal({
           specMethod: 'claude',
         })
         await maybeInitProjectConfig(project.name)
-        setStep('chat')
+        setStepAndNotify('chat')
       } catch (err: unknown) {
         setError(err instanceof Error ? err.message : 'Failed to create project')
       }
@@ -175,7 +182,7 @@ export function NewProjectModal({
     try {
       await startAgent(projectName.trim(), { yolo_mode: yoloMode })
       // Success - navigate to project
-      setStep('complete')
+      setStepAndNotify('complete')
       setTimeout(() => {
         onProjectCreated(projectName.trim())
         handleClose()
@@ -194,7 +201,7 @@ export function NewProjectModal({
 
   const handleChatCancel = () => {
     // Go back to method selection but keep the project
-    setStep('method')
+    setStepAndNotify('method')
     setSpecMethod(null)
   }
 
@@ -205,7 +212,7 @@ export function NewProjectModal({
   }
 
   const handleClose = () => {
-    setStep('name')
+    setStepAndNotify('name')
     setProjectName('')
     setProjectPath(null)
     setSpecMethod(null)

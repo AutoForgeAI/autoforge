@@ -1,6 +1,6 @@
 import { useState, useEffect, useCallback } from 'react'
 import { useQueryClient } from '@tanstack/react-query'
-import { useProjects, useFeatures, useAgentStatus } from './hooks/useProjects'
+import { useProjects, useFeatures, useAgentStatus, useSetupStatus } from './hooks/useProjects'
 import { useProjectWebSocket } from './hooks/useWebSocket'
 import { useFeatureSound } from './hooks/useFeatureSound'
 import { useCelebration } from './hooks/useCelebration'
@@ -41,6 +41,7 @@ function App() {
   const [debugOpen, setDebugOpen] = useState(false)
   const [debugPanelHeight, setDebugPanelHeight] = useState(288) // Default height
   const [assistantOpen, setAssistantOpen] = useState(false)
+  const [isSpecCreating, setIsSpecCreating] = useState(false)
   const [logsTab, setLogsTab] = useState<'live' | 'workers' | 'devserver' | 'terminal'>('live')
   const [showSettings, setShowSettings] = useState(false)
   const [route, setRoute] = useState<'main' | 'settings'>(() =>
@@ -57,6 +58,7 @@ function App() {
   const { data: projects, isLoading: projectsLoading } = useProjects()
   const { data: features } = useFeatures(selectedProject)
   const { data: agentStatusData } = useAgentStatus(selectedProject)
+  const { data: setupStatus } = useSetupStatus()
   const wsState = useProjectWebSocket(selectedProject)
   const selectedProjectData = projects?.find((p) => p.name === selectedProject) ?? null
   const canExpandProject = Boolean(selectedProjectData?.has_spec)
@@ -122,7 +124,7 @@ function App() {
       }
 
       // A : Toggle assistant panel (when project selected)
-      if ((e.key === 'a' || e.key === 'A') && selectedProject) {
+      if ((e.key === 'a' || e.key === 'A') && selectedProject && !isSpecCreating) {
         e.preventDefault()
         setAssistantOpen(prev => !prev)
       }
@@ -269,11 +271,20 @@ function App() {
                   selectedProject={selectedProject}
                   onSelectProject={handleSelectProject}
                   isLoading={projectsLoading}
+                  onSpecCreatingChange={(v) => setIsSpecCreating(v)}
                 />
               )}
 
               {selectedProject && route === 'main' && (
                 <>
+                  {setupStatus?.glm_mode || setupStatus?.custom_api ? (
+                    <span
+                      className={`neo-badge ${setupStatus?.glm_mode ? 'bg-purple-600 text-white' : 'bg-indigo-600 text-white'}`}
+                      title={setupStatus?.glm_mode ? 'GLM / custom Anthropic-compatible endpoint enabled' : 'Custom API endpoint enabled'}
+                    >
+                      {setupStatus?.glm_mode ? 'GLM' : 'ALT API'}
+                    </span>
+                  ) : null}
                   <button
                     onClick={() => setShowAddFeature(true)}
                     className="neo-btn neo-btn-primary text-sm flex items-center gap-2"
@@ -508,7 +519,7 @@ function App() {
       )}
 
       {/* Assistant FAB and Panel */}
-      {selectedProject && (
+      {selectedProject && !isSpecCreating && (
         <>
           <AssistantFAB
             onClick={() => setAssistantOpen(!assistantOpen)}

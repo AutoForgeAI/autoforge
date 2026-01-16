@@ -11,7 +11,11 @@ export function SetupWizard({ onComplete }: SetupWizardProps) {
   const { data: health, error: healthError } = useHealthCheck()
 
   const isApiHealthy = health?.status === 'healthy' && !healthError
-  const isReady = isApiHealthy && setupStatus?.claude_cli && setupStatus?.credentials
+  const isReady =
+    isApiHealthy &&
+    Boolean(setupStatus?.credentials) &&
+    // If using env auth (custom endpoints / tokens), we don't require Claude CLI.
+    (Boolean(setupStatus?.claude_cli) || Boolean(setupStatus?.env_auth))
 
   // Memoize the completion check to avoid infinite loops
   const checkAndComplete = useCallback(() => {
@@ -54,16 +58,19 @@ export function SetupWizard({ onComplete }: SetupWizardProps) {
                 ? 'error'
                 : setupStatus?.claude_cli
                 ? 'success'
-                : 'error'
+                : setupStatus?.env_auth
+                  ? 'warning'
+                  : 'error'
             }
             helpLink="https://docs.anthropic.com/claude/claude-code"
             helpText="Install Claude Code"
+            optional={Boolean(setupStatus?.env_auth)}
           />
 
           {/* Credentials */}
           <SetupItem
             label="Anthropic Credentials"
-            description="API credentials are configured"
+            description={setupStatus?.env_auth ? 'Using environment auth (.env)' : 'CLI credentials are configured'}
             status={
               setupLoading
                 ? 'loading'

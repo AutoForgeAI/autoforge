@@ -8,6 +8,7 @@ Provides REST API, WebSocket, and static file serving.
 
 import mimetypes
 import shutil
+import os
 from contextlib import asynccontextmanager
 from pathlib import Path
 
@@ -185,9 +186,18 @@ async def setup_status():
     # Check for Claude CLI
     claude_cli = shutil.which("claude") is not None
 
-    # Check for credentials file
+    # Check for credentials file (Claude Code CLI auth)
     credentials_path = Path.home() / ".claude" / ".credentials.json"
-    credentials = credentials_path.exists()
+    has_credentials_file = credentials_path.exists()
+
+    # Check for env auth (custom endpoints or direct API auth)
+    env_auth = bool(os.environ.get("ANTHROPIC_AUTH_TOKEN") or os.environ.get("ANTHROPIC_API_KEY"))
+    base_url = (os.environ.get("ANTHROPIC_BASE_URL") or "").strip().lower()
+    custom_api = bool(base_url) or bool(os.environ.get("ANTHROPIC_AUTH_TOKEN"))
+    glm_mode = bool(custom_api and (("z.ai" in base_url) or ("glm" in base_url)))
+
+    # Overall auth readiness: either CLI credentials file or env auth
+    credentials = bool(has_credentials_file or env_auth)
 
     # Check for Node.js and npm
     node = shutil.which("node") is not None
@@ -202,6 +212,9 @@ async def setup_status():
         npm=npm,
         codex_cli=codex_cli,
         gemini_cli=gemini_cli,
+        env_auth=env_auth,
+        custom_api=custom_api,
+        glm_mode=glm_mode,
     )
 
 
