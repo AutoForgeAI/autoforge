@@ -19,7 +19,7 @@ from typing import Literal, Callable, Awaitable, Set
 
 import psutil
 
-from ..settings_store import load_advanced_settings
+from ..settings_store import apply_advanced_settings_env
 
 
 logger = logging.getLogger(__name__)
@@ -341,11 +341,10 @@ class AgentProcessManager:
                 mode_desc = "Standard mode"
 
         try:
-            # Apply server-side advanced settings to the spawned process env (unless user already set env vars).
             env = os.environ.copy()
-            advanced_env = load_advanced_settings().to_env()
-            for k, v in advanced_env.items():
-                env.setdefault(k, v)
+            # Apply persisted server-side advanced settings to the spawned process env.
+            # Persisted settings override env, but only when explicitly saved.
+            env = apply_advanced_settings_env(env)
 
             # Start subprocess with piped stdout/stderr
             # Use project_dir as cwd so Claude SDK sandbox allows access to project files

@@ -79,16 +79,57 @@ export function AdvancedSettingsContent() {
     if (data) setDraft(data)
   }, [data])
 
-  const validationError = useMemo(() => {
-    if (draft.api_port_range_end <= draft.api_port_range_start) return 'API port range end must be > start'
-    if (draft.web_port_range_end <= draft.web_port_range_start) return 'WEB port range end must be > start'
-    return null
+  const validation = useMemo(() => {
+    type FieldName = keyof AdvancedSettings
+    const fieldErrors: Partial<Record<FieldName, string>> = {}
+    const fieldWarnings: Partial<Record<FieldName, string>> = {}
+    const errors: string[] = []
+    const warnings: string[] = []
+
+    const addError = (field: FieldName, message: string) => {
+      errors.push(message)
+      fieldErrors[field] = message
+    }
+    const addWarning = (field: FieldName, message: string) => {
+      warnings.push(message)
+      fieldWarnings[field] = message
+    }
+
+    if (draft.api_port_range_end <= draft.api_port_range_start) addError('api_port_range_end', 'API port range end must be > start')
+    if (draft.web_port_range_end <= draft.web_port_range_start) addError('web_port_range_end', 'WEB port range end must be > start')
+
+    if (draft.review_enabled) {
+      if (draft.review_mode === 'off') addError('review_mode', 'Set review mode to advisory or gate')
+      if (draft.review_type === 'none') addError('review_type', 'Select a review type')
+      if (draft.review_type === 'command' && !draft.review_command.trim()) addError('review_command', 'Review command is required for command review')
+      if (draft.review_type === 'multi_cli' && !draft.review_agents.trim()) addError('review_agents', 'Review agents are required for multi_cli review')
+      if (draft.review_consensus.trim() && !['any', 'majority', 'all'].includes(draft.review_consensus.trim()))
+        addError('review_consensus', 'Consensus must be any, majority, or all')
+    } else {
+      if (draft.review_mode !== 'off') addWarning('review_mode', 'Review is disabled; mode is ignored')
+      if (draft.review_type !== 'none') addWarning('review_type', 'Review is disabled; type is ignored')
+    }
+
+    if (draft.codex_reasoning_effort.trim() && !['low', 'medium', 'high'].includes(draft.codex_reasoning_effort.trim()))
+      addError('codex_reasoning_effort', 'Codex reasoning must be low, medium, or high')
+
+    if (draft.worker_provider === 'multi_cli' && !draft.worker_patch_agents.trim())
+      addError('worker_patch_agents', 'Patch provider order is required for multi_cli')
+
+    if (draft.qa_subagent_enabled && draft.qa_subagent_provider === 'multi_cli' && !draft.qa_subagent_agents.trim())
+      addError('qa_subagent_agents', 'QA provider order is required for multi_cli')
+
+    if (draft.planner_enabled && !draft.planner_agents.trim()) addError('planner_agents', 'Planner agents are required when planner is enabled')
+
+    if (draft.allow_no_tests) addWarning('allow_no_tests', 'Allow No Tests can merge without verification (recommended only for YOLO)')
+
+    return { errors, warnings, fieldErrors, fieldWarnings }
   }, [draft])
 
-  const saveDisabled = isLoading || update.isPending || !!validationError
+  const saveDisabled = isLoading || update.isPending || validation.errors.length > 0
 
   const onSave = async () => {
-    if (validationError) return
+    if (validation.errors.length > 0) return
     await update.mutateAsync(draft)
   }
 
@@ -157,10 +198,24 @@ export function AdvancedSettingsContent() {
         </div>
       </div>
 
-      {validationError && (
+      {validation.errors.length > 0 && (
         <div className="neo-card p-4 bg-[var(--color-neo-danger)]/10 border-[var(--color-neo-danger)]">
           <div className="font-display font-bold text-[var(--color-neo-danger)]">Fix before saving</div>
-          <div className="text-sm">{validationError}</div>
+          <ul className="text-sm list-disc pl-5 mt-1">
+            {validation.errors.map((e) => (
+              <li key={e}>{e}</li>
+            ))}
+          </ul>
+        </div>
+      )}
+      {validation.errors.length === 0 && validation.warnings.length > 0 && (
+        <div className="neo-card p-4 bg-yellow-500/10 border-yellow-600">
+          <div className="font-display font-bold text-yellow-800">Warnings</div>
+          <ul className="text-sm list-disc pl-5 mt-1">
+            {validation.warnings.map((w) => (
+              <li key={w}>{w}</li>
+            ))}
+          </ul>
         </div>
       )}
 
@@ -187,20 +242,24 @@ export function AdvancedSettingsContent() {
                     <div className="text-xs font-mono text-[var(--color-neo-text-secondary)] mb-1">Mode</div>
                     <select
                       value={draft.review_mode}
-                      onChange={(e) => setDraft({ ...draft, review_mode: e.target.value })}
+                      onChange={(e) => setDraft({ ...draft, review_mode: e.target.value as AdvancedSettings['review_mode'] })}
                       className="neo-btn text-sm py-2 px-3 bg-white border-3 border-[var(--color-neo-border)] font-display w-full"
                     >
                       <option value="off">off</option>
                       <option value="advisory">advisory</option>
                       <option value="gate">gate</option>
                     </select>
+                    {validation.fieldErrors.review_mode && <div className="text-xs mt-1 text-[var(--color-neo-danger)]">{validation.fieldErrors.review_mode}</div>}
+                    {!validation.fieldErrors.review_mode && validation.fieldWarnings.review_mode && (
+                      <div className="text-xs mt-1 text-yellow-800">{validation.fieldWarnings.review_mode}</div>
+                    )}
                   </div>
 
                   <div className="neo-card p-3">
                     <div className="text-xs font-mono text-[var(--color-neo-text-secondary)] mb-1">Type</div>
                     <select
                       value={draft.review_type}
-                      onChange={(e) => setDraft({ ...draft, review_type: e.target.value })}
+                      onChange={(e) => setDraft({ ...draft, review_type: e.target.value as AdvancedSettings['review_type'] })}
                       className="neo-btn text-sm py-2 px-3 bg-white border-3 border-[var(--color-neo-border)] font-display w-full"
                     >
                       <option value="none">none</option>
@@ -208,21 +267,49 @@ export function AdvancedSettingsContent() {
                       <option value="claude">claude</option>
                       <option value="multi_cli">multi_cli</option>
                     </select>
+                    {validation.fieldErrors.review_type && <div className="text-xs mt-1 text-[var(--color-neo-danger)]">{validation.fieldErrors.review_type}</div>}
+                    {!validation.fieldErrors.review_type && validation.fieldWarnings.review_type && (
+                      <div className="text-xs mt-1 text-yellow-800">{validation.fieldWarnings.review_type}</div>
+                    )}
                   </div>
 
                   <Field label="Timeout (s)" value={draft.review_timeout_s} onChange={(v) => setDraft({ ...draft, review_timeout_s: clampInt(v, 0, 3600) })} />
                 </div>
 
                 <div className="grid grid-cols-1 md:grid-cols-2 gap-3 mt-3">
-                  <TextField label="Review command" value={draft.review_command} onChange={(v) => setDraft({ ...draft, review_command: v })} placeholder="e.g. npm test && npm run lint" />
+                  <TextField
+                    label="Review command"
+                    value={draft.review_command}
+                    onChange={(v) => setDraft({ ...draft, review_command: v })}
+                    placeholder="e.g. npm test && npm run lint"
+                    error={validation.fieldErrors.review_command}
+                  />
                   <TextField label="Review model" value={draft.review_model} onChange={(v) => setDraft({ ...draft, review_model: v })} placeholder="e.g. sonnet" />
-                  <TextField label="Review agents (csv)" value={draft.review_agents} onChange={(v) => setDraft({ ...draft, review_agents: v })} placeholder="e.g. codex,gemini" />
-                  <TextField label="Consensus" value={draft.review_consensus} onChange={(v) => setDraft({ ...draft, review_consensus: v })} placeholder="any|majority|all" />
+                  <TextField
+                    label="Review agents (csv)"
+                    value={draft.review_agents}
+                    onChange={(v) => setDraft({ ...draft, review_agents: v })}
+                    placeholder="e.g. codex,gemini"
+                    error={validation.fieldErrors.review_agents}
+                  />
+                  <TextField
+                    label="Consensus"
+                    value={draft.review_consensus}
+                    onChange={(v) => setDraft({ ...draft, review_consensus: v })}
+                    placeholder="any|majority|all"
+                    error={validation.fieldErrors.review_consensus}
+                  />
                 </div>
 
                 <div className="grid grid-cols-1 md:grid-cols-3 gap-3 mt-3">
                   <TextField label="Codex model" value={draft.codex_model} onChange={(v) => setDraft({ ...draft, codex_model: v })} placeholder="e.g. gpt-5.2" />
-                  <TextField label="Codex reasoning" value={draft.codex_reasoning_effort} onChange={(v) => setDraft({ ...draft, codex_reasoning_effort: v })} placeholder="low|medium|high" />
+                  <TextField
+                    label="Codex reasoning"
+                    value={draft.codex_reasoning_effort}
+                    onChange={(v) => setDraft({ ...draft, codex_reasoning_effort: v })}
+                    placeholder="low|medium|high"
+                    error={validation.fieldErrors.codex_reasoning_effort}
+                  />
                   <TextField label="Gemini model" value={draft.gemini_model} onChange={(v) => setDraft({ ...draft, gemini_model: v })} placeholder="e.g. gemini-3-pro-preview" />
                 </div>
 
@@ -252,7 +339,7 @@ export function AdvancedSettingsContent() {
                     <div className="font-display font-bold text-sm mb-2">Worker provider</div>
                     <select
                       value={draft.worker_provider}
-                      onChange={(e) => setDraft({ ...draft, worker_provider: e.target.value })}
+                      onChange={(e) => setDraft({ ...draft, worker_provider: e.target.value as AdvancedSettings['worker_provider'] })}
                       className="neo-btn text-sm py-2 px-3 bg-white border-3 border-[var(--color-neo-border)] font-display w-full"
                     >
                       <option value="claude">claude (Claude Agent SDK)</option>
@@ -276,6 +363,7 @@ export function AdvancedSettingsContent() {
                     value={draft.worker_patch_agents}
                     onChange={(v) => setDraft({ ...draft, worker_patch_agents: v })}
                     placeholder="e.g. codex,gemini"
+                    error={validation.fieldErrors.worker_patch_agents}
                   />
                 </div>
                 <div className="text-xs text-[var(--color-neo-text-secondary)] mt-2">
@@ -315,7 +403,7 @@ export function AdvancedSettingsContent() {
                       <div>
                         <select
                           value={draft.qa_subagent_provider}
-                          onChange={(e) => setDraft({ ...draft, qa_subagent_provider: e.target.value })}
+                          onChange={(e) => setDraft({ ...draft, qa_subagent_provider: e.target.value as AdvancedSettings['qa_subagent_provider'] })}
                           className="neo-btn text-sm py-2 px-3 bg-white border-3 border-[var(--color-neo-border)] font-display w-full"
                         >
                           <option value="claude">claude</option>
@@ -329,6 +417,7 @@ export function AdvancedSettingsContent() {
                         value={draft.qa_subagent_agents}
                         onChange={(v) => setDraft({ ...draft, qa_subagent_agents: v })}
                         placeholder="e.g. codex,gemini"
+                        error={validation.fieldErrors.qa_subagent_agents}
                       />
                     </div>
                     <div className="text-xs text-[var(--color-neo-text-secondary)] mt-2">
@@ -370,12 +459,13 @@ export function AdvancedSettingsContent() {
                     value={draft.planner_agents}
                     onChange={(v) => setDraft({ ...draft, planner_agents: v })}
                     placeholder="e.g. codex,gemini"
+                    error={validation.fieldErrors.planner_agents}
                   />
                   <div className="neo-card p-3">
                     <div className="font-display font-bold text-sm mb-2">Synthesizer</div>
                     <select
                       value={draft.planner_synthesizer}
-                      onChange={(e) => setDraft({ ...draft, planner_synthesizer: e.target.value })}
+                      onChange={(e) => setDraft({ ...draft, planner_synthesizer: e.target.value as AdvancedSettings['planner_synthesizer'] })}
                       className="neo-btn text-sm py-2 px-3 bg-white border-3 border-[var(--color-neo-border)] font-display w-full"
                     >
                       <option value="claude">claude</option>
@@ -472,9 +562,19 @@ export function AdvancedSettingsContent() {
               <div className="font-display font-bold uppercase mb-3">Port Pools</div>
               <div className="grid grid-cols-1 md:grid-cols-4 gap-3">
                 <Field label="API start" value={draft.api_port_range_start} onChange={(v) => setDraft({ ...draft, api_port_range_start: clampInt(v, 1024, 65535) })} />
-                <Field label="API end" value={draft.api_port_range_end} onChange={(v) => setDraft({ ...draft, api_port_range_end: clampInt(v, 1024, 65536) })} />
+                <Field
+                  label="API end"
+                  value={draft.api_port_range_end}
+                  onChange={(v) => setDraft({ ...draft, api_port_range_end: clampInt(v, 1024, 65536) })}
+                  error={validation.fieldErrors.api_port_range_end}
+                />
                 <Field label="WEB start" value={draft.web_port_range_start} onChange={(v) => setDraft({ ...draft, web_port_range_start: clampInt(v, 1024, 65535) })} />
-                <Field label="WEB end" value={draft.web_port_range_end} onChange={(v) => setDraft({ ...draft, web_port_range_end: clampInt(v, 1024, 65536) })} />
+                <Field
+                  label="WEB end"
+                  value={draft.web_port_range_end}
+                  onChange={(v) => setDraft({ ...draft, web_port_range_end: clampInt(v, 1024, 65536) })}
+                  error={validation.fieldErrors.web_port_range_end}
+                />
               </div>
 
               <div className="mt-3">
@@ -491,7 +591,21 @@ export function AdvancedSettingsContent() {
   )
 }
 
-function Field({ label, value, onChange }: { label: string; value: number; onChange: (v: number) => void }) {
+function Field({
+  label,
+  value,
+  onChange,
+  error,
+  warning,
+}: {
+  label: string
+  value: number
+  onChange: (v: number) => void
+  error?: string
+  warning?: string
+}) {
+  const border =
+    error ? 'border-[var(--color-neo-danger)]' : warning ? 'border-yellow-600' : 'border-[var(--color-neo-border)]'
   return (
     <div>
       <div className="text-xs font-mono text-[var(--color-neo-text-secondary)] mb-1">{label}</div>
@@ -499,8 +613,10 @@ function Field({ label, value, onChange }: { label: string; value: number; onCha
         type="number"
         value={value}
         onChange={(e) => onChange(Number(e.target.value))}
-        className="neo-btn text-sm py-2 px-3 bg-white border-3 border-[var(--color-neo-border)] font-mono w-full"
+        className={`neo-btn text-sm py-2 px-3 bg-white border-3 ${border} font-mono w-full`}
       />
+      {error && <div className="text-xs mt-1 text-[var(--color-neo-danger)]">{error}</div>}
+      {!error && warning && <div className="text-xs mt-1 text-yellow-800">{warning}</div>}
     </div>
   )
 }
@@ -510,12 +626,18 @@ function TextField({
   value,
   onChange,
   placeholder,
+  error,
+  warning,
 }: {
   label: string
   value: string
   onChange: (v: string) => void
   placeholder?: string
+  error?: string
+  warning?: string
 }) {
+  const border =
+    error ? 'border-[var(--color-neo-danger)]' : warning ? 'border-yellow-600' : 'border-[var(--color-neo-border)]'
   return (
     <div>
       <div className="text-xs font-mono text-[var(--color-neo-text-secondary)] mb-1">{label}</div>
@@ -524,8 +646,10 @@ function TextField({
         value={value}
         placeholder={placeholder}
         onChange={(e) => onChange(e.target.value)}
-        className="neo-btn text-sm py-2 px-3 bg-white border-3 border-[var(--color-neo-border)] font-mono w-full"
+        className={`neo-btn text-sm py-2 px-3 bg-white border-3 ${border} font-mono w-full`}
       />
+      {error && <div className="text-xs mt-1 text-[var(--color-neo-danger)]">{error}</div>}
+      {!error && warning && <div className="text-xs mt-1 text-yellow-800">{warning}</div>}
     </div>
   )
 }

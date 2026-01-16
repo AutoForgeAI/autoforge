@@ -133,6 +133,7 @@ autocoder-ui
 - Quick run settings: **Settings** button (or press `S`).
 - Full settings hub: open `http://127.0.0.1:8888/#/settings` (Run / Models / Advanced).
 - Advanced settings (Run/Advanced/Diagnostics defaults) are stored globally in `~/.autocoder/settings.db` (override path with `AUTOCODER_SETTINGS_DB_PATH`). Legacy `~/.autocoder/ui_settings.json` is read once and auto-migrated.
+- When the UI starts a run, **saved** advanced settings override `.env`/shell env vars. If you’ve never saved Advanced Settings, the UI does not override env vars.
 - Provider badge: when a project is selected, the header shows **ALT API** (custom endpoint) or **GLM** (z.ai/GLM-style endpoint) if configured via `.env`.
 - Diagnostics: open `http://127.0.0.1:8888/#/settings/diagnostics` (system status, configurable fixtures dir, deterministic E2E fixtures, recent run logs).
 

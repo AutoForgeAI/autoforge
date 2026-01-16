@@ -154,32 +154,60 @@ class AdvancedSettings:
         }
 
 
-def load_advanced_settings() -> AdvancedSettings:
-    # Primary: global settings DB
+def load_persisted_advanced_settings() -> AdvancedSettings | None:
+    """
+    Load advanced settings only if they were explicitly persisted.
+
+    This is used for applying settings to subprocess env vars: we do not want to
+    override a user's existing environment with defaults when no settings were saved.
+    """
     try:
         data = get_global_setting_json(_ADVANCED_SETTINGS_KEY)
         if isinstance(data, dict) and data:
             try:
                 return AdvancedSettings(**data)
             except Exception:
-                return AdvancedSettings()
+                return None
     except Exception:
-        # If the DB is unavailable/corrupt, fall back to legacy/defaults.
+        # DB unavailable/corrupt -> fall back to legacy file if present.
         pass
 
-    # Migration: legacy JSON store (read once; do not write going forward)
     legacy_path = _settings_path()
     if legacy_path.exists():
         try:
             legacy_data = json.loads(legacy_path.read_text(encoding="utf-8"))
             settings = AdvancedSettings(**legacy_data)
-            set_global_setting_json(_ADVANCED_SETTINGS_KEY, asdict(settings))
+            try:
+                set_global_setting_json(_ADVANCED_SETTINGS_KEY, asdict(settings))
+            except Exception:
+                pass
             return settings
         except Exception:
-            # Corrupt or partial settings -> fall back to defaults.
-            return AdvancedSettings()
+            return None
 
-    return AdvancedSettings()
+    return None
+
+
+def apply_advanced_settings_env(env: dict[str, str]) -> dict[str, str]:
+    """
+    Apply persisted advanced settings as env var overrides.
+
+    Precedence: **persisted settings override env** (for the UI-launched subprocess),
+    but only when settings were actually saved. Empty string values do not override.
+    """
+    settings = load_persisted_advanced_settings()
+    if not settings:
+        return env
+    for k, v in settings.to_env().items():
+        if v == "":
+            continue
+        env[k] = v
+    return env
+
+
+def load_advanced_settings() -> AdvancedSettings:
+    persisted = load_persisted_advanced_settings()
+    return persisted if persisted else AdvancedSettings()
 
 
 def save_advanced_settings(settings: AdvancedSettings) -> None:
