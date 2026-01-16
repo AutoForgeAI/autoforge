@@ -14,6 +14,10 @@ import json
 from dataclasses import dataclass, asdict
 from pathlib import Path
 
+from autocoder.core.global_settings_db import get_global_setting_json, set_global_setting_json
+
+
+_ADVANCED_SETTINGS_KEY = "advanced_settings_v1"
 
 def _config_dir() -> Path:
     d = Path.home() / ".autocoder"
@@ -151,18 +155,39 @@ class AdvancedSettings:
 
 
 def load_advanced_settings() -> AdvancedSettings:
-    path = _settings_path()
-    if not path.exists():
-        return AdvancedSettings()
+    # Primary: global settings DB
     try:
-        data = json.loads(path.read_text(encoding="utf-8"))
-        return AdvancedSettings(**data)
+        data = get_global_setting_json(_ADVANCED_SETTINGS_KEY)
+        if isinstance(data, dict) and data:
+            try:
+                return AdvancedSettings(**data)
+            except Exception:
+                return AdvancedSettings()
     except Exception:
-        # Corrupt or partial settings -> fall back to defaults.
-        return AdvancedSettings()
+        # If the DB is unavailable/corrupt, fall back to legacy/defaults.
+        pass
+
+    # Migration: legacy JSON store (read once; do not write going forward)
+    legacy_path = _settings_path()
+    if legacy_path.exists():
+        try:
+            legacy_data = json.loads(legacy_path.read_text(encoding="utf-8"))
+            settings = AdvancedSettings(**legacy_data)
+            set_global_setting_json(_ADVANCED_SETTINGS_KEY, asdict(settings))
+            return settings
+        except Exception:
+            # Corrupt or partial settings -> fall back to defaults.
+            return AdvancedSettings()
+
+    return AdvancedSettings()
 
 
 def save_advanced_settings(settings: AdvancedSettings) -> None:
-    path = _settings_path()
-    path.write_text(json.dumps(asdict(settings), indent=2), encoding="utf-8")
+    try:
+        set_global_setting_json(_ADVANCED_SETTINGS_KEY, asdict(settings))
+        return
+    except Exception:
+        # Last-resort fallback: keep the UI usable even if the global DB is unavailable.
+        path = _settings_path()
+        path.write_text(json.dumps(asdict(settings), indent=2), encoding="utf-8")
 
