@@ -7,6 +7,9 @@ generations/
 !.claude/commands/*.md
 .claude/settings.local.json
 
+# Windows can create stray NUL files in some shells/editors
+nul
+
 # Log files
 logs/
 *.log

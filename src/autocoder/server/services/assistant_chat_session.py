@@ -29,6 +29,17 @@ from .assistant_database import (
 
 logger = logging.getLogger(__name__)
 
+# Environment variables that should be passed through to the Claude SDK session.
+API_ENV_VARS = [
+    "ANTHROPIC_BASE_URL",
+    "ANTHROPIC_AUTH_TOKEN",
+    "ANTHROPIC_API_KEY",
+    "API_TIMEOUT_MS",
+    "ANTHROPIC_DEFAULT_SONNET_MODEL",
+    "ANTHROPIC_DEFAULT_OPUS_MODEL",
+    "ANTHROPIC_DEFAULT_HAIKU_MODEL",
+]
+
 # Root directory of the project
 # Add the repository's `src/` to PYTHONPATH for MCP subprocesses.
 # File is: src/autocoder/server/services/assistant_chat_session.py
@@ -317,13 +328,16 @@ class AssistantChatSession:
         system_prompt = get_system_prompt(self.project_name, self.project_dir)
 
         # Use system Claude CLI
-        system_cli = shutil.which("claude")
+        cli_command = (os.environ.get("AUTOCODER_CLI_COMMAND") or os.environ.get("CLI_COMMAND") or "claude").strip()
+        system_cli = shutil.which(cli_command)
+        sdk_env = {var: os.getenv(var) for var in API_ENV_VARS if os.getenv(var)}
 
         try:
             self.client = ClaudeSDKClient(
                 options=ClaudeAgentOptions(
                     model="claude-opus-4-5-20251101",
                     cli_path=system_cli,
+                    env=sdk_env if sdk_env else None,
                     system_prompt=system_prompt,
                     allowed_tools=[*ASSISTANT_BUILTIN_TOOLS, *ASSISTANT_FEATURE_MCP_TOOLS, *ASSISTANT_PLAYWRIGHT_TOOLS],
                     mcp_servers=mcp_servers,

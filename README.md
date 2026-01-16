@@ -57,6 +57,8 @@ You'll need one of these:
 - **Anthropic API Key** - Set `ANTHROPIC_API_KEY` (pay-per-use)
 - **Anthropic-compatible endpoint / proxy** - Set `ANTHROPIC_AUTH_TOKEN` + `ANTHROPIC_BASE_URL` (the Web UI shows an **ALT API** badge; it shows **GLM** for common z.ai/GLM endpoints)
 
+If you installed a Claude-compatible CLI under a different name/path, set `AUTOCODER_CLI_COMMAND` (legacy: `CLI_COMMAND`).
+
 ---
 
 ## Quick Start (The Easy Way)
@@ -130,6 +132,8 @@ autocoder-ui
 - Full settings hub: open `http://127.0.0.1:8888/#/settings` (Run / Models / Advanced).
 - Provider badge: when a project is selected, the header shows **ALT API** (custom endpoint) or **GLM** (z.ai/GLM-style endpoint) if configured via `.env`.
 - Diagnostics: open `http://127.0.0.1:8888/#/settings/diagnostics` (system status, configurable fixtures dir, deterministic E2E fixtures, recent run logs).
+
+If the agent fails due to missing authentication, the UI log stream will emit a short fix-it hint (e.g. `claude login` or env var guidance).
 
 ### Parallel-Safe Feature Claiming
 

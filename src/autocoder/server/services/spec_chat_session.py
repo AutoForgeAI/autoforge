@@ -27,6 +27,7 @@ logger = logging.getLogger(__name__)
 API_ENV_VARS = [
     "ANTHROPIC_BASE_URL",
     "ANTHROPIC_AUTH_TOKEN",
+    "ANTHROPIC_API_KEY",
     "API_TIMEOUT_MS",
     "ANTHROPIC_DEFAULT_SONNET_MODEL",
     "ANTHROPIC_DEFAULT_OPUS_MODEL",
@@ -197,7 +198,8 @@ class SpecChatSession:
         # Create Claude SDK client with limited tools for spec creation
         # Use Opus for best quality spec generation
         # Use system CLI to avoid bundled Bun runtime crash (exit code 3) on Windows
-        system_cli = shutil.which("claude")
+        cli_command = (os.environ.get("AUTOCODER_CLI_COMMAND") or os.environ.get("CLI_COMMAND") or "claude").strip()
+        system_cli = shutil.which(cli_command)
         try:
             self.client = ClaudeSDKClient(
                 options=ClaudeAgentOptions(

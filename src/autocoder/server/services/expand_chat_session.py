@@ -36,6 +36,7 @@ logger = logging.getLogger(__name__)
 API_ENV_VARS = [
     "ANTHROPIC_BASE_URL",
     "ANTHROPIC_AUTH_TOKEN",
+    "ANTHROPIC_API_KEY",
     "API_TIMEOUT_MS",
     "ANTHROPIC_DEFAULT_SONNET_MODEL",
     "ANTHROPIC_DEFAULT_OPUS_MODEL",
@@ -227,9 +228,10 @@ class ExpandChatSession:
         except UnicodeDecodeError:
             skill_content = skill_path.read_text(encoding="utf-8", errors="replace")
 
-        system_cli = shutil.which("claude")
+        cli_command = (os.environ.get("AUTOCODER_CLI_COMMAND") or os.environ.get("CLI_COMMAND") or "claude").strip()
+        system_cli = shutil.which(cli_command)
         if not system_cli:
-            yield {"type": "error", "content": "Claude CLI not found. Install: npm install -g @anthropic-ai/claude-code"}
+            yield {"type": "error", "content": f"Claude CLI not found ('{cli_command}'). Install: npm install -g @anthropic-ai/claude-code"}
             return
 
         # Read-only permission set for expansion.

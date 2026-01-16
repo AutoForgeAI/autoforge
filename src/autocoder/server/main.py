@@ -183,11 +183,16 @@ async def health_check():
 @app.get("/api/setup/status", response_model=SetupStatus)
 async def setup_status():
     """Check system setup status."""
-    # Check for Claude CLI
-    claude_cli = shutil.which("claude") is not None
+    # Check for Claude CLI (allow override; defaults to "claude")
+    cli_command = (os.environ.get("AUTOCODER_CLI_COMMAND") or os.environ.get("CLI_COMMAND") or "claude").strip()
+    claude_cli = shutil.which(cli_command) is not None
 
-    # Check for credentials file (Claude Code CLI auth)
-    credentials_path = Path.home() / ".claude" / ".credentials.json"
+    # Claude Code CLI auth storage varies by version/platform:
+    # - older: ~/.claude/.credentials.json
+    # - newer: OS keychain + ~/.claude state directory
+    claude_dir = Path.home() / ".claude"
+    has_claude_dir = claude_dir.exists()
+    credentials_path = claude_dir / ".credentials.json"
     has_credentials_file = credentials_path.exists()
 
     # Check for env auth (custom endpoints or direct API auth)
@@ -196,8 +201,8 @@ async def setup_status():
     custom_api = bool(base_url) or bool(os.environ.get("ANTHROPIC_AUTH_TOKEN"))
     glm_mode = bool(custom_api and (("z.ai" in base_url) or ("glm" in base_url)))
 
-    # Overall auth readiness: either CLI credentials file or env auth
-    credentials = bool(has_credentials_file or env_auth)
+    # Overall auth readiness: either env auth, or a plausibly authenticated CLI.
+    credentials = bool(env_auth or (claude_cli and (has_credentials_file or has_claude_dir)))
 
     # Check for Node.js and npm
     node = shutil.which("node") is not None
