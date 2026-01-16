@@ -155,6 +155,13 @@ Optional multi-model workflows (Codex/Gemini via local CLIs):
 - Review in Gatekeeper: `docs/multi_model_review.md`
 - Spec/plan drafting: `docs/multi_model_generate.md`
 
+### Onboarding Existing Projects (GSD → Spec)
+
+If you have a Claude/GSD-style codebase mapping under `./.planning/codebase/*.md`, the Web UI can convert it into an AutoCoder spec:
+
+- Settings → Generate → **GSD → app_spec.txt**
+- Requires: `STACK.md`, `ARCHITECTURE.md`, `STRUCTURE.md`
+
 ### Agent Guardrails
 
 To prevent runaway tool loops, the SDK session enforces basic guardrails:

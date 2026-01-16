@@ -10,6 +10,7 @@ import { Settings as SettingsIcon, SlidersHorizontal, Brain, Sparkles, FileText,
 import { ModelSettingsContent } from '../components/ModelSettingsContent'
 import { AdvancedSettingsContent } from '../components/AdvancedSettingsContent'
 import { MultiModelGeneratePanel } from '../components/MultiModelGeneratePanel'
+import { GsdToSpecPanel } from '../components/GsdToSpecPanel'
 import { ProjectConfigEditor } from '../components/ProjectConfigEditor'
 import { DiagnosticsContent } from '../components/DiagnosticsContent'
 import type { RunSettings } from '../components/SettingsModal'
@@ -178,7 +179,10 @@ export function SettingsPage({
           }
         />
       ) : tab === 'generate' ? (
-        <MultiModelGeneratePanel projectName={projectName} />
+        <div className="space-y-6">
+          <GsdToSpecPanel projectName={projectName} />
+          <MultiModelGeneratePanel projectName={projectName} />
+        </div>
       ) : tab === 'config' ? (
         <ProjectConfigEditor projectName={projectName} />
       ) : tab === 'diagnostics' ? (

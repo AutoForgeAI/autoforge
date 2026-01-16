@@ -438,6 +438,32 @@ export async function generateArtifact(
   })
 }
 
+export interface GsdStatusResponse {
+  exists: boolean
+  codebase_dir: string
+  present: string[]
+  missing: string[]
+}
+
+export interface GsdToSpecRequest {
+  agents?: string
+  synthesizer?: '' | 'none' | 'claude' | 'codex' | 'gemini'
+  no_synthesize?: boolean
+  timeout_s?: number
+  out?: string
+}
+
+export async function getGsdStatus(projectName: string): Promise<GsdStatusResponse> {
+  return fetchJSON(`/generate/${encodeURIComponent(projectName)}/gsd/status`)
+}
+
+export async function gsdToSpec(projectName: string, req: GsdToSpecRequest): Promise<GenerateArtifactResponse> {
+  return fetchJSON(`/generate/${encodeURIComponent(projectName)}/gsd/to-spec`, {
+    method: 'POST',
+    body: JSON.stringify(req),
+  })
+}
+
 // ============================================================================
 // Project Config (autocoder.yaml)
 // ============================================================================
