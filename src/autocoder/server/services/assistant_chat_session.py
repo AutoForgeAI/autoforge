@@ -333,7 +333,7 @@ class AssistantChatSession:
         system_cli = shutil.which(cli_command)
         sdk_env = {var: os.getenv(var) for var in API_ENV_VARS if os.getenv(var)}
 
-        model_settings = ModelSettings.load()
+        model_settings = ModelSettings.load_for_project(self.project_dir)
         assistant_family = model_settings.assistant_model or (
             model_settings.available_models[0]
             if model_settings.available_models

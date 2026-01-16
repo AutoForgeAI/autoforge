@@ -22,7 +22,7 @@ interface ParallelAgentsControlProps {
 export function ParallelAgentsControl({ projectName, onClose }: ParallelAgentsControlProps) {
   const [parallelCount, setParallelCount] = useState(3)
 
-  const { data: settings } = useModelSettings()
+  const { data: settings } = useModelSettings(projectName)
   const { data: agentStatus, isLoading } = useAgentStatus(projectName)
   const startAgent = useStartAgent(projectName)
   const stopAgent = useStopAgent(projectName)
@@ -154,4 +154,3 @@ export function ParallelAgentsControl({ projectName, onClose }: ParallelAgentsCo
     </div>
   )
 }
-

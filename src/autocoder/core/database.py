@@ -292,6 +292,16 @@ class Database:
                 )
             """)
 
+            # Project-scoped settings (key/value JSON)
+            # Stored inside the project's agent_system.db so settings travel with the project.
+            cursor.execute("""
+                CREATE TABLE IF NOT EXISTS project_settings (
+                    key TEXT PRIMARY KEY,
+                    value_json TEXT NOT NULL,
+                    updated_at TIMESTAMP DEFAULT CURRENT_TIMESTAMP
+                )
+            """)
+
             # Indexes for performance
             cursor.execute("""
                 CREATE INDEX IF NOT EXISTS idx_features_status
@@ -332,6 +342,44 @@ class Database:
         except Exception:
             v = 0
         return v if v > 0 else 10
+
+    def get_project_setting(self, key: str) -> dict[str, Any] | None:
+        """Get a JSON setting value by key from the project's database."""
+        k = (key or "").strip()
+        if not k:
+            return None
+        with self.get_connection() as conn:
+            cur = conn.cursor()
+            cur.execute("SELECT value_json FROM project_settings WHERE key = ?", (k,))
+            row = cur.fetchone()
+            if not row:
+                return None
+            raw = row[0]
+        try:
+            value = json.loads(raw) if raw else None
+        except Exception:
+            return None
+        return value if isinstance(value, dict) else {"value": value}
+
+    def set_project_setting(self, key: str, value: dict[str, Any]) -> None:
+        """Set a JSON setting value by key in the project's database."""
+        k = (key or "").strip()
+        if not k:
+            raise ValueError("key is required")
+        raw = json.dumps(value, ensure_ascii=False)
+        with self.get_connection() as conn:
+            cur = conn.cursor()
+            cur.execute(
+                """
+                INSERT INTO project_settings (key, value_json, updated_at)
+                VALUES (?, ?, CURRENT_TIMESTAMP)
+                ON CONFLICT(key) DO UPDATE SET
+                    value_json = excluded.value_json,
+                    updated_at = CURRENT_TIMESTAMP
+                """,
+                (k, raw),
+            )
+            conn.commit()
 
     def _max_same_error_streak(self) -> int:
         raw = os.environ.get("AUTOCODER_FEATURE_MAX_SAME_ERROR_STREAK")

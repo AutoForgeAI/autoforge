@@ -11,7 +11,6 @@ Endpoints:
 - GET /model-settings/presets - List available presets
 """
 
-import os
 from pathlib import Path
 from typing import List, Literal
 
@@ -19,6 +18,7 @@ from fastapi import APIRouter, HTTPException
 from pydantic import BaseModel, Field
 
 from autocoder.core.model_settings import ModelSettings, get_preset_info, parse_models_arg
+from autocoder.agent.registry import get_project_path
 
 router = APIRouter(prefix="/api/model-settings", tags=["model-settings"])
 
@@ -62,26 +62,43 @@ class PresetsResponse(BaseModel):
     presets: dict[str, PresetInfo]
 
 
-def get_global_settings() -> ModelSettings:
-    """Get or create global model settings"""
+def _resolve_project_dir(project: str | None) -> Path | None:
+    if not project:
+        return None
+    name = project.strip()
+    if not name:
+        return None
+    p = get_project_path(name)
+    return p.resolve() if p else None
+
+
+def _load_settings(project: str | None) -> ModelSettings:
+    project_dir = _resolve_project_dir(project)
+    if project_dir:
+        return ModelSettings.load_for_project(project_dir)
+    # Back-compat: if no project is provided, use global file defaults.
     settings_file = Path.home() / ".autocoder" / "model_settings.json"
     return ModelSettings.load(settings_file) if settings_file.exists() else ModelSettings()
 
 
-def save_global_settings(settings: ModelSettings):
-    """Save global model settings"""
+def _save_settings(project: str | None, settings: ModelSettings) -> None:
+    project_dir = _resolve_project_dir(project)
+    if project_dir:
+        settings.save_for_project(project_dir)
+        return
+    # Back-compat global file write.
     settings_file = Path.home() / ".autocoder" / "model_settings.json"
     settings.save(settings_file)
 
 
 @router.get("", response_model=ModelSettingsResponse)
-async def get_model_settings():
+async def get_model_settings(project: str | None = None):
     """Get current model settings
 
     Returns the current model selection configuration including preset,
     available models, and category mappings.
     """
-    settings = get_global_settings()
+    settings = _load_settings(project)
     return ModelSettingsResponse(
         preset=settings.preset,
         available_models=settings.available_models,
@@ -93,13 +110,13 @@ async def get_model_settings():
 
 
 @router.put("")
-async def update_model_settings(request: UpdateSettingsRequest):
+async def update_model_settings(request: UpdateSettingsRequest, project: str | None = None):
     """Update model settings
 
     Update the model configuration. Can specify preset, available models,
     or auto-detect setting. Changes are persisted to disk.
     """
-    settings = get_global_settings()
+    settings = _load_settings(project)
 
     # Update available models if provided
     if request.available_models is not None:
@@ -123,7 +140,7 @@ async def update_model_settings(request: UpdateSettingsRequest):
         settings.assistant_model = request.assistant_model
 
     # Save settings
-    save_global_settings(settings)
+    _save_settings(project, settings)
 
     return {
         "success": True,
@@ -139,17 +156,17 @@ async def update_model_settings(request: UpdateSettingsRequest):
 
 
 @router.post("/preset")
-async def apply_preset(request: ApplyPresetRequest):
+async def apply_preset(request: ApplyPresetRequest, project: str | None = None):
     """Apply a preset configuration
 
     Applies a predefined preset configuration (quality, balanced, economy, cheap, experimental).
     This resets all settings to the preset's defaults.
     """
-    settings = get_global_settings()
+    settings = _load_settings(project)
 
     try:
         settings.set_preset(request.preset)
-        save_global_settings(settings)
+        _save_settings(project, settings)
     except ValueError as e:
         raise HTTPException(status_code=400, detail=str(e))
 

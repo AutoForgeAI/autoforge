@@ -145,6 +145,8 @@ Model selection is configured in Settings → Models:
 - The Web UI **Assistant Chat Model** can be overridden separately (Auto/Opus/Sonnet/Haiku).
 - Full provider model IDs can be overridden via `.env` with `ANTHROPIC_DEFAULT_{OPUS,SONNET,HAIKU}_MODEL`.
 
+Model settings are stored per-project in that project’s `agent_system.db` (so they travel with the project and don’t require editing `.env` for non-secret config).
+
 ### Parallel-Safe Feature Claiming
 
 When running multiple agents (or multiple Claude Agent SDK sessions), feature selection must be atomic to avoid two sessions picking the same work item.

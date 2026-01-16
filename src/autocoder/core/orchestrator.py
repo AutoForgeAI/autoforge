@@ -356,7 +356,7 @@ class Orchestrator:
         # Direct imports (system logic)
         self.kb = get_knowledge_base()
         # Load persisted model settings (e.g., from Web UI), then optionally override with preset.
-        self.model_settings = ModelSettings.load()
+        self.model_settings = ModelSettings.load_for_project(self.project_dir)
         self.worktree_manager = WorktreeManager(str(self.project_dir))
         self.database = get_database(str(self.project_dir))
         self.gatekeeper = Gatekeeper(str(self.project_dir))

@@ -34,6 +34,8 @@ from enum import Enum
 from pathlib import Path
 from typing import Literal, Optional
 
+from .database import get_database
+
 
 class ModelPreset(str, Enum):
     """Predefined model configurations"""
@@ -278,6 +280,29 @@ class ModelSettings:
 
         # Return default settings if file doesn't exist
         return cls()
+
+    @classmethod
+    def load_for_project(cls, project_dir: Path) -> "ModelSettings":
+        """
+        Load model settings from the project's agent_system.db.
+
+        Falls back to the global ~/.autocoder/model_settings.json if the project has no stored settings.
+        """
+        project_dir = Path(project_dir).resolve()
+        db = get_database(str(project_dir))
+        stored = db.get_project_setting("model_settings")
+        if stored and isinstance(stored, dict):
+            try:
+                return cls(**stored)
+            except Exception:
+                pass
+        return cls.load()
+
+    def save_for_project(self, project_dir: Path) -> None:
+        """Persist model settings into the project's agent_system.db."""
+        project_dir = Path(project_dir).resolve()
+        db = get_database(str(project_dir))
+        db.set_project_setting("model_settings", asdict(self))
 
     def to_dict(self) -> dict:
         """Convert to dictionary for API responses"""

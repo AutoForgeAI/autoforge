@@ -194,7 +194,7 @@ class SpecChatSession:
 
         # Build environment overrides for API configuration (custom endpoints/model overrides).
         sdk_env = {var: os.getenv(var) for var in API_ENV_VARS if os.getenv(var)}
-        model_settings = ModelSettings.load()
+        model_settings = ModelSettings.load_for_project(self.project_dir)
         best_family = model_settings.available_models[0] if model_settings.available_models else model_settings.fallback_model
         model = get_full_model_id(best_family)
 

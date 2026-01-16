@@ -171,6 +171,7 @@ export function SettingsPage({
         </div>
       ) : tab === 'models' ? (
         <ModelSettingsContent
+          projectName={projectName}
           onPresetApplied={(presetId) =>
             onChangeRunSettings({
               ...runSettings,

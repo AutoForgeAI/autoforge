@@ -10,8 +10,14 @@ import { useEffect, useMemo, useState } from 'react'
 import { Brain } from 'lucide-react'
 import { useApplyPreset, useModelSettings, usePresets, useUpdateModelSettings } from '../hooks/useModelSettings'
 
-export function ModelSettingsContent({ onPresetApplied }: { onPresetApplied?: (presetId: string) => void }) {
-  const { data: settings, isLoading } = useModelSettings()
+export function ModelSettingsContent({
+  projectName,
+  onPresetApplied,
+}: {
+  projectName?: string | null
+  onPresetApplied?: (presetId: string) => void
+}) {
+  const { data: settings, isLoading } = useModelSettings(projectName)
   const { data: presets } = usePresets()
   const applyPreset = useApplyPreset()
   const updateSettings = useUpdateModelSettings()
@@ -48,7 +54,7 @@ export function ModelSettingsContent({ onPresetApplied }: { onPresetApplied?: (p
 
   const handlePresetChange = (preset: string) => {
     setSelectedPreset(preset)
-    applyPreset.mutate(preset)
+    applyPreset.mutate({ projectName, preset })
     onPresetApplied?.(preset)
   }
 
@@ -63,7 +69,7 @@ export function ModelSettingsContent({ onPresetApplied }: { onPresetApplied?: (p
   const applyCustomModels = async () => {
     if (selectedCustomModels.length === 0) return
     setMode('custom')
-    await updateSettings.mutateAsync({ available_models: selectedCustomModels })
+    await updateSettings.mutateAsync({ projectName, settings: { available_models: selectedCustomModels } })
     // The backend will set preset to "custom" unless it matches a known preset.
     onPresetApplied?.('custom')
   }
@@ -71,12 +77,12 @@ export function ModelSettingsContent({ onPresetApplied }: { onPresetApplied?: (p
   const handleAutoDetectToggle = () => {
     const newValue = !autoDetect
     setAutoDetect(newValue)
-    updateSettings.mutate({ auto_detect_simple: newValue })
+    updateSettings.mutate({ projectName, settings: { auto_detect_simple: newValue } })
   }
 
   const applyAssistantModel = async (next: 'auto' | 'opus' | 'sonnet' | 'haiku') => {
     setAssistantModel(next)
-    await updateSettings.mutateAsync({ assistant_model: next === 'auto' ? null : next })
+    await updateSettings.mutateAsync({ projectName, settings: { assistant_model: next === 'auto' ? null : next } })
   }
 
   if (isLoading) {

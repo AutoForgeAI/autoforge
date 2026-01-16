@@ -31,11 +31,12 @@ export interface PresetsResponse {
 const API_BASE = '/api';
 
 // Get current model settings
-export function useModelSettings() {
+export function useModelSettings(projectName?: string | null) {
   return useQuery({
-    queryKey: ['model-settings'],
+    queryKey: ['model-settings', projectName ?? null],
     queryFn: async () => {
-      const response = await fetch(`${API_BASE}/model-settings`);
+      const qp = projectName ? `?project=${encodeURIComponent(projectName)}` : ''
+      const response = await fetch(`${API_BASE}/model-settings${qp}`);
       if (!response.ok) {
         throw new Error('Failed to fetch model settings');
       }
@@ -49,8 +50,9 @@ export function useUpdateModelSettings() {
   const queryClient = useQueryClient();
 
   return useMutation({
-    mutationFn: async (settings: Partial<ModelSettings>) => {
-      const response = await fetch(`${API_BASE}/model-settings`, {
+    mutationFn: async ({ projectName, settings }: { projectName?: string | null; settings: Partial<ModelSettings> }) => {
+      const qp = projectName ? `?project=${encodeURIComponent(projectName)}` : ''
+      const response = await fetch(`${API_BASE}/model-settings${qp}`, {
         method: 'PUT',
         headers: { 'Content-Type': 'application/json' },
         body: JSON.stringify(settings),
@@ -73,8 +75,9 @@ export function useApplyPreset() {
   const queryClient = useQueryClient();
 
   return useMutation({
-    mutationFn: async (preset: string) => {
-      const response = await fetch(`${API_BASE}/model-settings/preset`, {
+    mutationFn: async ({ projectName, preset }: { projectName?: string | null; preset: string }) => {
+      const qp = projectName ? `?project=${encodeURIComponent(projectName)}` : ''
+      const response = await fetch(`${API_BASE}/model-settings/preset${qp}`, {
         method: 'POST',
         headers: { 'Content-Type': 'application/json' },
         body: JSON.stringify({ preset }),
