@@ -20,7 +20,7 @@ from pathlib import Path
 from fastapi import APIRouter, HTTPException
 from pydantic import BaseModel, Field
 
-from ..settings_store import load_advanced_settings
+from ..settings_store import apply_advanced_settings_env, load_advanced_settings
 
 
 router = APIRouter(prefix="/api/diagnostics", tags=["diagnostics"])
@@ -159,11 +159,8 @@ async def run_qa_provider(req: QAProviderRunRequest):
         str(int(req.timeout_s)),
     ]
 
-    # Apply UI persisted advanced settings as env vars, same as ProcessManager does.
-    env = os.environ.copy()
-    advanced_env = settings.to_env()
-    for k, v in advanced_env.items():
-        env.setdefault(k, v)
+    # Apply persisted advanced settings as env vars, same as ProcessManager does.
+    env = apply_advanced_settings_env(os.environ.copy())
 
     try:
         proc = subprocess.run(
@@ -241,10 +238,7 @@ async def run_parallel_mini(req: ParallelMiniRunRequest):
         str(req.preset),
     ]
 
-    env = os.environ.copy()
-    advanced_env = settings.to_env()
-    for k, v in advanced_env.items():
-        env.setdefault(k, v)
+    env = apply_advanced_settings_env(os.environ.copy())
 
     try:
         proc = subprocess.run(

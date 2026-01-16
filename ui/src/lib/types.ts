@@ -163,10 +163,17 @@ export interface PruneWorkerLogsResponse {
 }
 
 // Advanced settings (UI server)
+export type ReviewMode = 'off' | 'advisory' | 'gate'
+export type ReviewType = 'none' | 'command' | 'claude' | 'multi_cli'
+export type WorkerProvider = 'claude' | 'codex_cli' | 'gemini_cli' | 'multi_cli'
+export type PlannerSynthesizer = 'none' | 'claude' | 'codex' | 'gemini'
+export type ReviewConsensus = 'any' | 'majority' | 'all'
+export type CodexReasoningEffort = 'low' | 'medium' | 'high'
+
 export interface AdvancedSettings {
   review_enabled: boolean
-  review_mode: string
-  review_type: string
+  review_mode: ReviewMode
+  review_type: ReviewType
   review_command: string
   review_timeout_s: number
   review_model: string
@@ -178,7 +185,7 @@ export interface AdvancedSettings {
 
   locks_enabled: boolean
   worker_verify: boolean
-  worker_provider: string
+  worker_provider: WorkerProvider
   worker_patch_max_iterations: number
   worker_patch_agents: string
 
@@ -187,7 +194,7 @@ export interface AdvancedSettings {
   qa_max_sessions: number
   qa_subagent_enabled: boolean
   qa_subagent_max_iterations: number
-  qa_subagent_provider: string
+  qa_subagent_provider: WorkerProvider
   qa_subagent_agents: string
 
   controller_enabled: boolean
@@ -197,7 +204,7 @@ export interface AdvancedSettings {
   planner_enabled: boolean
   planner_model: string
   planner_agents: string
-  planner_synthesizer: string
+  planner_synthesizer: PlannerSynthesizer
   planner_timeout_s: number
 
   logs_keep_days: number

@@ -17,6 +17,7 @@ import {
 } from '../hooks/useDiagnostics'
 import { useHealthCheck, useProjects, useSetupStatus } from '../hooks/useProjects'
 import { useCleanupQueue, useClearCleanupQueue, useProcessCleanupQueue } from '../hooks/useWorktrees'
+import type { WorkerProvider } from '../lib/types'
 
 export function DiagnosticsContent() {
   const advanced = useAdvancedSettings()
@@ -36,7 +37,7 @@ export function DiagnosticsContent() {
   const [miniPreset, setMiniPreset] = useState<string>('balanced')
   const [miniTimeoutS, setMiniTimeoutS] = useState<number>(1200)
   const [outDirDraft, setOutDirDraft] = useState<string>('')
-  const [qaProviderDraft, setQaProviderDraft] = useState<string>('')
+  const [qaProviderDraft, setQaProviderDraft] = useState<WorkerProvider>('claude')
   const [qaAgentsDraft, setQaAgentsDraft] = useState<string>('')
   const [selectedRunName, setSelectedRunName] = useState<string | null>(null)
   const [tailMaxChars, setTailMaxChars] = useState<number>(8000)
@@ -93,7 +94,7 @@ export function DiagnosticsContent() {
   // Keep QA drafts in sync with server settings (first load).
   useEffect(() => {
     if (!advanced.data) return
-    if (qaProviderDraft === '') setQaProviderDraft((advanced.data.qa_subagent_provider || '').trim())
+    setQaProviderDraft(advanced.data.qa_subagent_provider)
     if (qaAgentsDraft === '') setQaAgentsDraft((advanced.data.qa_subagent_agents || '').trim())
     // eslint-disable-next-line react-hooks/exhaustive-deps
   }, [advanced.data])
@@ -336,8 +337,8 @@ export function DiagnosticsContent() {
           <div>
             <div className="text-xs font-mono text-[var(--color-neo-text-secondary)] mb-1">Default provider</div>
             <select
-              value={qaProviderDraft || 'claude'}
-              onChange={(e) => setQaProviderDraft(e.target.value)}
+              value={qaProviderDraft}
+              onChange={(e) => setQaProviderDraft(e.target.value as WorkerProvider)}
               className="neo-btn text-sm py-2 px-3 bg-white border-3 border-[var(--color-neo-border)] font-display w-full"
             >
               <option value="claude">claude</option>

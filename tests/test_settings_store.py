@@ -1,4 +1,4 @@
-from autocoder.server.settings_store import AdvancedSettings
+from autocoder.server.settings_store import AdvancedSettings, apply_advanced_settings_env, save_advanced_settings
 
 
 def test_advanced_settings_env_includes_review_and_locks():
@@ -71,3 +71,26 @@ def test_advanced_settings_env_includes_review_and_locks():
     assert env["AUTOCODER_PLANNER_TIMEOUT_S"] == "123"
     assert env["AUTOCODER_LOGS_PRUNE_ARTIFACTS"] == "1"
     assert env["AUTOCODER_DIAGNOSTICS_FIXTURES_DIR"] == "C:/tmp/autocoder-e2e"
+
+
+def test_apply_advanced_settings_env_does_not_override_when_not_persisted(tmp_path, monkeypatch):
+    monkeypatch.setenv("AUTOCODER_SETTINGS_DB_PATH", str(tmp_path / "settings.db"))
+    env = {"AUTOCODER_WORKER_PROVIDER": "multi_cli", "AUTOCODER_CODEX_MODEL": "gpt-5.2"}
+    out = apply_advanced_settings_env(env.copy())
+    assert out["AUTOCODER_WORKER_PROVIDER"] == "multi_cli"
+    assert out["AUTOCODER_CODEX_MODEL"] == "gpt-5.2"
+
+
+def test_apply_advanced_settings_env_overrides_env_when_persisted(tmp_path, monkeypatch):
+    monkeypatch.setenv("AUTOCODER_SETTINGS_DB_PATH", str(tmp_path / "settings.db"))
+    save_advanced_settings(
+        AdvancedSettings(
+            worker_provider="claude",
+            worker_patch_agents="codex,gemini",
+            codex_model="",  # blank should not override env
+        )
+    )
+    env = {"AUTOCODER_WORKER_PROVIDER": "multi_cli", "AUTOCODER_CODEX_MODEL": "gpt-5.2"}
+    out = apply_advanced_settings_env(env.copy())
+    assert out["AUTOCODER_WORKER_PROVIDER"] == "claude"
+    assert out["AUTOCODER_CODEX_MODEL"] == "gpt-5.2"

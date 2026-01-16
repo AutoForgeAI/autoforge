@@ -7,32 +7,42 @@ Server-side "advanced settings" used by the Web UI to configure spawned agent/or
 
 from __future__ import annotations
 
+from typing import Literal
+
 from fastapi import APIRouter, HTTPException
-from pydantic import BaseModel, Field
+from pydantic import BaseModel, Field, ValidationError, model_validator
 
 from ..settings_store import AdvancedSettings, load_advanced_settings, save_advanced_settings
 
 
 router = APIRouter(prefix="/api/settings", tags=["settings"])
 
+ReviewMode = Literal["off", "advisory", "gate"]
+ReviewType = Literal["none", "command", "claude", "multi_cli"]
+WorkerProvider = Literal["claude", "codex_cli", "gemini_cli", "multi_cli"]
+PlannerSynthesizer = Literal["none", "claude", "codex", "gemini"]
+CodexReasoningEffort = Literal["low", "medium", "high"]
+ReviewConsensus = Literal["any", "majority", "all"]
+
 
 class AdvancedSettingsModel(BaseModel):
     # Review (optional)
     review_enabled: bool = False
-    review_mode: str = Field(default="off", max_length=32)
-    review_type: str = Field(default="none", max_length=64)
+    review_mode: ReviewMode = Field(default="off")
+    review_type: ReviewType = Field(default="none")
     review_command: str = Field(default="", max_length=2000)
     review_timeout_s: int = Field(default=0, ge=0, le=3600)
     review_model: str = Field(default="", max_length=128)
     review_agents: str = Field(default="", max_length=256)
+    # Blank means "use default" for the configured reviewer type.
     review_consensus: str = Field(default="", max_length=64)
     codex_model: str = Field(default="", max_length=128)
-    codex_reasoning_effort: str = Field(default="", max_length=64)
+    codex_reasoning_effort: str = Field(default="", max_length=64)  # low|medium|high
     gemini_model: str = Field(default="", max_length=128)
 
     locks_enabled: bool = False
     worker_verify: bool = True
-    worker_provider: str = Field(default="claude", max_length=32)
+    worker_provider: WorkerProvider = Field(default="claude")
     worker_patch_max_iterations: int = Field(default=2, ge=1, le=20)
     worker_patch_agents: str = Field(default="codex,gemini", max_length=256)
 
@@ -41,7 +51,7 @@ class AdvancedSettingsModel(BaseModel):
     qa_max_sessions: int = Field(default=0, ge=0, le=50)
     qa_subagent_enabled: bool = False
     qa_subagent_max_iterations: int = Field(default=2, ge=1, le=20)
-    qa_subagent_provider: str = Field(default="claude", max_length=32)
+    qa_subagent_provider: WorkerProvider = Field(default="claude")
     qa_subagent_agents: str = Field(default="codex,gemini", max_length=256)
 
     controller_enabled: bool = False
@@ -51,7 +61,7 @@ class AdvancedSettingsModel(BaseModel):
     planner_enabled: bool = False
     planner_model: str = Field(default="", max_length=128)
     planner_agents: str = Field(default="codex,gemini", max_length=256)
-    planner_synthesizer: str = Field(default="claude", max_length=32)
+    planner_synthesizer: PlannerSynthesizer = Field(default="claude")
     planner_timeout_s: int = Field(default=180, ge=30, le=3600)
 
     logs_keep_days: int = Field(default=7, ge=0, le=3650)
@@ -77,6 +87,40 @@ class AdvancedSettingsModel(BaseModel):
     web_port_range_end: int = Field(default=5273, ge=1024, le=65536)
     skip_port_check: bool = False
 
+    @model_validator(mode="after")
+    def _validate_conditionals(self):
+        # Review conditionals
+        if self.review_enabled:
+            if self.review_mode == "off":
+                raise ValueError("review_mode must be advisory|gate when review_enabled=true")
+            if self.review_type == "none":
+                raise ValueError("review_type must be set when review_enabled=true")
+            if self.review_type == "command" and not (self.review_command or "").strip():
+                raise ValueError("review_command is required when review_type=command")
+            if self.review_type == "multi_cli":
+                if not (self.review_agents or "").strip():
+                    raise ValueError("review_agents is required when review_type=multi_cli")
+                if self.review_consensus and self.review_consensus not in ("any", "majority", "all"):
+                    raise ValueError("review_consensus must be any|majority|all (or blank)")
+
+        if self.codex_reasoning_effort and self.codex_reasoning_effort not in ("low", "medium", "high"):
+            raise ValueError("codex_reasoning_effort must be low|medium|high (or blank)")
+
+        # Worker conditionals
+        if self.worker_provider == "multi_cli" and not (self.worker_patch_agents or "").strip():
+            raise ValueError("worker_patch_agents is required when worker_provider=multi_cli")
+
+        # QA sub-agent conditionals
+        if self.qa_subagent_enabled:
+            if self.qa_subagent_provider == "multi_cli" and not (self.qa_subagent_agents or "").strip():
+                raise ValueError("qa_subagent_agents is required when qa_subagent_provider=multi_cli")
+
+        # Planner conditionals
+        if self.planner_enabled and not (self.planner_agents or "").strip():
+            raise ValueError("planner_agents is required when planner_enabled=true")
+
+        return self
+
     def to_settings(self) -> AdvancedSettings:
         return AdvancedSettings(**self.model_dump())
 
@@ -84,7 +128,11 @@ class AdvancedSettingsModel(BaseModel):
 @router.get("/advanced", response_model=AdvancedSettingsModel)
 async def get_advanced_settings():
     settings = load_advanced_settings()
-    return AdvancedSettingsModel(**settings.__dict__)
+    try:
+        return AdvancedSettingsModel(**settings.__dict__)
+    except ValidationError:
+        # If legacy/migrated settings are invalid, avoid breaking the UI.
+        return AdvancedSettingsModel()
 
 
 @router.put("/advanced", response_model=AdvancedSettingsModel)
