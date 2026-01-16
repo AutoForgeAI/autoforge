@@ -40,12 +40,42 @@ SENSITIVE_PATTERNS = [
     r'aws[_-]?secret[=:][^\s]+',
 ]
 
+# Patterns for Claude CLI / API authentication failures.
+AUTH_ERROR_PATTERNS = [
+    r"\bnot logged in\b",
+    r"\bnot authenticated\b",
+    r"\bauthentication (failed|required|error)\b",
+    r"\blogin required\b",
+    r"\bplease run claude login\b",
+    r"\bunauthorized\b",
+    r"\binvalid (token|credential|credentials|api key)\b",
+    r"\bexpired (token|session|credential|credentials)\b",
+]
+
+AUTH_ERROR_HELP = (
+    "Authentication failed.\n"
+    "- If you use Claude Code CLI: run `claude login`.\n"
+    "- If you use API keys: set `ANTHROPIC_API_KEY` (or `ANTHROPIC_AUTH_TOKEN` + `ANTHROPIC_BASE_URL`).\n"
+    "- Then restart the agent."
+)
+
 
 def sanitize_output(line: str) -> str:
     """Remove sensitive information from output lines."""
     for pattern in SENSITIVE_PATTERNS:
         line = re.sub(pattern, '[REDACTED]', line, flags=re.IGNORECASE)
     return line
+
+
+def is_auth_error(line: str) -> bool:
+    """Return True if a line of output looks like an auth failure."""
+    l = (line or "").strip()
+    if not l:
+        return False
+    for pattern in AUTH_ERROR_PATTERNS:
+        if re.search(pattern, l, flags=re.IGNORECASE):
+            return True
+    return False
 
 
 class AgentProcessManager:
@@ -89,6 +119,7 @@ class AgentProcessManager:
 
         # Lock file to prevent multiple instances (stored in project directory)
         self.lock_file = self.project_dir / ".agent.lock"
+        self._auth_help_sent = False
 
     @property
     def status(self) -> Literal["stopped", "running", "paused", "crashed"]:
@@ -200,6 +231,7 @@ class AgentProcessManager:
         if not self.process or not self.process.stdout:
             return
 
+        last_lines: list[str] = []
         try:
             loop = asyncio.get_running_loop()
             while True:
@@ -214,6 +246,13 @@ class AgentProcessManager:
                 sanitized = sanitize_output(decoded)
 
                 await self._broadcast_output(sanitized)
+                last_lines.append(sanitized)
+                if len(last_lines) > 20:
+                    last_lines = last_lines[-20:]
+
+                if (not self._auth_help_sent) and is_auth_error(sanitized):
+                    self._auth_help_sent = True
+                    await self._broadcast_output(AUTH_ERROR_HELP)
 
         except asyncio.CancelledError:
             raise
@@ -223,6 +262,15 @@ class AgentProcessManager:
             # Check if process ended
             if self.process and self.process.poll() is not None:
                 exit_code = self.process.returncode
+                if exit_code != 0 and (not self._auth_help_sent):
+                    joined = "\n".join(last_lines)
+                    if is_auth_error(joined):
+                        self._auth_help_sent = True
+                        try:
+                            await self._broadcast_output(AUTH_ERROR_HELP)
+                        except Exception:
+                            pass
+
                 if exit_code != 0 and self.status == "running":
                     self.status = "crashed"
                 elif self.status == "running":

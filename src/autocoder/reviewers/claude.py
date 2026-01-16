@@ -14,7 +14,8 @@ from .base import ReviewConfig, ReviewFinding, ReviewResult, Reviewer
 def _resolve_cli_path(use_custom_api: bool) -> str | None:
     if use_custom_api:
         return None
-    return shutil.which("claude")
+    cli_command = (os.environ.get("AUTOCODER_CLI_COMMAND") or os.environ.get("CLI_COMMAND") or "claude").strip()
+    return shutil.which(cli_command)
 
 
 @dataclass(frozen=True)
@@ -131,4 +132,3 @@ class ClaudeReviewer(Reviewer):
                 )
             )
         return ReviewResult(approved=approved, reason=reason, findings=findings)
-

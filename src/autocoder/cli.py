@@ -83,10 +83,11 @@ def check_setup() -> dict:
     if not in_venv:
         issues.append("⚠️  Not running in a virtual environment (recommended but not required)")
 
-    # Check for Claude CLI
-    claude_cli = shutil.which("claude")
+    # Check for Claude CLI (allow override; defaults to "claude")
+    cli_command = (os.environ.get("AUTOCODER_CLI_COMMAND") or os.environ.get("CLI_COMMAND") or "claude").strip()
+    claude_cli = shutil.which(cli_command)
     if not claude_cli:
-        issues.append("❌ Claude CLI not found. Run: npm install -g @anthropic-ai/claude-code")
+        issues.append(f"❌ Claude CLI not found ('{cli_command}'). Run: npm install -g @anthropic-ai/claude-code")
 
     # Check for Node.js and npm (for UI)
     node = shutil.which("node")

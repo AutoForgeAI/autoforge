@@ -189,7 +189,8 @@ def create_client(
         cli_path = None  # Skip CLI when using custom API
     else:
         # Use system Claude CLI instead of bundled one (avoids Bun runtime crash on Windows)
-        system_cli = shutil.which("claude")
+        cli_command = (os.environ.get("AUTOCODER_CLI_COMMAND") or os.environ.get("CLI_COMMAND") or "claude").strip()
+        system_cli = shutil.which(cli_command)
         if system_cli:
             cli_path = system_cli
             print(f"   - Authentication: System CLI ({system_cli})")
