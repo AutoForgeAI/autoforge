@@ -12,6 +12,7 @@ import { AdvancedSettingsContent } from '../components/AdvancedSettingsContent'
 import { MultiModelGeneratePanel } from '../components/MultiModelGeneratePanel'
 import { GsdToSpecPanel } from '../components/GsdToSpecPanel'
 import { ProjectConfigEditor } from '../components/ProjectConfigEditor'
+import { ProjectMaintenance } from '../components/ProjectMaintenance'
 import { DiagnosticsContent } from '../components/DiagnosticsContent'
 import type { RunSettings } from '../components/SettingsModal'
 
@@ -185,7 +186,10 @@ export function SettingsPage({
           <MultiModelGeneratePanel projectName={projectName} />
         </div>
       ) : tab === 'config' ? (
-        <ProjectConfigEditor projectName={projectName} />
+        <div className="space-y-6">
+          <ProjectConfigEditor projectName={projectName} />
+          <ProjectMaintenance projectName={projectName} />
+        </div>
       ) : tab === 'diagnostics' ? (
         <DiagnosticsContent />
       ) : (

@@ -35,6 +35,7 @@ class ProjectSummary(BaseModel):
     name: str
     path: str
     has_spec: bool
+    setup_required: bool = False
     stats: ProjectStats
 
 
@@ -43,6 +44,7 @@ class ProjectDetail(BaseModel):
     name: str
     path: str
     has_spec: bool
+    setup_required: bool = False
     stats: ProjectStats
     prompts_dir: str
 

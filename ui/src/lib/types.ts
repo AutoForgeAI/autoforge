@@ -14,6 +14,7 @@ export interface ProjectSummary {
   name: string
   path: string
   has_spec: boolean
+  setup_required?: boolean
   stats: ProjectStats
 }
 

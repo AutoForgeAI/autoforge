@@ -39,6 +39,14 @@ AutoCoder is a Claude Agent SDK + MCP based coding agent. It supports single-age
  - Feature implementation worker is configurable: `AUTOCODER_WORKER_PROVIDER=claude|codex_cli|gemini_cli|multi_cli` (patch workers use `src/autocoder/qa_worker.py --mode implement`).
 - Large backlogs may be **staged** (disabled) to keep active queues manageable; staged features can be enqueued from the UI or via `POST /features/enqueue`.
 
+## Project Maintenance (UI)
+
+- Settings → Project Config includes a **Danger Zone**:
+  - **Reset**: clears runtime artifacts (`agent_system.db`, `.autocoder/`, `worktrees/`).
+  - **Full reset**: also wipes `prompts/` so the spec must be recreated.
+  - **Delete**: removes the project from the registry (optional delete-on-disk).
+- Projects with placeholder specs are flagged as **setup required** in the UI.
+
 ## Settings Persistence
 
 - **Per-project**: model settings are stored in the target project’s `agent_system.db` (so settings travel with the project).
