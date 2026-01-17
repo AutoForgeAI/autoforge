@@ -118,6 +118,9 @@ class Database:
                     -- QA sub-agent tracking
                     qa_attempts INTEGER DEFAULT 0,
 
+                    -- Regression testing tracking
+                    regression_count INTEGER DEFAULT 0,
+
                     -- Timestamps
                     created_at TIMESTAMP DEFAULT CURRENT_TIMESTAMP,
                     updated_at TIMESTAMP DEFAULT CURRENT_TIMESTAMP
@@ -192,6 +195,13 @@ class Database:
             try:
                 cursor.execute("ALTER TABLE features ADD COLUMN qa_attempts INTEGER")
                 logger.info("Added qa_attempts column to existing features table")
+            except sqlite3.OperationalError:
+                pass
+
+            # Migration: Add regression_count column if it doesn't exist (for existing databases)
+            try:
+                cursor.execute("ALTER TABLE features ADD COLUMN regression_count INTEGER")
+                logger.info("Added regression_count column to existing features table")
             except sqlite3.OperationalError:
                 pass
 
@@ -1145,23 +1155,43 @@ class Database:
         limit: int = 3
     ) -> List[Dict[str, Any]]:
         """
-        Get random passing features for regression testing.
+        Get passing features for regression testing, prioritizing least-tested features.
 
         Args:
             limit: Maximum number of features to return
 
         Returns:
-            List of passing features (randomly selected)
+            List of passing features (least-tested-first)
         """
         with self.get_connection() as conn:
             cursor = conn.cursor()
             cursor.execute("""
                 SELECT * FROM features
                 WHERE passes = TRUE AND status = 'DONE'
-                ORDER BY RANDOM()
+                ORDER BY COALESCE(regression_count, 0) ASC, id ASC
                 LIMIT ?
             """, (limit,))
-            return [dict(row) for row in cursor.fetchall()]
+            rows = [dict(row) for row in cursor.fetchall()]
+            if not rows:
+                return []
+
+            ids = [(int(r["id"]),) for r in rows if r.get("id") is not None]
+            if ids:
+                cursor.executemany(
+                    """
+                    UPDATE features
+                    SET regression_count = COALESCE(regression_count, 0) + 1,
+                        updated_at = CURRENT_TIMESTAMP
+                    WHERE id = ?
+                    """,
+                    ids,
+                )
+                conn.commit()
+
+            # Update returned rows with incremented counts for accuracy.
+            for row in rows:
+                row["regression_count"] = int(row.get("regression_count") or 0) + 1
+            return rows
 
     def claim_feature(
         self,

@@ -9,6 +9,7 @@ All notable changes to this fork will be listed here.
 - Knowledge files (`/knowledge/*.md`) injected into prompts + UI editor modal
 - Single-agent loop exits when no pending/staged/verification features remain
 - Clarified prompt guidance: refactor/cleanup features are mandatory and override the original spec
+- Regression selection now prioritizes least-tested features (tracks `regression_count`)
 
 ## 2026-01-17
 

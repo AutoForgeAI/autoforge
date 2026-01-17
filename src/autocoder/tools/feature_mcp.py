@@ -14,7 +14,7 @@ Tools:
 - feature_claim_next: Atomically claim next pending feature (recommended)
 - feature_get_all: Get all features with details
 - feature_get_by_id: Get a specific feature
-- feature_get_for_regression: Get random passing features for testing
+- feature_get_for_regression: Get least-tested passing features for regression testing
 - feature_mark_passing: Mark a feature as passing
 - feature_mark_in_progress: Mark a feature as in-progress
 - feature_skip: Skip a feature (move to end of queue)
@@ -199,7 +199,7 @@ def feature_claim_next(agent_id: str) -> str:
 
 @mcp.tool()
 def feature_get_for_regression(limit: int = 3) -> str:
-    """Get random passing features for regression testing.
+    """Get passing features for regression testing (least-tested-first).
 
     Args:
         limit: Maximum number of passing features to return (default: 3, max: 10)

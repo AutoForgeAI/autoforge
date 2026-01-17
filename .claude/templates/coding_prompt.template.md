@@ -100,7 +100,7 @@ Run 1-2 of the features marked as passing that are most core to the app's functi
 To get passing features for regression testing:
 
 ```
-Use the feature_get_for_regression tool (returns up to 3 random passing features)
+Use the feature_get_for_regression tool (returns up to 3 least-tested passing features)
 ```
 
 For example, if this were a chat app, you should perform a test that logs into the app, sends a message, and gets a response.
