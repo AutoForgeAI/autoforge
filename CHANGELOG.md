@@ -7,6 +7,7 @@ All notable changes to this fork will be listed here.
 - Project setup required banner with 24h snooze (Expand stays locked until spec is real)
 - Project reset endpoint (runtime reset + full reset) and UI Danger Zone controls
 - Knowledge files (`/knowledge/*.md`) injected into prompts + UI editor modal
+- Single-agent loop exits when no pending/staged/verification features remain
 
 ## 2026-01-17
 

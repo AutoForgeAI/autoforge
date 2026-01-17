@@ -321,6 +321,19 @@ async def run_autonomous_agent(
             print("\nAssigned feature already submitted for verification; exiting worker.")
             break
 
+        # For single-agent runs, exit once everything is complete (including staged backlog).
+        if assigned_feature_id is None:
+            try:
+                db = get_database(str(features_state_dir))
+                stats = db.get_stats()
+                staged = int(stats["features"].get("staged", 0) or 0)
+                ready = int(stats["features"].get("ready_for_verification", 0) or 0)
+                if stats["features"]["pending"] == 0 and stats["features"]["in_progress"] == 0 and staged == 0 and ready == 0:
+                    print("\nAll features complete; exiting agent.")
+                    break
+            except Exception:
+                pass
+
         # Check max iterations
         if max_iterations and iteration > max_iterations:
             print(f"\nReached max iterations ({max_iterations})")
