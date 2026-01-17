@@ -70,9 +70,17 @@ export async function getProject(name: string): Promise<ProjectDetail> {
   return fetchJSON(`/projects/${encodeURIComponent(name)}`)
 }
 
-export async function deleteProject(name: string): Promise<void> {
-  await fetchJSON(`/projects/${encodeURIComponent(name)}`, {
+export async function deleteProject(name: string, deleteFiles: boolean = false): Promise<void> {
+  const params = deleteFiles ? '?delete_files=1' : ''
+  await fetchJSON(`/projects/${encodeURIComponent(name)}${params}`, {
     method: 'DELETE',
+  })
+}
+
+export async function resetProject(name: string, fullReset: boolean = false): Promise<void> {
+  const params = fullReset ? '?full_reset=1' : ''
+  await fetchJSON(`/projects/${encodeURIComponent(name)}/reset${params}`, {
+    method: 'POST',
   })
 }
 

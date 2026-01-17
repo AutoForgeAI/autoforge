@@ -146,6 +146,15 @@ autocoder-ui
 - On Windows, terminal sessions auto-install `pywinpty` (disable with `AUTOCODER_AUTO_INSTALL_WINPTY=0`).
 - Hide the startup banner/checklist with `AUTOCODER_UI_BANNER=0` (set it before running `autocoder-ui`/`start_ui`).
 
+### Project Setup & Reset (Web UI)
+
+- If a project spec is missing or still the placeholder template, the dashboard shows **Project setup required** with a one-click Spec Creation chat.
+- You can snooze the banner for 24h, but **Expand** stays disabled until the spec is real.
+- Settings → **Project Config** → **Danger Zone**:
+  - **Reset** clears runtime artifacts (`agent_system.db`, `.autocoder/`, `worktrees/`).
+  - **Full reset** also wipes `prompts/` so the spec must be recreated.
+  - **Delete** removes the project from the registry (optional delete-on-disk).
+
 If the agent fails due to missing authentication, the UI log stream will emit a short fix-it hint (e.g. `claude login` or env var guidance).
 
 ### Model Settings

@@ -41,9 +41,24 @@ export function useDeleteProject() {
   const queryClient = useQueryClient()
 
   return useMutation({
-    mutationFn: (name: string) => api.deleteProject(name),
+    mutationFn: ({ name, deleteFiles }: { name: string; deleteFiles?: boolean }) =>
+      api.deleteProject(name, Boolean(deleteFiles)),
     onSuccess: () => {
       queryClient.invalidateQueries({ queryKey: ['projects'] })
+    },
+  })
+}
+
+export function useResetProject() {
+  const queryClient = useQueryClient()
+
+  return useMutation({
+    mutationFn: ({ name, fullReset }: { name: string; fullReset?: boolean }) =>
+      api.resetProject(name, Boolean(fullReset)),
+    onSuccess: (_, vars) => {
+      queryClient.invalidateQueries({ queryKey: ['projects'] })
+      queryClient.invalidateQueries({ queryKey: ['project', vars.name] })
+      queryClient.invalidateQueries({ queryKey: ['features', vars.name] })
     },
   })
 }

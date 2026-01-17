@@ -91,6 +91,41 @@ def get_project_stats(project_dir: Path) -> ProjectStats:
     )
 
 
+_SPEC_TEMPLATE_MARKERS = (
+    "YOUR_PROJECT_NAME",
+    "Replace with your actual project specification",
+    "Describe your project in 2-3 sentences",
+)
+
+
+def _is_spec_placeholder(spec_content: str) -> bool:
+    """Detect if the spec is still the scaffold template."""
+    if not spec_content:
+        return True
+    return any(marker in spec_content for marker in _SPEC_TEMPLATE_MARKERS)
+
+
+def _is_setup_required(project_dir: Path, has_spec: bool) -> bool:
+    """Determine whether the project still needs spec setup."""
+    if not has_spec:
+        return True
+
+    prompts_dir = _get_project_prompts_dir(project_dir)
+    spec_path = prompts_dir / "app_spec.txt"
+    if not spec_path.exists():
+        spec_path = project_dir / "app_spec.txt"
+
+    if not spec_path.exists():
+        return True
+
+    try:
+        content = spec_path.read_text(encoding="utf-8")
+    except Exception:
+        return True
+
+    return _is_spec_placeholder(content)
+
+
 @router.get("", response_model=list[ProjectSummary])
 async def list_projects():
     """List all registered projects."""
@@ -110,11 +145,13 @@ async def list_projects():
 
         has_spec = _check_spec_exists(project_dir)
         stats = get_project_stats(project_dir)
+        setup_required = _is_setup_required(project_dir, has_spec)
 
         result.append(ProjectSummary(
             name=name,
             path=info["path"],
             has_spec=has_spec,
+            setup_required=setup_required,
             stats=stats,
         ))
 
@@ -199,6 +236,7 @@ async def create_project(project: ProjectCreate):
         name=name,
         path=project_path.as_posix(),
         has_spec=False,  # Just created, no spec yet
+        setup_required=True,
         stats=ProjectStats(passing=0, total=0, percentage=0.0),
     )
 
@@ -221,11 +259,13 @@ async def get_project(name: str):
     has_spec = _check_spec_exists(project_dir)
     stats = get_project_stats(project_dir)
     prompts_dir = _get_project_prompts_dir(project_dir)
+    setup_required = _is_setup_required(project_dir, has_spec)
 
     return ProjectDetail(
         name=name,
         path=project_dir.as_posix(),
         has_spec=has_spec,
+        setup_required=setup_required,
         stats=stats,
         prompts_dir=str(prompts_dir),
     )
@@ -270,6 +310,91 @@ async def delete_project(name: str, delete_files: bool = False):
     return {
         "success": True,
         "message": f"Project '{name}' deleted" + (" (files removed)" if delete_files else " (files preserved)")
+    }
+
+
+@router.post("/{name}/reset")
+async def reset_project(name: str, full_reset: bool = False):
+    """
+    Reset a project by clearing runtime artifacts and, optionally, prompts/specs.
+
+    Args:
+        name: Project name to reset
+        full_reset: If True, remove prompts/app_spec and force spec re-setup
+    """
+    _init_imports()
+    _, _, get_project_path, _, _ = _get_registry_functions()
+
+    name = validate_project_name(name)
+    project_dir = get_project_path(name)
+
+    if not project_dir:
+        raise HTTPException(status_code=404, detail=f"Project '{name}' not found")
+
+    if not project_dir.exists():
+        raise HTTPException(status_code=404, detail=f"Project directory not found: {project_dir}")
+
+    lock_file = project_dir / ".agent.lock"
+    if lock_file.exists():
+        raise HTTPException(
+            status_code=409,
+            detail="Cannot reset project while agent is running. Stop the agent first."
+        )
+
+    errors: list[str] = []
+
+    # Remove runtime DB files
+    for suffix in ("", "-wal", "-shm"):
+        db_path = project_dir / f"agent_system.db{suffix}"
+        if db_path.exists():
+            try:
+                db_path.unlink()
+            except Exception as e:
+                errors.append(f"Failed to remove {db_path.name}: {e}")
+
+    # Remove runtime directories
+    for dir_name in (".autocoder", "worktrees"):
+        dir_path = project_dir / dir_name
+        if dir_path.exists():
+            try:
+                shutil.rmtree(dir_path)
+            except Exception as e:
+                errors.append(f"Failed to remove {dir_name}: {e}")
+
+    # Remove legacy app_spec copy (if any)
+    legacy_spec = project_dir / "app_spec.txt"
+    if legacy_spec.exists():
+        try:
+            legacy_spec.unlink()
+        except Exception as e:
+            errors.append(f"Failed to remove app_spec.txt: {e}")
+
+    # Remove spec status marker (if any)
+    prompts_dir = _get_project_prompts_dir(project_dir)
+    status_file = prompts_dir / ".spec_status.json"
+    if status_file.exists():
+        try:
+            status_file.unlink()
+        except Exception as e:
+            errors.append(f"Failed to remove .spec_status.json: {e}")
+
+    if full_reset:
+        if prompts_dir.exists():
+            try:
+                shutil.rmtree(prompts_dir)
+            except Exception as e:
+                errors.append(f"Failed to remove prompts directory: {e}")
+        try:
+            prompts_dir.mkdir(parents=True, exist_ok=True)
+        except Exception as e:
+            errors.append(f"Failed to recreate prompts directory: {e}")
+
+    if errors:
+        raise HTTPException(status_code=500, detail="; ".join(errors))
+
+    return {
+        "success": True,
+        "message": f"Project '{name}' reset" + (" (full)" if full_reset else "")
     }
 
 

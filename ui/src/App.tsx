@@ -1,6 +1,6 @@
 import { useState, useEffect, useCallback } from 'react'
 import { useQueryClient } from '@tanstack/react-query'
-import { useProjects, useFeatures, useAgentStatus, useSetupStatus } from './hooks/useProjects'
+import { useProjects, useProject, useFeatures, useAgentStatus, useSetupStatus } from './hooks/useProjects'
 import { useProjectWebSocket } from './hooks/useWebSocket'
 import { useFeatureSound } from './hooks/useFeatureSound'
 import { useCelebration } from './hooks/useCelebration'
@@ -22,8 +22,11 @@ import { AssistantPanel } from './components/AssistantPanel'
 import { AgentStatusGrid } from './components/AgentStatusGrid'
 import { SettingsModal, type RunSettings } from './components/SettingsModal'
 import { SettingsPage } from './pages/SettingsPage'
+import { ProjectSetupRequired } from './components/ProjectSetupRequired'
+import { SpecCreationChat } from './components/SpecCreationChat'
 import { Plus, Loader2, FileText, Settings as SettingsIcon, Sparkles } from 'lucide-react'
 import type { Feature } from './lib/types'
+import { startAgent } from './lib/api'
 
 function App() {
   const queryClient = useQueryClient()
@@ -48,6 +51,11 @@ function App() {
   const [route, setRoute] = useState<'main' | 'settings'>(() =>
     window.location.hash.startsWith('#/settings') ? 'settings' : 'main'
   )
+  const [showSpecChat, setShowSpecChat] = useState(false)
+  const [specInitializerStatus, setSpecInitializerStatus] = useState<'idle' | 'starting' | 'error'>('idle')
+  const [specInitializerError, setSpecInitializerError] = useState<string | null>(null)
+  const [specYoloSelected, setSpecYoloSelected] = useState(false)
+  const [setupBannerDismissedUntil, setSetupBannerDismissedUntil] = useState<number | null>(null)
 
   const [yoloEnabled, setYoloEnabled] = useState(false)
   const [runSettings, setRunSettings] = useState<RunSettings>({
@@ -57,12 +65,41 @@ function App() {
   })
 
   const { data: projects, isLoading: projectsLoading } = useProjects()
+  const { data: projectDetail } = useProject(selectedProject)
   const { data: features } = useFeatures(selectedProject)
   const { data: agentStatusData } = useAgentStatus(selectedProject)
   const { data: setupStatus } = useSetupStatus()
   const wsState = useProjectWebSocket(selectedProject)
   const selectedProjectData = projects?.find((p) => p.name === selectedProject) ?? null
-  const canExpandProject = Boolean(selectedProjectData?.has_spec)
+  const setupRequired = Boolean(
+    selectedProjectData?.setup_required ?? (selectedProjectData ? !selectedProjectData.has_spec : false)
+  )
+  const canExpandProject = Boolean(selectedProjectData?.has_spec) && !setupRequired
+
+  useEffect(() => {
+    if (!selectedProject) {
+      setSetupBannerDismissedUntil(null)
+      return
+    }
+    try {
+      const raw = localStorage.getItem(`autocoder-setup-dismissed:${selectedProject}`)
+      setSetupBannerDismissedUntil(raw ? Number(raw) : null)
+    } catch {
+      setSetupBannerDismissedUntil(null)
+    }
+  }, [selectedProject])
+
+  useEffect(() => {
+    if (!selectedProject || setupRequired) return
+    try {
+      localStorage.removeItem(`autocoder-setup-dismissed:${selectedProject}`)
+      setSetupBannerDismissedUntil(null)
+    } catch {
+      // ignore
+    }
+  }, [selectedProject, setupRequired])
+
+  const showSetupBanner = setupRequired && (!setupBannerDismissedUntil || setupBannerDismissedUntil < Date.now())
 
   // Play sounds when features move between columns
   useFeatureSound(features)
@@ -164,7 +201,12 @@ function App() {
 
       // Escape : Close modals
       if (e.key === 'Escape') {
-        if (showSettings) {
+        if (showSpecChat) {
+          setShowSpecChat(false)
+          setIsSpecCreating(false)
+          setSpecInitializerStatus('idle')
+          setSpecInitializerError(null)
+        } else if (showSettings) {
           setShowSettings(false)
         } else if (assistantOpen) {
           setAssistantOpen(false)
@@ -182,7 +224,7 @@ function App() {
 
     window.addEventListener('keydown', handleKeyDown)
     return () => window.removeEventListener('keydown', handleKeyDown)
-  }, [selectedProject, showAddFeature, showExpandProject, selectedFeature, debugOpen, assistantOpen, showSettings, route])
+  }, [selectedProject, showAddFeature, showExpandProject, selectedFeature, debugOpen, assistantOpen, showSettings, showSpecChat, route])
 
   // Hash-based routing (no router dependency)
   useEffect(() => {
@@ -236,6 +278,39 @@ function App() {
 
   if (progress.total > 0 && progress.percentage === 0) {
     progress.percentage = Math.round((progress.passing / progress.total) * 100 * 10) / 10
+  }
+
+  const handleSpecComplete = async (_specPath: string, yoloMode: boolean = false) => {
+    if (!selectedProject) return
+    setSpecYoloSelected(yoloMode)
+    setSpecInitializerStatus('starting')
+    setSpecInitializerError(null)
+    try {
+      await startAgent(selectedProject, { yolo_mode: yoloMode })
+      queryClient.invalidateQueries({ queryKey: ['projects'] })
+      queryClient.invalidateQueries({ queryKey: ['project', selectedProject] })
+      setSpecInitializerStatus('idle')
+      setTimeout(() => {
+        setShowSpecChat(false)
+        setIsSpecCreating(false)
+      }, 500)
+    } catch (err: any) {
+      setSpecInitializerStatus('error')
+      setSpecInitializerError(err instanceof Error ? err.message : String(err))
+    }
+  }
+
+  const handleSpecRetry = () => {
+    setSpecInitializerError(null)
+    setSpecInitializerStatus('idle')
+    handleSpecComplete('', specYoloSelected)
+  }
+
+  const closeSpecChat = () => {
+    setShowSpecChat(false)
+    setIsSpecCreating(false)
+    setSpecInitializerStatus('idle')
+    setSpecInitializerError(null)
   }
 
   if (!setupComplete) {
@@ -420,6 +495,29 @@ function App() {
           </div>
         ) : (
           <div className="space-y-8">
+            {showSetupBanner && selectedProject && (
+              <ProjectSetupRequired
+                projectName={selectedProject}
+                promptsDir={projectDetail?.prompts_dir ?? ''}
+                onCreateSpec={() => {
+                  setShowSpecChat(true)
+                  setIsSpecCreating(true)
+                }}
+                onOpenSettings={() => {
+                  window.location.hash = '#/settings/generate'
+                }}
+                onDismiss={() => {
+                  if (!selectedProject) return
+                  const until = Date.now() + 24 * 60 * 60 * 1000
+                  setSetupBannerDismissedUntil(until)
+                  try {
+                    localStorage.setItem(`autocoder-setup-dismissed:${selectedProject}`, String(until))
+                  } catch {
+                    // ignore
+                  }
+                }}
+              />
+            )}
             {/* Progress Dashboard */}
             <ProgressDashboard
               passing={progress.passing}
@@ -474,6 +572,21 @@ function App() {
           projectName={selectedProject}
           onClose={() => setShowAddFeature(false)}
         />
+      )}
+
+      {/* Spec Creation Modal (existing project) */}
+      {showSpecChat && selectedProject && (
+        <div className="fixed inset-0 z-50 bg-[var(--color-neo-bg)]">
+          <SpecCreationChat
+            projectName={selectedProject}
+            onComplete={handleSpecComplete}
+            onCancel={closeSpecChat}
+            onExitToProject={closeSpecChat}
+            initializerStatus={specInitializerStatus}
+            initializerError={specInitializerError}
+            onRetryInitializer={handleSpecRetry}
+          />
+        </div>
       )}
 
       {/* Expand Project Modal */}
