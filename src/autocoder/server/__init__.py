@@ -64,6 +64,8 @@ def start_server(host: str = "127.0.0.1", port: int | None = None, reload: bool 
 
         cli_command = (os.environ.get("AUTOCODER_CLI_COMMAND") or os.environ.get("CLI_COMMAND") or "claude").strip()
         claude_ok = shutil.which(cli_command) is not None
+        codex_ok = shutil.which("codex") is not None
+        gemini_ok = shutil.which("gemini") is not None
         node_ok = shutil.which("node") is not None
         npm_ok = shutil.which("npm") is not None
         try:
@@ -82,6 +84,8 @@ def start_server(host: str = "127.0.0.1", port: int | None = None, reload: bool 
 
         print("\nBoot Checklist")
         print(f"  {mark(claude_ok)} Claude CLI ({cli_command})")
+        print(f"  {mark(codex_ok)} Codex CLI")
+        print(f"  {mark(gemini_ok)} Gemini CLI")
         print(f"  {mark(node_ok)} Node")
         print(f"  {mark(npm_ok)} npm")
         print(f"  {mark(ui_ok)} UI build")

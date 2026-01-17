@@ -31,6 +31,7 @@ import asyncio
 import os
 import sys
 import subprocess
+import shutil
 from pathlib import Path
 from typing import Optional
 
@@ -74,8 +75,12 @@ def _print_boot_checklist(setup: dict) -> None:
         return "✅" if ok else "⚠️"
 
     ui_port = get_ui_port()
+    codex_ok = bool(shutil.which("codex"))
+    gemini_ok = bool(shutil.which("gemini"))
     print("\nBoot Checklist")
     print(f"  {mark(setup.get('claude_cli'))} Claude CLI")
+    print(f"  {mark(codex_ok)} Codex CLI")
+    print(f"  {mark(gemini_ok)} Gemini CLI")
     print(f"  {mark(setup.get('node'))} Node")
     print(f"  {mark(setup.get('npm'))} npm")
     print(f"  {mark(setup.get('ui_built'))} UI build")
