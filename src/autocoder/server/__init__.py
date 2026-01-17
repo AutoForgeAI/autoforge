@@ -8,6 +8,7 @@ feature tracking, and agent control.
 """
 
 import os
+import sys
 import uvicorn
 from pathlib import Path
 
@@ -26,6 +27,15 @@ def start_server(host: str = "127.0.0.1", port: int | None = None, reload: bool 
     """
     if port is None:
         port = get_ui_port()
+    use_colors_env = os.environ.get("AUTOCODER_UVICORN_COLORS", "").strip().lower()
+    if use_colors_env:
+        use_colors = use_colors_env in ("1", "true", "yes", "on")
+    else:
+        # Default: disable ANSI colors on Windows or when output is non-interactive.
+        if os.name == "nt" or not sys.stderr.isatty():
+            use_colors = False
+        else:
+            use_colors = None
     disable_lock = str(os.environ.get("AUTOCODER_DISABLE_UI_LOCK", "")).lower() in ("1", "true", "yes")
     if disable_lock:
         uvicorn.run(
@@ -33,6 +43,7 @@ def start_server(host: str = "127.0.0.1", port: int | None = None, reload: bool 
             host=host,
             port=port,
             reload=reload,
+            use_colors=use_colors,
         )
         return
 
@@ -42,6 +53,7 @@ def start_server(host: str = "127.0.0.1", port: int | None = None, reload: bool 
             host=host,
             port=port,
             reload=reload,
+            use_colors=use_colors,
         )
 
 

@@ -4,6 +4,7 @@ REM AutoCoder UI Launcher for Windows
 echo.
 echo ====================================
 echo   AutoCoder - Web UI
+echo   Modded by Gabi (Booplex)
 echo ====================================
 echo.
 
