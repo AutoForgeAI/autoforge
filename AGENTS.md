@@ -48,6 +48,7 @@ AutoCoder is a Claude Agent SDK + MCP based coding agent. It supports single-age
 
 - Commits: short, imperative summaries (e.g., `core: fix feature claiming race`).
 - PRs: include what changed, how to verify, and test output; add UI screenshots for UI changes.
+- After a PR is merged, delete the feature branch locally and on `origin` to keep the repo clean.
 
 ## Security & Agent-Specific Notes
 
