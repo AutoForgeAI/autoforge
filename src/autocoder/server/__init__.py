@@ -20,13 +20,14 @@ from dotenv import load_dotenv
 import uvicorn
 from pathlib import Path
 
-from autocoder.core.port_config import get_ui_port
+from autocoder.core.port_config import get_ui_port, get_ui_host
 from autocoder.core.ui_build import find_ui_root, is_ui_build_stale
 from autocoder.server.server_lock import ServerLock
+from autocoder.server.settings_store import apply_advanced_settings_env
 
 load_dotenv()
 
-def start_server(host: str = "127.0.0.1", port: int | None = None, reload: bool = False) -> None:
+def start_server(host: str | None = None, port: int | None = None, reload: bool = False) -> None:
     """
     Start the AutoCoder web UI server.
 
@@ -35,8 +36,17 @@ def start_server(host: str = "127.0.0.1", port: int | None = None, reload: bool 
         port: Port to bind to (default: AUTOCODER_UI_PORT or 8888)
         reload: Enable auto-reload for development (default: False)
     """
+    # Apply persisted advanced settings so UI host overrides work without manual env edits.
+    try:
+        env = apply_advanced_settings_env(dict(os.environ))
+        os.environ.update(env)
+    except Exception:
+        pass
+
     if port is None:
         port = get_ui_port()
+    if host is None:
+        host = get_ui_host()
     use_colors_env = os.environ.get("AUTOCODER_UVICORN_COLORS", "").strip().lower()
     if use_colors_env:
         use_colors = use_colors_env in ("1", "true", "yes", "on")
@@ -133,7 +143,10 @@ def start_server(host: str = "127.0.0.1", port: int | None = None, reload: bool 
         return True
 
     def open_browser_later() -> None:
-        if host not in ("127.0.0.1", "localhost"):
+        local_host = host
+        if host in ("0.0.0.0", "::"):
+            local_host = "127.0.0.1"
+        if local_host not in ("127.0.0.1", "localhost"):
             return
         if not should_open_browser():
             return
@@ -141,7 +154,7 @@ def start_server(host: str = "127.0.0.1", port: int | None = None, reload: bool 
             delay = float(os.environ.get("AUTOCODER_OPEN_UI_DELAY_S", "1.0"))
         except ValueError:
             delay = 1.0
-        url = f"http://{host}:{port}/"
+        url = f"http://{local_host}:{port}/"
 
         def _worker() -> None:
             time.sleep(max(0.0, delay))

@@ -136,6 +136,21 @@ export interface AgentStartRequest {
   model_preset?: 'quality' | 'balanced' | 'economy' | 'cheap' | 'experimental' | 'custom'
 }
 
+export interface AgentScheduleRequest extends AgentStartRequest {
+  run_at: string
+}
+
+export interface AgentScheduleResponse {
+  scheduled: boolean
+  run_at?: string | null
+  created_at?: string | null
+  yolo_mode?: boolean
+  parallel_mode?: boolean
+  parallel_count?: number | null
+  model_preset?: string | null
+  message?: string | null
+}
+
 // Setup types
 export interface SetupStatus {
   claude_cli: boolean
@@ -243,6 +258,8 @@ export interface AdvancedSettings {
   logs_prune_artifacts: boolean
 
   diagnostics_fixtures_dir: string
+  ui_host: string
+  ui_allow_remote: boolean
 
   sdk_max_attempts: number
   sdk_initial_delay_s: number
@@ -253,6 +270,7 @@ export interface AdvancedSettings {
 
   require_gatekeeper: boolean
   allow_no_tests: boolean
+  stop_when_done: boolean
 
   api_port_range_start: number
   api_port_range_end: number

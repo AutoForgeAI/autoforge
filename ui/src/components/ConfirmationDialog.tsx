@@ -10,6 +10,8 @@ interface ConfirmationDialogProps {
   isOpen: boolean
   title: string
   message: string
+  titleBadgeText?: string
+  titleBadgeVariant?: 'success' | 'warning' | 'error' | 'info'
   confirmText?: string
   cancelText?: string
   onConfirm: () => void
@@ -21,6 +23,8 @@ export function ConfirmationDialog({
   isOpen,
   title,
   message,
+  titleBadgeText,
+  titleBadgeVariant = 'warning',
   confirmText = 'Confirm',
   cancelText = 'Cancel',
   onConfirm,
@@ -70,7 +74,14 @@ export function ConfirmationDialog({
 
           {/* Content */}
           <div className="pt-8 px-6 pb-6">
-            <h3 className="font-display font-bold text-xl mb-2">{title}</h3>
+            <div className="flex items-center gap-2 mb-2">
+              <h3 className="font-display font-bold text-xl">{title}</h3>
+              {titleBadgeText && (
+                <span className={`neo-badge neo-badge-${titleBadgeVariant}`}>
+                  {titleBadgeText}
+                </span>
+              )}
+            </div>
             <p className="text-[var(--color-neo-text-secondary)] mb-6">{message}</p>
 
             {/* Buttons */}

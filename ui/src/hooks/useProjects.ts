@@ -4,7 +4,7 @@
 
 import { useQuery, useMutation, useQueryClient } from '@tanstack/react-query'
 import * as api from '../lib/api'
-import type { FeatureCreate, AgentStartRequest } from '../lib/types'
+import type { FeatureCreate, AgentStartRequest, AgentScheduleRequest } from '../lib/types'
 
 // ============================================================================
 // Projects
@@ -196,6 +196,35 @@ export function useResumeAgent(projectName: string) {
     mutationFn: () => api.resumeAgent(projectName),
     onSuccess: () => {
       queryClient.invalidateQueries({ queryKey: ['agent-status', projectName] })
+    },
+  })
+}
+
+export function useAgentSchedule(projectName: string | null) {
+  return useQuery({
+    queryKey: ['agent-schedule', projectName],
+    queryFn: () => api.getAgentSchedule(projectName!),
+    enabled: !!projectName,
+    refetchInterval: 5000,
+  })
+}
+
+export function useScheduleAgent(projectName: string) {
+  const queryClient = useQueryClient()
+  return useMutation({
+    mutationFn: (request: AgentScheduleRequest) => api.scheduleAgent(projectName, request),
+    onSuccess: () => {
+      queryClient.invalidateQueries({ queryKey: ['agent-schedule', projectName] })
+    },
+  })
+}
+
+export function useCancelAgentSchedule(projectName: string) {
+  const queryClient = useQueryClient()
+  return useMutation({
+    mutationFn: () => api.cancelAgentSchedule(projectName),
+    onSuccess: () => {
+      queryClient.invalidateQueries({ queryKey: ['agent-schedule', projectName] })
     },
   })
 }

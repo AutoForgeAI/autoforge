@@ -14,7 +14,7 @@ export function AssistantFAB({ onClick, isOpen }: AssistantFABProps) {
     <button
       onClick={onClick}
       className={`
-        fixed bottom-6 right-6 z-50
+        fixed bottom-10 right-6 z-50
         w-14 h-14
         flex items-center justify-center
         bg-[var(--color-neo-progress)] text-[var(--color-neo-text-on-bright)]

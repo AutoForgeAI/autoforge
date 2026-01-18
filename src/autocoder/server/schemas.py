@@ -185,6 +185,23 @@ class AgentActionResponse(BaseModel):
     message: str = ""
 
 
+class AgentScheduleRequest(AgentStartRequest):
+    """Request schema for scheduling an agent start."""
+    run_at: datetime
+
+
+class AgentScheduleResponse(BaseModel):
+    """Response schema for scheduled runs."""
+    scheduled: bool
+    run_at: datetime | None = None
+    created_at: datetime | None = None
+    yolo_mode: bool = False
+    parallel_mode: bool = False
+    parallel_count: int | None = None
+    model_preset: str | None = None
+    message: str | None = None
+
+
 # ============================================================================
 # Setup Schemas
 # ============================================================================

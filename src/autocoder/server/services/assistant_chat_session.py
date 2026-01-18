@@ -260,6 +260,43 @@ class AssistantChatSession:
         self._client_entered: bool = False
         self.created_at = datetime.now()
         self._is_resuming = conversation_id is not None
+        self._claude_md_backup: str | None = None
+        self._claude_md_created: bool = False
+
+    def _maybe_write_claude_md(self, system_prompt: str) -> str:
+        """
+        On Windows, avoid command-line length issues by writing the system prompt to CLAUDE.md.
+
+        Returns a short replacement prompt when the guard is active.
+        """
+        force = os.environ.get("AUTOCODER_CLAUDE_MD_GUARD", "").strip().lower() in {"1", "true", "yes", "on"}
+        min_chars = 8000
+        try:
+            min_chars = int(os.environ.get("AUTOCODER_CLAUDE_MD_GUARD_MIN_CHARS", "8000"))
+        except Exception:
+            min_chars = 8000
+
+        if os.name != "nt" and not force:
+            return system_prompt
+        if not force and len(system_prompt or "") < min_chars:
+            return system_prompt
+
+        claude_md_path = self.project_dir / "CLAUDE.md"
+        if claude_md_path.exists():
+            try:
+                self._claude_md_backup = claude_md_path.read_text(encoding="utf-8")
+            except Exception:
+                self._claude_md_backup = None
+        else:
+            self._claude_md_created = True
+
+        try:
+            claude_md_path.write_text(system_prompt, encoding="utf-8")
+        except Exception as e:
+            logger.warning(f"Failed to write CLAUDE.md guard: {e}")
+            return system_prompt
+
+        return "System prompt loaded from CLAUDE.md."
 
     async def close(self) -> None:
         """Clean up resources and close the Claude client."""
@@ -271,6 +308,16 @@ class AssistantChatSession:
             finally:
                 self._client_entered = False
                 self.client = None
+
+        # Restore project CLAUDE.md if we temporarily replaced it.
+        claude_md_path = self.project_dir / "CLAUDE.md"
+        try:
+            if self._claude_md_backup is not None:
+                claude_md_path.write_text(self._claude_md_backup, encoding="utf-8")
+            elif self._claude_md_created and claude_md_path.exists():
+                claude_md_path.unlink()
+        except Exception as e:
+            logger.warning(f"Error restoring CLAUDE.md: {e}")
 
     async def start(self) -> AsyncGenerator[dict, None]:
         """
@@ -334,6 +381,7 @@ class AssistantChatSession:
 
         # Get system prompt with project context
         system_prompt = get_system_prompt(self.project_name, self.project_dir)
+        system_prompt = self._maybe_write_claude_md(system_prompt)
 
         # Use system Claude CLI
         cli_command = (os.environ.get("AUTOCODER_CLI_COMMAND") or os.environ.get("CLI_COMMAND") or "claude").strip()
@@ -362,6 +410,7 @@ class AssistantChatSession:
                     max_buffer_size=10 * 1024 * 1024,  # 10MB for Playwright screenshots
                     cwd=str(self.project_dir.resolve()),
                     settings=str(settings_file.resolve()),
+                    setting_sources=["project"],
                 )
             )
             await self.client.__aenter__()

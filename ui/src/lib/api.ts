@@ -14,6 +14,8 @@ import type {
   AgentStatusResponse,
   AgentActionResponse,
   AgentStartRequest,
+  AgentScheduleRequest,
+  AgentScheduleResponse,
   SetupStatus,
   DirectoryListResponse,
   PathValidationResponse,
@@ -223,6 +225,26 @@ export async function pauseAgent(projectName: string): Promise<AgentActionRespon
 export async function resumeAgent(projectName: string): Promise<AgentActionResponse> {
   return fetchJSON(`/projects/${encodeURIComponent(projectName)}/agent/resume`, {
     method: 'POST',
+  })
+}
+
+export async function getAgentSchedule(projectName: string): Promise<AgentScheduleResponse> {
+  return fetchJSON(`/projects/${encodeURIComponent(projectName)}/agent/schedule`)
+}
+
+export async function scheduleAgent(
+  projectName: string,
+  request: AgentScheduleRequest
+): Promise<AgentScheduleResponse> {
+  return fetchJSON(`/projects/${encodeURIComponent(projectName)}/agent/schedule`, {
+    method: 'POST',
+    body: JSON.stringify(request),
+  })
+}
+
+export async function cancelAgentSchedule(projectName: string): Promise<AgentScheduleResponse> {
+  return fetchJSON(`/projects/${encodeURIComponent(projectName)}/agent/schedule`, {
+    method: 'DELETE',
   })
 }
 

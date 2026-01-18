@@ -45,11 +45,12 @@ from .services.process_manager import cleanup_all_managers
 from .services.assistant_chat_session import cleanup_all_sessions as cleanup_assistant_sessions
 from .services.expand_chat_session import cleanup_all_expand_sessions
 from .services.dev_server_manager import cleanup_all_dev_servers
+from .services.scheduler import restore_schedules, cleanup_schedules
 from .routers.devserver import devserver_websocket
 from .services.terminal_manager import cleanup_all_terminals
 from .routers.terminal import terminal_websocket
 from .schemas import SetupStatus
-from autocoder.core.port_config import get_ui_port, get_ui_cors_origins
+from autocoder.core.port_config import get_ui_port, get_ui_cors_origins, get_ui_allow_remote
 
 
 # Paths
@@ -76,12 +77,14 @@ UI_DIST_DIR = _find_ui_dist_dir()
 # Get UI server port + CORS allowlist
 API_PORT = get_ui_port()
 CORS_ORIGINS = get_ui_cors_origins()
+ALLOW_CREDENTIALS = "*" not in CORS_ORIGINS
 
 
 @asynccontextmanager
 async def lifespan(app: FastAPI):
     """Lifespan context manager for startup and shutdown."""
     # Startup
+    await restore_schedules()
     yield
     # Shutdown - cleanup all running agents and assistant sessions
     await cleanup_all_managers()
@@ -89,6 +92,7 @@ async def lifespan(app: FastAPI):
     await cleanup_all_expand_sessions()
     await cleanup_all_dev_servers()
     await cleanup_all_terminals()
+    await cleanup_schedules()
 
 
 # Create FastAPI app
@@ -103,7 +107,7 @@ app = FastAPI(
 app.add_middleware(
     CORSMiddleware,
     allow_origins=CORS_ORIGINS,
-    allow_credentials=True,
+    allow_credentials=ALLOW_CREDENTIALS,
     allow_methods=["*"],
     allow_headers=["*"],
 )
@@ -116,6 +120,8 @@ app.add_middleware(
 @app.middleware("http")
 async def require_localhost(request: Request, call_next):
     """Only allow requests from localhost."""
+    if get_ui_allow_remote():
+        return await call_next(request)
     client_host = request.client.host if request.client else None
 
     # Allow localhost connections
@@ -299,9 +305,10 @@ npm -C ui run dev</pre>
 
 if __name__ == "__main__":
     import uvicorn
+    from autocoder.core.port_config import get_ui_host
     uvicorn.run(
         "autocoder.server.main:app",
-        host="127.0.0.1",  # Localhost only for security
+        host=get_ui_host(),
         port=API_PORT,
         reload=True,
     )

@@ -11,8 +11,11 @@ from pathlib import Path
 
 from fastapi import APIRouter, HTTPException
 
-from ..schemas import AgentStatus, AgentActionResponse, AgentStartRequest
+from datetime import datetime, timedelta
+
+from ..schemas import AgentStatus, AgentActionResponse, AgentStartRequest, AgentScheduleRequest, AgentScheduleResponse
 from ..services.process_manager import get_manager
+from ..services.scheduler import schedule_run, get_schedule, cancel_schedule
 
 
 def _get_project_path(project_name: str) -> Path:
@@ -140,4 +143,60 @@ async def resume_agent(project_name: str):
         success=success,
         status=manager.status,
         message=message,
+    )
+
+
+@router.get("/schedule", response_model=AgentScheduleResponse)
+async def get_agent_schedule(project_name: str):
+    """Get scheduled run status for a project."""
+    _ = get_project_manager(project_name)  # Validate project exists
+    run = get_schedule(project_name)
+    if not run:
+        return AgentScheduleResponse(scheduled=False)
+    return AgentScheduleResponse(
+        scheduled=True,
+        run_at=run.run_at,
+        created_at=run.created_at,
+        yolo_mode=bool(run.request.get("yolo_mode", False)),
+        parallel_mode=bool(run.request.get("parallel_mode", False)),
+        parallel_count=int(run.request.get("parallel_count", 3) or 3),
+        model_preset=str(run.request.get("model_preset", "balanced") or "balanced"),
+    )
+
+
+@router.post("/schedule", response_model=AgentScheduleResponse)
+async def schedule_agent(
+    project_name: str,
+    request: AgentScheduleRequest,
+):
+    """Schedule a future agent run."""
+    manager = get_project_manager(project_name)
+    run_at = request.run_at
+    if run_at.tzinfo is not None:
+        run_at = run_at.astimezone().replace(tzinfo=None)
+    now = datetime.now()
+    if run_at < now - timedelta(seconds=5):
+        raise HTTPException(status_code=400, detail="run_at must be in the future")
+
+    run = await schedule_run(manager, run_at, request.model_dump())
+    return AgentScheduleResponse(
+        scheduled=True,
+        run_at=run.run_at,
+        created_at=run.created_at,
+        yolo_mode=bool(run.request.get("yolo_mode", False)),
+        parallel_mode=bool(run.request.get("parallel_mode", False)),
+        parallel_count=int(run.request.get("parallel_count", 3) or 3),
+        model_preset=str(run.request.get("model_preset", "balanced") or "balanced"),
+        message="Run scheduled",
+    )
+
+
+@router.delete("/schedule", response_model=AgentScheduleResponse)
+async def cancel_agent_schedule(project_name: str):
+    """Cancel a scheduled run for this project."""
+    _ = get_project_manager(project_name)
+    canceled = cancel_schedule(project_name)
+    return AgentScheduleResponse(
+        scheduled=False,
+        message="Schedule canceled" if canceled else "No schedule found",
     )

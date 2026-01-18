@@ -9,6 +9,8 @@ AutoCoder needs *two* distinct kinds of port configuration:
 
 Environment Variables:
 - AUTOCODER_UI_PORT: AutoCoder UI server port (default: 8888)
+- AUTOCODER_UI_HOST: AutoCoder UI bind host (default: 127.0.0.1)
+- AUTOCODER_UI_ALLOW_REMOTE: Allow LAN access + relaxed CORS (default: false)
 - AUTOCODER_API_PORT: Target app backend API port (default: 5000)
 - AUTOCODER_WEB_PORT: Target app frontend dev server port (default: 5173)
 
@@ -27,6 +29,10 @@ logger = logging.getLogger(__name__)
 DEFAULT_UI_PORT: Final[int] = 8888
 DEFAULT_APP_API_PORT: Final[int] = 5000
 DEFAULT_APP_WEB_PORT: Final[int] = 5173
+
+
+def _truthy_env(name: str) -> bool:
+    return os.environ.get(name, "").strip().lower() in {"1", "true", "yes", "on"}
 
 
 def _get_port(env_var: str, default: int) -> int:
@@ -85,6 +91,17 @@ def get_ui_port() -> int:
     return _get_port("AUTOCODER_UI_PORT", DEFAULT_UI_PORT)
 
 
+def get_ui_host() -> str:
+    """Get the AutoCoder UI bind host from AUTOCODER_UI_HOST (default: 127.0.0.1)."""
+    host = (os.environ.get("AUTOCODER_UI_HOST") or "").strip()
+    return host or "127.0.0.1"
+
+
+def get_ui_allow_remote() -> bool:
+    """Return True if the UI should allow remote (LAN) access."""
+    return _truthy_env("AUTOCODER_UI_ALLOW_REMOTE")
+
+
 def get_api_base_url(host: str = "localhost") -> str:
     """
     Get the base URL for the backend API server.
@@ -131,6 +148,13 @@ def get_ui_cors_origins() -> list[str]:
     Returns:
         List of origin URLs for CORS configuration
     """
+    if get_ui_allow_remote():
+        raw = (os.environ.get("AUTOCODER_UI_ALLOWED_ORIGINS") or "").strip()
+        if raw:
+            parts = [p.strip() for p in raw.replace(";", ",").split(",") if p.strip()]
+            return parts if parts else ["*"]
+        return ["*"]
+
     ui_port = get_ui_port()
 
     # UI frontend is typically served via Vite in dev (default 5173) and can auto-increment.

@@ -59,6 +59,8 @@ const DEFAULTS: AdvancedSettings = {
   logs_max_total_mb: 200,
   logs_prune_artifacts: false,
   diagnostics_fixtures_dir: '',
+  ui_host: '',
+  ui_allow_remote: false,
   sdk_max_attempts: 3,
   sdk_initial_delay_s: 1,
   sdk_rate_limit_initial_delay_s: 30,
@@ -67,6 +69,7 @@ const DEFAULTS: AdvancedSettings = {
   sdk_jitter: true,
   require_gatekeeper: true,
   allow_no_tests: false,
+  stop_when_done: true,
   api_port_range_start: 5000,
   api_port_range_end: 5100,
   web_port_range_start: 5173,
@@ -134,6 +137,8 @@ export function AdvancedSettingsContent() {
       addWarning('initializer_enqueue_count', 'Stage threshold is set but enqueue count is 0 (backlog will never start)')
 
     if (draft.allow_no_tests) addWarning('allow_no_tests', 'Allow No Tests can merge without verification (recommended only for YOLO)')
+    if (draft.ui_allow_remote && !draft.ui_host.trim())
+      addWarning('ui_host', 'Set UI bind host (e.g. 0.0.0.0) to allow LAN access')
 
     return { errors, warnings, fieldErrors, fieldWarnings }
   }, [draft])
@@ -341,6 +346,24 @@ export function AdvancedSettingsContent() {
                     <span className="font-display font-bold text-sm">Worker verify (Gatekeeper)</span>
                     <input type="checkbox" checked={draft.worker_verify} onChange={(e) => setDraft({ ...draft, worker_verify: e.target.checked })} className="w-5 h-5" />
                   </label>
+                </div>
+              </div>
+
+              <div className="neo-card p-4">
+                <div className="font-display font-bold uppercase mb-3">Run Behavior</div>
+                <div className="grid grid-cols-1 md:grid-cols-2 gap-3">
+                  <label className="neo-card p-3 flex items-center justify-between cursor-pointer">
+                    <span className="font-display font-bold text-sm">Stop when queue is empty</span>
+                    <input
+                      type="checkbox"
+                      checked={draft.stop_when_done}
+                      onChange={(e) => setDraft({ ...draft, stop_when_done: e.target.checked })}
+                      className="w-5 h-5"
+                    />
+                  </label>
+                  <div className="text-xs text-[var(--color-neo-text-secondary)] self-center">
+                    If disabled, agents stay alive and wait for new features.
+                  </div>
                 </div>
               </div>
 
@@ -652,6 +675,30 @@ export function AdvancedSettingsContent() {
                   <span className="font-display font-bold text-sm">Skip port availability check</span>
                   <input type="checkbox" checked={draft.skip_port_check} onChange={(e) => setDraft({ ...draft, skip_port_check: e.target.checked })} className="w-5 h-5" />
                 </label>
+              </div>
+
+              <div className="neo-card p-4 mt-4">
+                <div className="font-display font-bold uppercase mb-3">UI Server</div>
+                <div className="grid grid-cols-1 md:grid-cols-2 gap-3">
+                  <TextField
+                    label="Bind host"
+                    value={draft.ui_host}
+                    onChange={(v) => setDraft({ ...draft, ui_host: v })}
+                    placeholder="127.0.0.1 (default)"
+                  />
+                  <label className="neo-card p-3 flex items-center justify-between cursor-pointer">
+                    <span className="font-display font-bold text-sm">Allow LAN access</span>
+                    <input
+                      type="checkbox"
+                      checked={draft.ui_allow_remote}
+                      onChange={(e) => setDraft({ ...draft, ui_allow_remote: e.target.checked })}
+                      className="w-5 h-5"
+                    />
+                  </label>
+                </div>
+                <div className="text-xs text-[var(--color-neo-text-secondary)] mt-2">
+                  Requires a UI restart. Use <span className="font-mono">0.0.0.0</span> to bind all interfaces.
+                </div>
               </div>
             </div>
           )}

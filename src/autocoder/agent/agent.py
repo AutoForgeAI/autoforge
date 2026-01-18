@@ -52,6 +52,13 @@ from ..core.database import get_database
 AUTO_CONTINUE_DELAY_SECONDS = 3
 
 
+def _stop_when_done() -> bool:
+    raw = str(os.environ.get("AUTOCODER_STOP_WHEN_DONE", "")).strip().lower()
+    if not raw:
+        return True
+    return raw in {"1", "true", "yes", "on"}
+
+
 def _auto_continue_delay_from_rate_limit(response: str) -> tuple[float, str | None]:
     """
     If the Claude CLI indicates a rate limit reset time, return a delay (seconds)
@@ -321,7 +328,8 @@ async def run_autonomous_agent(
             print("\nAssigned feature already submitted for verification; exiting worker.")
             break
 
-        # For single-agent runs, exit once everything is complete (including staged backlog).
+        # For single-agent runs, exit once everything is complete (including staged backlog),
+        # unless explicitly configured to stay alive for new work.
         if assigned_feature_id is None:
             try:
                 db = get_database(str(features_state_dir))
@@ -329,8 +337,12 @@ async def run_autonomous_agent(
                 staged = int(stats["features"].get("staged", 0) or 0)
                 ready = int(stats["features"].get("ready_for_verification", 0) or 0)
                 if stats["features"]["pending"] == 0 and stats["features"]["in_progress"] == 0 and staged == 0 and ready == 0:
-                    print("\nAll features complete; exiting agent.")
-                    break
+                    if _stop_when_done():
+                        print("\nAll features complete; exiting agent.")
+                        break
+                    print("\nQueue empty; waiting for new features (AUTOCODER_STOP_WHEN_DONE=0).")
+                    await asyncio.sleep(10)
+                    continue
             except Exception:
                 pass
 

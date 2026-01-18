@@ -89,6 +89,10 @@ class AdvancedSettings:
     # Diagnostics (Web UI)
     diagnostics_fixtures_dir: str = ""
 
+    # UI server (bind host / allow remote)
+    ui_host: str = ""
+    ui_allow_remote: bool = False
+
     # Retry/backoff for Claude Agent SDK queries
     sdk_max_attempts: int = 3
     sdk_initial_delay_s: int = 1
@@ -100,6 +104,7 @@ class AdvancedSettings:
     # Gatekeeper behavior
     require_gatekeeper: bool = True
     allow_no_tests: bool = False
+    stop_when_done: bool = True
 
     # Port allocator behavior
     api_port_range_start: int = 5000
@@ -152,6 +157,8 @@ class AdvancedSettings:
             "AUTOCODER_LOGS_MAX_TOTAL_MB": str(self.logs_max_total_mb),
             "AUTOCODER_LOGS_PRUNE_ARTIFACTS": "1" if self.logs_prune_artifacts else "0",
             "AUTOCODER_DIAGNOSTICS_FIXTURES_DIR": str(self.diagnostics_fixtures_dir or ""),
+            "AUTOCODER_UI_HOST": str(self.ui_host or ""),
+            "AUTOCODER_UI_ALLOW_REMOTE": "1" if self.ui_allow_remote else "0",
             "AUTOCODER_SDK_MAX_ATTEMPTS": str(self.sdk_max_attempts),
             "AUTOCODER_SDK_INITIAL_DELAY_S": str(self.sdk_initial_delay_s),
             "AUTOCODER_SDK_RATE_LIMIT_INITIAL_DELAY_S": str(self.sdk_rate_limit_initial_delay_s),
@@ -160,6 +167,7 @@ class AdvancedSettings:
             "AUTOCODER_SDK_JITTER": "true" if self.sdk_jitter else "false",
             "AUTOCODER_REQUIRE_GATEKEEPER": "1" if self.require_gatekeeper else "0",
             "AUTOCODER_ALLOW_NO_TESTS": "1" if self.allow_no_tests else "0",
+            "AUTOCODER_STOP_WHEN_DONE": "1" if self.stop_when_done else "0",
             "AUTOCODER_API_PORT_RANGE_START": str(self.api_port_range_start),
             "AUTOCODER_API_PORT_RANGE_END": str(self.api_port_range_end),
             "AUTOCODER_WEB_PORT_RANGE_START": str(self.web_port_range_start),

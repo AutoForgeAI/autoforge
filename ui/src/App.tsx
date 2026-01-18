@@ -25,7 +25,8 @@ import { SettingsPage } from './pages/SettingsPage'
 import { ProjectSetupRequired } from './components/ProjectSetupRequired'
 import { SpecCreationChat } from './components/SpecCreationChat'
 import { KnowledgeFilesModal } from './components/KnowledgeFilesModal'
-import { Plus, Loader2, FileText, Settings as SettingsIcon, Sparkles, BookOpen } from 'lucide-react'
+import { ConfirmationDialog } from './components/ConfirmationDialog'
+  import { Plus, Loader2, FileText, Settings as SettingsIcon, Sparkles, BookOpen, ChevronDown } from 'lucide-react'
 import type { Feature } from './lib/types'
 import { startAgent } from './lib/api'
 
@@ -55,9 +56,12 @@ function App() {
   const [showSpecChat, setShowSpecChat] = useState(false)
   const [specInitializerStatus, setSpecInitializerStatus] = useState<'idle' | 'starting' | 'error'>('idle')
   const [specInitializerError, setSpecInitializerError] = useState<string | null>(null)
-  const [specYoloSelected, setSpecYoloSelected] = useState(false)
-  const [showKnowledgeModal, setShowKnowledgeModal] = useState(false)
-  const [setupBannerDismissedUntil, setSetupBannerDismissedUntil] = useState<number | null>(null)
+    const [specYoloSelected, setSpecYoloSelected] = useState(false)
+    const [showKnowledgeModal, setShowKnowledgeModal] = useState(false)
+    const [setupBannerDismissedUntil, setSetupBannerDismissedUntil] = useState<number | null>(null)
+    const [toolsOpen, setToolsOpen] = useState(false)
+  const [showProjectSwitchConfirm, setShowProjectSwitchConfirm] = useState(false)
+  const [pendingProjectSelection, setPendingProjectSelection] = useState<string | null>(null)
 
   const [yoloEnabled, setYoloEnabled] = useState(false)
   const [runSettings, setRunSettings] = useState<RunSettings>({
@@ -122,6 +126,21 @@ function App() {
       // localStorage not available
     }
   }, [])
+
+  const requestSelectProject = useCallback((project: string | null) => {
+    if (wsState.agentStatus === 'running' && project !== selectedProject) {
+      setPendingProjectSelection(project)
+      setShowProjectSwitchConfirm(true)
+      return
+    }
+    handleSelectProject(project)
+  }, [handleSelectProject, wsState.agentStatus, selectedProject])
+
+  const confirmTitle = pendingProjectSelection ? 'Switch Project?' : 'Return to Dashboard?'
+  const confirmBadge = wsState.agentStatus === 'running' ? 'Running' : undefined
+  const confirmMessage = pendingProjectSelection
+    ? 'Switching projects will not stop the current run. You can come back anytime to see progress.'
+    : 'Agents keep running in the background. You can come back to this project anytime to see progress.'
 
   // Validate stored project exists (clear if project was deleted)
   useEffect(() => {
@@ -237,13 +256,23 @@ function App() {
   }, [selectedProject, showAddFeature, showExpandProject, selectedFeature, debugOpen, assistantOpen, showSettings, showSpecChat, showKnowledgeModal, route])
 
   // Hash-based routing (no router dependency)
-  useEffect(() => {
-    const onHash = () => {
-      setRoute(window.location.hash.startsWith('#/settings') ? 'settings' : 'main')
-    }
-    window.addEventListener('hashchange', onHash)
-    return () => window.removeEventListener('hashchange', onHash)
-  }, [])
+    useEffect(() => {
+      const onHash = () => {
+        setRoute(window.location.hash.startsWith('#/settings') ? 'settings' : 'main')
+      }
+      window.addEventListener('hashchange', onHash)
+      return () => window.removeEventListener('hashchange', onHash)
+    }, [])
+
+    useEffect(() => {
+      const onDocClick = (e: MouseEvent) => {
+        if (!(e.target as HTMLElement)?.closest?.('[data-tools-menu]')) {
+          setToolsOpen(false)
+        }
+      }
+      document.addEventListener('click', onDocClick)
+      return () => document.removeEventListener('click', onDocClick)
+    }, [])
 
   // Persist run settings locally (best-effort)
   useEffect(() => {
@@ -329,41 +358,50 @@ function App() {
 
   return (
     <div className="min-h-screen bg-[var(--color-neo-bg)]">
-      {/* Header */}
-      <header className="bg-[var(--color-neo-text)] text-white border-b-4 border-[var(--color-neo-border)]">
-        <div className="max-w-7xl mx-auto px-4 py-4">
-          <div className="flex items-center justify-between">
-            {/* Logo and Title */}
-            <h1 className="font-display text-2xl font-bold tracking-tight uppercase">
-              Autonomous Coder
-            </h1>
+        {/* Header */}
+        <header className="bg-[var(--color-neo-neutral-900)] text-white border-b-2 border-[var(--color-neo-border)]">
+          <div className="max-w-7xl mx-auto px-4 py-4">
+            <div className="flex flex-col gap-3">
+              {/* Row 1: Brand + Project + Run Control */}
+              <div className="flex flex-wrap items-center justify-between gap-3">
+                <div className="flex items-center gap-4">
+                  <button
+                    type="button"
+                    onClick={() => {
+                      window.location.hash = ''
+                      requestSelectProject(null)
+                    }}
+                    className="font-display text-2xl font-semibold tracking-tight hover:opacity-90"
+                    title="Back to dashboard"
+                  >
+                    Autonomous Coder
+                  </button>
+                  <div className="hidden md:block h-6 w-px bg-white/20" />
+                  <div className="flex items-center gap-2">
+                    {route === 'settings' && (
+                      <button
+                        onClick={() => {
+                          window.location.hash = ''
+                        }}
+                        className="neo-btn text-xs bg-white text-[var(--color-neo-text)] flex items-center gap-2"
+                        title="Back"
+                      >
+                        <span className="hidden sm:inline">Back</span>
+                        <span className="font-mono text-xs">Esc</span>
+                      </button>
+                    )}
+                    <ProjectSelector
+                      projects={projects ?? []}
+                      selectedProject={selectedProject}
+                      onSelectProject={requestSelectProject}
+                      isLoading={projectsLoading}
+                      onSpecCreatingChange={(v) => setIsSpecCreating(v)}
+                    />
+                  </div>
+                </div>
 
-            {/* Controls */}
-            <div className="flex items-center gap-4">
-              {route === 'settings' ? (
-                <button
-                  onClick={() => {
-                    window.location.hash = ''
-                  }}
-                  className="neo-btn text-sm bg-white text-[var(--color-neo-text)] flex items-center gap-2"
-                  title="Back"
-                >
-                  <span className="hidden sm:inline">Back</span>
-                  <span className="font-mono text-xs">Esc</span>
-                </button>
-              ) : (
-                <ProjectSelector
-                  projects={projects ?? []}
-                  selectedProject={selectedProject}
-                  onSelectProject={handleSelectProject}
-                  isLoading={projectsLoading}
-                  onSpecCreatingChange={(v) => setIsSpecCreating(v)}
-                />
-              )}
-
-              {selectedProject && route === 'main' && (
-                <>
-                  {setupStatus?.glm_mode || setupStatus?.custom_api ? (
+                <div className="flex items-center gap-3">
+                  {selectedProject && (setupStatus?.glm_mode || setupStatus?.custom_api) ? (
                     <span
                       className={`neo-badge ${setupStatus?.glm_mode ? 'bg-purple-600 text-white' : 'bg-indigo-600 text-white'}`}
                       title={setupStatus?.glm_mode ? 'GLM / custom Anthropic-compatible endpoint enabled' : 'Custom API endpoint enabled'}
@@ -371,6 +409,36 @@ function App() {
                       {setupStatus?.glm_mode ? 'GLM' : 'ALT API'}
                     </span>
                   ) : null}
+
+                  {selectedProject && (
+                    <AgentControl
+                      projectName={selectedProject}
+                      status={wsState.agentStatus}
+                      yoloMode={agentStatusData?.yolo_mode ?? false}
+                      parallelMode={agentStatusData?.parallel_mode ?? false}
+                      parallelCount={agentStatusData?.parallel_count ?? null}
+                      modelPreset={agentStatusData?.model_preset ?? null}
+                      yoloEnabled={yoloEnabled}
+                      onToggleYolo={() => {
+                        setYoloEnabled((prev) => {
+                          const next = !prev
+                          if (next) {
+                            setRunSettings((s) => ({ ...s, mode: 'standard' }))
+                          }
+                          return next
+                        })
+                      }}
+                      runMode={runSettings.mode}
+                      parallelCountSetting={runSettings.parallelCount}
+                      parallelPresetSetting={runSettings.parallelPreset}
+                    />
+                  )}
+                </div>
+              </div>
+
+              {/* Row 2: Project Actions */}
+              {selectedProject && route === 'main' && (
+                <div className="flex flex-wrap items-center gap-2 border-t border-white/15 pt-3">
                   <button
                     onClick={() => setShowAddFeature(true)}
                     className="neo-btn neo-btn-primary text-sm flex items-center gap-2"
@@ -403,21 +471,6 @@ function App() {
                   </button>
 
                   <button
-                    onClick={() => {
-                      setShowSettings(true)
-                    }}
-                    className="neo-btn text-sm bg-[var(--color-neo-accent)] text-white flex items-center gap-2"
-                    title="Settings (Press S)"
-                    aria-label="Settings"
-                  >
-                    <SettingsIcon size={18} />
-                    <span className="hidden sm:inline">Settings</span>
-                    <kbd className="hidden md:inline ml-1.5 px-1.5 py-0.5 text-xs bg-black/20 rounded font-mono">
-                      S
-                    </kbd>
-                  </button>
-
-                  <button
                     onClick={() => setShowKnowledgeModal(true)}
                     className="neo-btn text-sm bg-[var(--color-neo-card)] text-[var(--color-neo-text)] flex items-center gap-2"
                     title="Knowledge Files (Press K)"
@@ -430,45 +483,77 @@ function App() {
                     </kbd>
                   </button>
 
-                  <button
-                    onClick={() => {
-                      setLogsTab('workers')
-                      setDebugOpen(true)
-                    }}
-                    className="neo-btn text-sm bg-[var(--color-neo-bg)] text-[var(--color-neo-text)] px-3"
-                    title="Worker Logs (Press L)"
-                  >
-                    <FileText size={18} />
-                    <span className="sr-only">Logs</span>
-                  </button>
+                  {/* Desktop utility buttons */}
+                  <div className="hidden md:flex items-center gap-2">
+                    <button
+                      onClick={() => {
+                        setShowSettings(true)
+                      }}
+                      className="neo-btn text-sm bg-[var(--color-neo-accent)] text-white flex items-center gap-2"
+                      title="Settings (Press S)"
+                      aria-label="Settings"
+                    >
+                      <SettingsIcon size={18} />
+                      <span className="hidden lg:inline">Settings</span>
+                      <kbd className="hidden xl:inline ml-1.5 px-1.5 py-0.5 text-xs bg-black/20 rounded font-mono">
+                        S
+                      </kbd>
+                    </button>
 
-                  <AgentControl
-                    projectName={selectedProject}
-                    status={wsState.agentStatus}
-                    yoloMode={agentStatusData?.yolo_mode ?? false}
-                    parallelMode={agentStatusData?.parallel_mode ?? false}
-                    parallelCount={agentStatusData?.parallel_count ?? null}
-                    modelPreset={agentStatusData?.model_preset ?? null}
-                    yoloEnabled={yoloEnabled}
-                    onToggleYolo={() => {
-                      setYoloEnabled((prev) => {
-                        const next = !prev
-                        if (next) {
-                          setRunSettings((s) => ({ ...s, mode: 'standard' }))
-                        }
-                        return next
-                      })
-                    }}
-                    runMode={runSettings.mode}
-                    parallelCountSetting={runSettings.parallelCount}
-                    parallelPresetSetting={runSettings.parallelPreset}
-                  />
-                </>
+                    <button
+                      onClick={() => {
+                        setLogsTab('workers')
+                        setDebugOpen(true)
+                      }}
+                      className="neo-btn text-sm bg-[var(--color-neo-bg)] text-[var(--color-neo-text)] px-3"
+                      title="Worker Logs (Press L)"
+                    >
+                      <FileText size={18} />
+                      <span className="sr-only">Logs</span>
+                    </button>
+                  </div>
+
+                  {/* Mobile tools dropdown */}
+                  <div className="relative md:hidden" data-tools-menu>
+                    <button
+                      onClick={() => setToolsOpen((prev) => !prev)}
+                      className="neo-btn text-sm bg-[var(--color-neo-accent)] text-white flex items-center gap-2"
+                      title="Tools"
+                    >
+                      Tools
+                      <ChevronDown size={16} />
+                    </button>
+                    {toolsOpen && (
+                      <div className="absolute right-0 mt-2 min-w-[180px] neo-card p-2 bg-white text-[var(--color-neo-text)] shadow-[2px_2px_0px_rgba(0,0,0,0.35)] border-2 border-[var(--color-neo-border)] z-20">
+                        <button
+                          onClick={() => {
+                            setToolsOpen(false)
+                            setShowSettings(true)
+                          }}
+                          className="neo-btn w-full text-sm mb-2 flex items-center gap-2"
+                        >
+                          <SettingsIcon size={16} />
+                          Settings
+                        </button>
+                        <button
+                          onClick={() => {
+                            setToolsOpen(false)
+                            setLogsTab('workers')
+                            setDebugOpen(true)
+                          }}
+                          className="neo-btn w-full text-sm flex items-center gap-2"
+                        >
+                          <FileText size={16} />
+                          Logs
+                        </button>
+                      </div>
+                    )}
+                  </div>
+                </div>
               )}
             </div>
           </div>
-        </div>
-      </header>
+        </header>
 
       {/* Main Content */}
       <main
@@ -634,12 +719,13 @@ function App() {
       )}
 
       {/* Settings Modal */}
-      {showSettings && selectedProject && (
-        <SettingsModal
-          onClose={() => setShowSettings(false)}
-          yoloEnabled={yoloEnabled}
-          settings={runSettings}
-          onChange={(next) => setRunSettings(next)}
+        {showSettings && selectedProject && (
+          <SettingsModal
+            onClose={() => setShowSettings(false)}
+            projectName={selectedProject}
+            yoloEnabled={yoloEnabled}
+            settings={runSettings}
+            onChange={(next) => setRunSettings(next)}
           onOpenSettingsPage={() => {
             setShowSettings(false)
             window.location.hash = '#/settings'
@@ -683,6 +769,26 @@ function App() {
           />
         </>
       )}
+
+      <ConfirmationDialog
+        isOpen={showProjectSwitchConfirm}
+        title={confirmTitle}
+        titleBadgeText={confirmBadge}
+        titleBadgeVariant="info"
+        message={confirmMessage}
+        confirmText={pendingProjectSelection ? 'Switch Project' : 'Go to Dashboard'}
+        cancelText="Stay Here"
+        variant="warning"
+        onConfirm={() => {
+          setShowProjectSwitchConfirm(false)
+          handleSelectProject(pendingProjectSelection)
+          setPendingProjectSelection(null)
+        }}
+        onCancel={() => {
+          setShowProjectSwitchConfirm(false)
+          setPendingProjectSelection(null)
+        }}
+      />
     </div>
   )
 }

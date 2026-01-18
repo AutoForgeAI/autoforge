@@ -38,6 +38,7 @@ AutoCoder is a Claude Agent SDK + MCP based coding agent. It supports single-age
 - Use `features.last_error` and Gatekeeper artifacts under `.autocoder/features/<id>/gatekeeper/` to debug retries.
  - Feature implementation worker is configurable: `AUTOCODER_WORKER_PROVIDER=claude|codex_cli|gemini_cli|multi_cli` (patch workers use `src/autocoder/qa_worker.py --mode implement`).
 - Large backlogs may be **staged** (disabled) to keep active queues manageable; staged features can be enqueued from the UI or via `POST /features/enqueue`.
+- Agents stop when the queue is empty by default; set `AUTOCODER_STOP_WHEN_DONE=0` to keep them alive for new features.
 - Skipping is for **external blockers only**; refactor/cleanup features are required work and should not be skipped. If a refactor feature conflicts with the original spec, the feature DB is the source of truth.
 
 ## Project Maintenance (UI)
@@ -58,6 +59,7 @@ AutoCoder is a Claude Agent SDK + MCP based coding agent. It supports single-age
 
 - **Per-project**: model settings are stored in the target project’s `agent_system.db` (so settings travel with the project).
 - **Global**: UI “Advanced Settings” are stored in `~/.autocoder/settings.db` (override with `AUTOCODER_SETTINGS_DB_PATH`). Legacy `~/.autocoder/ui_settings.json` is auto-migrated on first load.
+- **UI host**: set `AUTOCODER_UI_HOST` (default `127.0.0.1`) and `AUTOCODER_UI_ALLOW_REMOTE=1` for LAN access (restart required).
 
 ## Commit & Pull Request Guidelines
 

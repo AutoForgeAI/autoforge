@@ -631,8 +631,12 @@ class Orchestrator:
                         )
                         if enabled > 0:
                             continue
-                    logger.info("✅ All features complete!")
-                    break
+                    if self._stop_when_done():
+                        logger.info("✅ All features complete!")
+                        break
+                    logger.info("✅ Queue empty; waiting for new features (AUTOCODER_STOP_WHEN_DONE=0)")
+                    await asyncio.sleep(10)
+                    continue
 
                 # Check for crashed agents and recover
                 self._recover_crashed_agents()
@@ -1064,6 +1068,12 @@ class Orchestrator:
     @staticmethod
     def _env_truthy(name: str) -> bool:
         raw = str(os.environ.get(name, "")).strip().lower()
+        return raw in {"1", "true", "yes", "on"}
+
+    def _stop_when_done(self) -> bool:
+        raw = str(os.environ.get("AUTOCODER_STOP_WHEN_DONE", "")).strip().lower()
+        if not raw:
+            return True
         return raw in {"1", "true", "yes", "on"}
 
     def _controller_enabled(self) -> bool:

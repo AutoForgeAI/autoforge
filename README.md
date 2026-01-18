@@ -146,6 +146,9 @@ autocoder-ui
 - On Windows, terminal sessions auto-install `pywinpty` (disable with `AUTOCODER_AUTO_INSTALL_WINPTY=0`).
 - Hide the startup banner/checklist with `AUTOCODER_UI_BANNER=0` (set it before running `autocoder-ui`/`start_ui`).
 - If `ui/src` is newer than `ui/dist`, AutoCoder will auto-rebuild the UI on launch (disable with `AUTOCODER_UI_AUTO_BUILD=0`).
+- Scheduled runs: use the **Settings** modal (press `S`) to schedule a start time; schedules persist across UI restarts.
+- Stop-when-done: default is **stop** when the queue is empty; set `AUTOCODER_STOP_WHEN_DONE=0` to keep the agent alive for new features.
+- LAN access: set `AUTOCODER_UI_HOST=0.0.0.0` and `AUTOCODER_UI_ALLOW_REMOTE=1` (restart required).
 
 ### Project Setup & Reset (Web UI)
 

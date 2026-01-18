@@ -1,5 +1,5 @@
 import { useState } from 'react'
-import { ChevronDown, Plus, FolderOpen, Loader2 } from 'lucide-react'
+import { ChevronDown, Plus, FolderOpen, Loader2, LayoutGrid } from 'lucide-react'
 import type { ProjectSummary } from '../lib/types'
 import { NewProjectModal } from './NewProjectModal'
 
@@ -69,6 +69,21 @@ export function ProjectSelector({
 
           {/* Menu */}
           <div className="absolute top-full left-0 mt-2 w-full neo-dropdown z-50 min-w-[280px]">
+            {selectedProject && (
+              <>
+                <button
+                  onClick={() => {
+                    onSelectProject(null)
+                    setIsOpen(false)
+                  }}
+                  className="w-full neo-dropdown-item flex items-center gap-2"
+                >
+                  <LayoutGrid size={16} />
+                  Dashboard
+                </button>
+                <div className="border-t-2 border-[var(--color-neo-border)]" />
+              </>
+            )}
             {projects.length > 0 ? (
               <div className="max-h-[300px] overflow-auto">
                 {projects.map(project => (

@@ -79,6 +79,8 @@ class AdvancedSettingsModel(BaseModel):
     logs_prune_artifacts: bool = False
 
     diagnostics_fixtures_dir: str = Field(default="", max_length=2000)
+    ui_host: str = Field(default="", max_length=255)
+    ui_allow_remote: bool = False
 
     sdk_max_attempts: int = Field(default=3, ge=1, le=20)
     sdk_initial_delay_s: int = Field(default=1, ge=0, le=600)
@@ -89,6 +91,7 @@ class AdvancedSettingsModel(BaseModel):
 
     require_gatekeeper: bool = True
     allow_no_tests: bool = False
+    stop_when_done: bool = True
 
     api_port_range_start: int = Field(default=5000, ge=1024, le=65535)
     api_port_range_end: int = Field(default=5100, ge=1024, le=65536)

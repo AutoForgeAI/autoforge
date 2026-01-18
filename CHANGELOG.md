@@ -13,6 +13,10 @@ All notable changes to this fork will be listed here.
 - UI auto-build now detects stale `ui/dist` and rebuilds when sources are newer
 - WebSocket debug logs deduplicate consecutive identical lines (prevents StrictMode double-connect noise)
 - Assistant chat: avoid history loss on conversation switch, disable input while loading, and reduce server log noise
+- Scheduled runs (UI) with persisted schedule state
+- New `AUTOCODER_STOP_WHEN_DONE` toggle to keep agents alive on empty queues
+- LAN-ready UI host toggle (`AUTOCODER_UI_HOST`, `AUTOCODER_UI_ALLOW_REMOTE`)
+- Windows CLI length guard for assistant chat via temporary `CLAUDE.md`
 
 ## 2026-01-17
 

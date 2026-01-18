@@ -182,6 +182,10 @@ npm run lint        # Check code quality
 
 Note: `autocoder-ui` serves the pre-built UI from `ui/dist/`. Rebuild after making changes.
 
+UI notes:
+- Scheduled runs live in the **Settings** modal (press `S`).
+- LAN access: set `AUTOCODER_UI_HOST=0.0.0.0` and `AUTOCODER_UI_ALLOW_REMOTE=1` (restart required).
+
 ---
 
 ## Parallel Agents (Why This Fork Exists)
