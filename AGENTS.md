@@ -70,6 +70,7 @@ AutoCoder is a Claude Agent SDK + MCP based coding agent. It supports single-age
 - Commits: short, imperative summaries (e.g., `core: fix feature claiming race`).
 - PRs: include what changed, how to verify, and test output; add UI screenshots for UI changes.
 - After a PR is merged, delete the feature branch locally and on `origin` to keep the repo clean.
+- Writing tone: match Gabi/Booplex voice (see local `C:\Users\gabif\Downloads\my_persona_v2.md`; do not commit it).
 
 ## Security & Agent-Specific Notes
 

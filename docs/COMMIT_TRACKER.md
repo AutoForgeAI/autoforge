@@ -18,7 +18,7 @@ git log --oneline master..upstream/master   # what upstream has that we don't
 | `bf3a6b0` | Per‑agent log viewer + stuck agent fixes + scheduling score | **Ported (adapted)** | Added per‑agent log jump + activity mini‑list, copy-to-clipboard for tails, and guarded the SDK client context manager to prevent “stuck” crash states. Scheduling score not applicable (we already prioritize blockers). |
 | `76e6521` | Dependency graph blank fix | **N/A** | We don’t ship dependency graph UI in this fork. |
 | `5f78607` | SQLAlchemy session cache fix in parallel orchestrator | **N/A** | We don’t use SQLAlchemy; our DB layer is raw SQLite with explicit retry/backoff. |
-| `1312836` | Dedicated testing agents + testing ratio + MCP mark‑failing | **Partial overlap** | We already run tests in Gatekeeper + spawn QA fixers on failure (configurable provider). Consider optional **parallel QA ratio** later if we want proactive test agents. |
+| `1312836` | Dedicated testing agents + testing ratio + MCP mark‑failing | **Ported (adapted)** | We did **not** adopt upstream’s SQLAlchemy/DAG orchestrator or dependency graph UI. We *did* port the “dedicated tester” idea as an **optional regression pool** (Claude+Playwright) that reports failures as new `REGRESSION` features via `feature_report_regression`. |
 | `126151d` | “Production readiness”: locks + PID reuse + WAL safety + Windows cleanup | **Ported (selectively)** | Ported atomic `<project>/.agent.lock` (`PID:CREATE_TIME`) + PID reuse protection + process‑tree stop; added SQLite journal mode fallback for network drives (`AUTOCODER_SQLITE_JOURNAL_MODE` override). |
 | `6c8b463` | Completion detection: don’t treat initializer as “done” | **Ported (adapted)** | Our single-agent completion check now skips the first initializer session (prevents exiting on an empty DB before the initializer creates features). |
 | `fbe4c39` | UI build reliability: config inputs + FAT32 tolerance + trigger logging | **Ported (adapted)** | We already track config files; added `AUTOCODER_UI_MTIME_TOLERANCE_S` + best-effort trigger logging when auto-rebuilding `ui/dist`. |
@@ -39,7 +39,7 @@ Legend:
 | `3c80611` | Merge PR #76 (ui-build-detection) | **Skipped** | Merge commit only. |
 | `6c8b463` | use is_initializer instead of undefined is_first_run variable | **Ported** | Fixed first-run completion check edge case for initializer runs. |
 | `0391df8` | Merge PR #77 (agent-completion-detection) | **Skipped** | Merge commit only. |
-| `1312836` | dedicated testing agents + enhanced parallel orchestration | **Skipped** | Upstream adds a new SQLAlchemy-based orchestrator + tester pool + dependency graph UI. Our fork uses Gatekeeper + worktrees + QA sub-agent instead. |
+| `1312836` | dedicated testing agents + enhanced parallel orchestration | **Partially ported** | We added an optional regression pool (Claude+Playwright testers) + `feature_report_regression` issue creation. We did **not** adopt upstream’s SQLAlchemy/DAG orchestrator or dependency graph UI. |
 | `ffdd97a` | completion detection to prevent infinite loop when all features done | **Already have** | We exit when queue is empty (or wait if `AUTOCODER_STOP_WHEN_DONE=0`). |
 | `32fb4dc` | UI build detection to check source file timestamps | **Already have** | We already compare `ui/src` + config inputs against `ui/dist`. |
 | `5f78607` | prevent orchestrator early exit due to stale session cache | **Skipped** | Upstream SQLAlchemy session issue; we use raw SQLite. |
