@@ -10,11 +10,13 @@ and this project adheres to [Semantic Versioning](https://semver.org/spec/v2.0.0
 ### Core
 - Safer per-project run locking (`<project>/.agent.lock` is atomic + PID reuse resistant) and stop now kills the full process tree.
 - SQLite defaults to `journal_mode=WAL`, but auto-falls back to `DELETE` on network filesystems (override via `AUTOCODER_SQLITE_JOURNAL_MODE`).
+- Fix: fresh projects no longer exit early before the initializer creates the feature backlog.
 
 ### UI
 - Dashboard shows a “still running in the background” banner after leaving a running project.
 - Softer hover feel: cards don’t “jump” on hover unless explicitly opted-in; shadows are a bit less intense.
 - Assistant button sits higher to avoid bottom-edge overlap.
+- UI auto-build logs which file triggered a rebuild; optional mtime tolerance for FAT32/exFAT (`AUTOCODER_UI_MTIME_TOLERANCE_S`).
 
 ## [2.0.0] - 2025-01-07
 

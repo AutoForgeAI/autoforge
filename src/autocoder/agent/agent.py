@@ -330,7 +330,9 @@ async def run_autonomous_agent(
 
         # For single-agent runs, exit once everything is complete (including staged backlog),
         # unless explicitly configured to stay alive for new work.
-        if assigned_feature_id is None:
+        # Skip this on the very first initializer session (fresh start) so we don't
+        # treat an empty DB as "done" before the initializer creates features.
+        if assigned_feature_id is None and not is_first_run:
             try:
                 db = get_database(str(features_state_dir))
                 stats = db.get_stats()

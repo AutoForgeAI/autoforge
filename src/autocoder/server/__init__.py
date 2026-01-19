@@ -21,7 +21,7 @@ import uvicorn
 from pathlib import Path
 
 from autocoder.core.port_config import get_ui_port, get_ui_host
-from autocoder.core.ui_build import find_ui_root, is_ui_build_stale
+from autocoder.core.ui_build import find_ui_root, get_ui_build_stale_trigger, is_ui_build_stale
 from autocoder.server.server_lock import ServerLock
 from autocoder.server.settings_store import apply_advanced_settings_env
 
@@ -125,7 +125,11 @@ def start_server(host: str | None = None, port: int | None = None, reload: bool 
             print("⚠️  UI source is newer than dist, but Node/npm is missing. Skipping rebuild.")
             return
 
-        print("🎨 UI sources changed — rebuilding ui/dist …")
+        trigger = get_ui_build_stale_trigger(ui_root)
+        if trigger:
+            print(f"🎨 UI sources changed ({trigger}) — rebuilding ui/dist …")
+        else:
+            print("🎨 UI sources changed — rebuilding ui/dist …")
         try:
             if not (ui_root / "node_modules").exists():
                 subprocess.run(["npm", "install"], cwd=str(ui_root), check=True)

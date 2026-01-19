@@ -31,3 +31,12 @@ def test_ui_build_stale_when_source_newer(tmp_path):
     _touch(ui_root / "dist" / "assets" / "app.js", now - 100)
     _touch(ui_root / "src" / "App.tsx", now)
     assert is_ui_build_stale(ui_root) is True
+
+
+def test_ui_build_tolerance_env(tmp_path, monkeypatch):
+    monkeypatch.setenv("AUTOCODER_UI_MTIME_TOLERANCE_S", "2")
+    ui_root = tmp_path / "ui"
+    now = time.time()
+    _touch(ui_root / "dist" / "assets" / "app.js", now)
+    _touch(ui_root / "src" / "App.tsx", now + 1)
+    assert is_ui_build_stale(ui_root) is False

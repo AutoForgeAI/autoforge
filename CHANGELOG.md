@@ -11,12 +11,16 @@ All notable changes to this fork will be listed here.
 - Clarified prompt guidance: refactor/cleanup features are mandatory and override the original spec
 - Regression selection now prioritizes least-tested features (tracks `regression_count`)
 - UI auto-build now detects stale `ui/dist` and rebuilds when sources are newer
+- UI auto-build shows which file triggered rebuild; optional mtime tolerance for FAT32/exFAT (`AUTOCODER_UI_MTIME_TOLERANCE_S`)
 - WebSocket debug logs deduplicate consecutive identical lines (prevents StrictMode double-connect noise)
 - Assistant chat: avoid history loss on conversation switch, disable input while loading, and reduce server log noise
 - Scheduled runs (UI) with persisted schedule state
 - New `AUTOCODER_STOP_WHEN_DONE` toggle to keep agents alive on empty queues
 - LAN-ready UI host toggle (`AUTOCODER_UI_HOST`, `AUTOCODER_UI_ALLOW_REMOTE`)
 - Windows CLI length guard for assistant chat via temporary `CLAUDE.md`
+- Atomic per-project agent lock (`<project>/.agent.lock`) + PID-reuse protection + stop kills full process tree
+- SQLite defaults to WAL, but falls back to DELETE on network filesystems (override via `AUTOCODER_SQLITE_JOURNAL_MODE`)
+- Fix: fresh projects no longer exit early before initializer creates features
 
 ## 2026-01-17
 
