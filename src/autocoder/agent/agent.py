@@ -445,9 +445,18 @@ async def run_autonomous_agent(
                 + prompt
             )
 
-        # Run session with async context manager
-        async with client:
-            status, response = await run_agent_session(client, prompt, project_dir)
+        # Run session with async context manager.
+        # Be defensive: if the SDK client blows up entering/exiting the context manager
+        # we don't want the whole worker to crash and get stuck in a weird state.
+        try:
+            async with client:
+                status, response = await run_agent_session(client, prompt, project_dir)
+        except asyncio.CancelledError:
+            raise
+        except Exception as e:
+            status = "error"
+            response = f"{type(e).__name__}: {e}"
+            print(f"\n[Session error] {response}", flush=True)
 
         # After each session, if the assigned feature has been submitted for Gatekeeper verification,
         # stop this worker (the orchestrator will run Gatekeeper and handle retries if needed).

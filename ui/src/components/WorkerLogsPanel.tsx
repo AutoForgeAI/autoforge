@@ -7,7 +7,7 @@
  */
 
 import { useMemo, useState, useEffect } from 'react'
-import { RefreshCw, Trash2, Scissors } from 'lucide-react'
+import { RefreshCw, Trash2, Scissors, Copy } from 'lucide-react'
 import { useDeleteWorkerLog, usePruneWorkerLogs, useWorkerLogTail, useWorkerLogs } from '../hooks/useWorkerLogs'
 
 function formatBytes(bytes: number): string {
@@ -33,6 +33,7 @@ export function WorkerLogsPanel({
 }) {
   const [selected, setSelected] = useState<string | null>(selectedFile ?? null)
   const [tail, setTail] = useState(400)
+  const [copied, setCopied] = useState(false)
 
   const [keepDays, setKeepDays] = useState(7)
   const [keepFiles, setKeepFiles] = useState(200)
@@ -53,6 +54,17 @@ export function WorkerLogsPanel({
       setSelected(selectedFile)
     }
   }, [selectedFile, selected])
+
+  const handleCopy = async () => {
+    if (!selected || !selectedText) return
+    try {
+      await navigator.clipboard.writeText(selectedText)
+      setCopied(true)
+      window.setTimeout(() => setCopied(false), 1200)
+    } catch {
+      // no-op: clipboard may be blocked by the browser or permissions
+    }
+  }
 
   return (
     <div className="h-full overflow-hidden grid grid-cols-1 lg:grid-cols-3 gap-3">
@@ -119,6 +131,15 @@ export function WorkerLogsPanel({
               title="Refresh tail"
             >
               <RefreshCw size={14} />
+            </button>
+            <button
+              className="neo-btn neo-btn-secondary text-xs py-1.5 px-2.5"
+              onClick={handleCopy}
+              disabled={!selected || !selectedText}
+              title={copied ? 'Copied' : 'Copy tail'}
+              aria-label={copied ? 'Copied' : 'Copy tail to clipboard'}
+            >
+              <Copy size={14} />
             </button>
             <button
               className="neo-btn neo-btn-danger text-xs py-1.5 px-2.5"

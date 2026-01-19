@@ -21,6 +21,11 @@ All notable changes to this fork will be listed here.
 - Atomic per-project agent lock (`<project>/.agent.lock`) + PID-reuse protection + stop kills full process tree
 - SQLite defaults to WAL, but falls back to DELETE on network filesystems (override via `AUTOCODER_SQLITE_JOURNAL_MODE`)
 - Fix: fresh projects no longer exit early before initializer creates features
+- Agent auto-continue: improved “limit reached” parsing (resets-at variants) + 24h clamp
+- MCP `feature_create_bulk`: validate inputs before writing to DB
+- Worker logs: copy tail to clipboard
+- Fix: Gatekeeper verify-branch sanitization is Python 3.10 compatible
+- Fix: `test_mcp` includes missing `json` import
 
 ## 2026-01-17
 
