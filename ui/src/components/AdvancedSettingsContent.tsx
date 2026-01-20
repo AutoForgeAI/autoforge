@@ -7,11 +7,12 @@
  */
 
 import { useEffect, useMemo, useState } from 'react'
-import { ArrowDown, ArrowUp, Info, RotateCcw, Save, SlidersHorizontal } from 'lucide-react'
+import { Info, RotateCcw, Save, SlidersHorizontal } from 'lucide-react'
 import { useAdvancedSettings, useUpdateAdvancedSettings } from '../hooks/useAdvancedSettings'
 import { useSetupStatus } from '../hooks/useProjects'
 import type { AdvancedSettings } from '../lib/types'
 import { ConfirmationDialog } from './ConfirmationDialog'
+import { CsvAgentOrderField } from './CsvAgentOrderField'
 import { HelpModal } from './HelpModal'
 
 function clampInt(v: number, min: number, max: number): number {
@@ -1671,167 +1672,6 @@ function SelectField({
           </option>
         ))}
       </select>
-      {error && <div className="text-xs mt-1 text-[var(--color-neo-danger)]">{error}</div>}
-      {!error && warning && <div className="text-xs mt-1 text-yellow-800">{warning}</div>}
-    </div>
-  )
-}
-
-function CsvAgentOrderField({
-  label,
-  value,
-  onChange,
-  error,
-  warning,
-  disabled,
-  availability,
-  rawPlaceholder,
-}: {
-  label: string
-  value: string
-  onChange: (v: string) => void
-  error?: string
-  warning?: string
-  disabled?: boolean
-  availability?: { codex?: boolean; gemini?: boolean }
-  rawPlaceholder?: string
-}) {
-  const normalize = (raw: string) =>
-    raw
-      .replace(/;/g, ',')
-      .split(',')
-      .map((p) => p.trim().toLowerCase())
-      .filter(Boolean)
-
-  const allowed = new Set(['codex', 'gemini'])
-  const rawTokens = normalize(value)
-  const selected = rawTokens.filter((t) => allowed.has(t)) as Array<'codex' | 'gemini'>
-  const uniqueSelected = Array.from(new Set(selected)) as Array<'codex' | 'gemini'>
-
-  const setSelected = (next: Array<'codex' | 'gemini'>) => {
-    onChange(next.join(','))
-  }
-
-  const canSelect = (id: 'codex' | 'gemini') => {
-    const avail = availability?.[id]
-    return avail !== false
-  }
-
-  const toggle = (id: 'codex' | 'gemini', nextChecked: boolean) => {
-    if (disabled) return
-    if (nextChecked) {
-      if (!canSelect(id)) return
-      if (uniqueSelected.includes(id)) return
-      setSelected([...uniqueSelected, id])
-      return
-    }
-    setSelected(uniqueSelected.filter((x) => x !== id))
-  }
-
-  const move = (id: 'codex' | 'gemini', dir: -1 | 1) => {
-    const idx = uniqueSelected.indexOf(id)
-    if (idx < 0) return
-    const nextIdx = idx + dir
-    if (nextIdx < 0 || nextIdx >= uniqueSelected.length) return
-    const next = [...uniqueSelected]
-    const tmp = next[idx]
-    next[idx] = next[nextIdx]
-    next[nextIdx] = tmp
-    setSelected(next)
-  }
-
-  const border =
-    error ? 'border-[var(--color-neo-danger)]' : warning ? 'border-yellow-600' : 'border-[var(--color-neo-border)]'
-
-  return (
-    <div>
-      <div className="text-xs font-mono text-[var(--color-neo-text-secondary)] mb-1">{label}</div>
-      <div className={`neo-card p-3 border-3 ${border}`}>
-        <div className="grid grid-cols-1 sm:grid-cols-2 gap-2">
-          {(['codex', 'gemini'] as const).map((id) => {
-            const avail = availability?.[id]
-            const checked = uniqueSelected.includes(id)
-            const disabledCheck = Boolean(disabled) || (avail === false && !checked)
-            const badge = avail === false ? 'Missing' : 'OK'
-            return (
-              <label
-                key={id}
-                className={`neo-card p-2 flex items-center justify-between ${disabledCheck ? 'opacity-60' : ''}`}
-              >
-                <span className="flex items-center gap-2">
-                  <span className="font-display font-bold text-sm">{id === 'codex' ? 'Codex' : 'Gemini'}</span>
-                  <span
-                    className={`neo-badge text-xs font-mono ${
-                      avail === false ? 'bg-[var(--color-neo-pending)] text-[var(--color-neo-text-on-bright)]' : 'bg-[var(--color-neo-bg)]'
-                    }`}
-                    title={avail === false ? 'CLI not detected on PATH' : 'CLI detected'}
-                  >
-                    {badge}
-                  </span>
-                </span>
-                <input
-                  type="checkbox"
-                  checked={checked}
-                  disabled={disabledCheck}
-                  onChange={(e) => toggle(id, e.target.checked)}
-                  className="w-5 h-5"
-                />
-              </label>
-            )
-          })}
-        </div>
-
-        {uniqueSelected.length > 1 && (
-          <div className="mt-3">
-            <div className="text-xs text-[var(--color-neo-text-secondary)] mb-1">Order (first tries first)</div>
-            <div className="space-y-2">
-              {uniqueSelected.map((id) => (
-                <div key={id} className="flex items-center justify-between gap-2">
-                  <span className="neo-badge font-mono">{id}</span>
-                  <div className="flex items-center gap-2">
-                    <button
-                      type="button"
-                      className="neo-btn neo-btn-secondary neo-btn-sm"
-                      onClick={() => move(id, -1)}
-                      disabled={disabled || uniqueSelected.indexOf(id) === 0}
-                      title="Move up"
-                    >
-                      <ArrowUp size={14} />
-                    </button>
-                    <button
-                      type="button"
-                      className="neo-btn neo-btn-secondary neo-btn-sm"
-                      onClick={() => move(id, 1)}
-                      disabled={disabled || uniqueSelected.indexOf(id) === uniqueSelected.length - 1}
-                      title="Move down"
-                    >
-                      <ArrowDown size={14} />
-                    </button>
-                  </div>
-                </div>
-              ))}
-            </div>
-          </div>
-        )}
-
-        <details className="mt-3">
-          <summary className="text-xs font-mono cursor-pointer select-none text-[var(--color-neo-text-secondary)]">
-            Advanced: raw CSV
-          </summary>
-          <div className="mt-2">
-            <TextField
-              label=""
-              value={value}
-              onChange={onChange}
-              placeholder={rawPlaceholder ?? 'e.g. codex,gemini'}
-              error={undefined}
-              warning={undefined}
-              disabled={disabled}
-            />
-          </div>
-        </details>
-      </div>
-
       {error && <div className="text-xs mt-1 text-[var(--color-neo-danger)]">{error}</div>}
       {!error && warning && <div className="text-xs mt-1 text-yellow-800">{warning}</div>}
     </div>

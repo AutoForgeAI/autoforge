@@ -6,7 +6,7 @@
  */
 
 import { useEffect, useMemo, useState } from 'react'
-import { Activity, CheckCircle2, Copy, Play, RefreshCcw, Save, XCircle } from 'lucide-react'
+import { Activity, CheckCircle2, Copy, Info, Play, RefreshCcw, Save, XCircle } from 'lucide-react'
 import { useAdvancedSettings, useUpdateAdvancedSettings } from '../hooks/useAdvancedSettings'
 import {
   useDiagnosticsFixturesDir,
@@ -18,6 +18,8 @@ import {
 import { useHealthCheck, useProjects, useSetupStatus } from '../hooks/useProjects'
 import { useCleanupQueue, useClearCleanupQueue, useProcessCleanupQueue } from '../hooks/useWorktrees'
 import type { WorkerProvider } from '../lib/types'
+import { CsvAgentOrderField } from './CsvAgentOrderField'
+import { HelpModal } from './HelpModal'
 
 export function DiagnosticsContent() {
   const advanced = useAdvancedSettings()
@@ -39,6 +41,7 @@ export function DiagnosticsContent() {
   const [outDirDraft, setOutDirDraft] = useState<string>('')
   const [qaProviderDraft, setQaProviderDraft] = useState<WorkerProvider>('claude')
   const [qaAgentsDraft, setQaAgentsDraft] = useState<string>('')
+  const [qaHelpOpen, setQaHelpOpen] = useState<boolean>(false)
   const [selectedRunName, setSelectedRunName] = useState<string | null>(null)
   const [tailMaxChars, setTailMaxChars] = useState<number>(8000)
   const [selectedProject, setSelectedProject] = useState<string | null>(null)
@@ -143,9 +146,18 @@ export function DiagnosticsContent() {
   }, [qaAgentsDraft])
 
   const qaAgentsInvalid = useMemo(() => {
-    const allowed = new Set(['codex', 'gemini', 'codex_cli', 'gemini_cli'])
+    if (qaProviderDraft !== 'multi_cli') return []
+    const allowed = new Set(['codex', 'gemini'])
     return qaAgentsParsed.filter((a) => !allowed.has(a))
-  }, [qaAgentsParsed])
+  }, [qaAgentsParsed, qaProviderDraft])
+
+  const qaAgentsError = useMemo(() => {
+    if (qaProviderDraft !== 'multi_cli') return ''
+    if (qaAgentsParsed.length === 0) return 'Select at least one agent (Codex and/or Gemini)'
+    if (qaAgentsInvalid.length > 0)
+      return `Unknown agent(s): ${qaAgentsInvalid.join(', ')} (allowed: codex, gemini)`
+    return ''
+  }, [qaAgentsInvalid, qaAgentsParsed.length, qaProviderDraft])
 
   return (
     <div className="space-y-6">
@@ -332,7 +344,18 @@ export function DiagnosticsContent() {
       </div>
 
       <div className="neo-card p-4">
-        <div className="font-display font-bold uppercase mb-3">QA Sub-Agent Settings</div>
+        <div className="flex items-start justify-between gap-4 mb-3">
+          <div className="font-display font-bold uppercase">QA Sub-Agent Settings</div>
+          <button
+            className="neo-btn neo-btn-secondary neo-btn-sm"
+            onClick={() => setQaHelpOpen(true)}
+            title="What is the QA sub-agent?"
+            type="button"
+          >
+            <Info size={16} />
+            Help
+          </button>
+        </div>
         <div className="grid grid-cols-1 md:grid-cols-3 gap-3">
           <div>
             <div className="text-xs font-mono text-[var(--color-neo-text-secondary)] mb-1">Default provider</div>
@@ -341,34 +364,40 @@ export function DiagnosticsContent() {
               onChange={(e) => setQaProviderDraft(e.target.value as WorkerProvider)}
               className="neo-btn text-sm py-2 px-3 bg-white border-3 border-[var(--color-neo-border)] font-display w-full"
             >
-              <option value="claude">claude</option>
-              <option value="codex_cli">codex_cli</option>
-              <option value="gemini_cli">gemini_cli</option>
-              <option value="multi_cli">multi_cli</option>
+              <option value="claude">Claude (Agent SDK)</option>
+              <option value="codex_cli" disabled={setup.data ? !setup.data.codex_cli : false}>
+                Codex CLI
+              </option>
+              <option value="gemini_cli" disabled={setup.data ? !setup.data.gemini_cli : false}>
+                Gemini CLI
+              </option>
+              <option value="multi_cli" disabled={setup.data ? !setup.data.codex_cli && !setup.data.gemini_cli : false}>
+                Multi-CLI (Codex + Gemini)
+              </option>
             </select>
             <div className="text-xs text-[var(--color-neo-text-secondary)] mt-2">
               Used for automatic QA retries after Gatekeeper failures.
             </div>
           </div>
           <div className="md:col-span-2">
-            <div className="text-xs font-mono text-[var(--color-neo-text-secondary)] mb-1">
-              Provider order (CSV, for <span className="font-mono">multi_cli</span>)
-            </div>
-            <input
-              className="neo-input w-full"
-              value={qaAgentsDraft}
-              onChange={(e) => setQaAgentsDraft(e.target.value)}
-              placeholder="codex,gemini"
-            />
-            {qaAgentsInvalid.length > 0 && (
-              <div className="text-xs text-red-600 mt-2">
-                Invalid entries: {qaAgentsInvalid.join(', ')} (allowed: codex, gemini, codex_cli, gemini_cli)
+            {qaProviderDraft === 'multi_cli' ? (
+              <CsvAgentOrderField
+                label="Provider order (multi_cli)"
+                value={qaAgentsDraft}
+                onChange={setQaAgentsDraft}
+                error={qaAgentsError}
+                availability={{ codex: Boolean(setup.data?.codex_cli), gemini: Boolean(setup.data?.gemini_cli) }}
+                rawPlaceholder="e.g. codex,gemini"
+              />
+            ) : (
+              <div className="neo-card p-3 text-sm text-[var(--color-neo-text-secondary)]">
+                Provider order is only used when <span className="font-mono">multi_cli</span> is selected.
               </div>
             )}
             <div className="flex gap-2 mt-3">
               <button
                 className="neo-btn neo-btn-primary text-sm"
-                disabled={!canSave}
+                disabled={!canSave || (qaProviderDraft === 'multi_cli' && !!qaAgentsError)}
                 onClick={onSaveQASettings}
                 title="Save QA settings"
               >
@@ -447,6 +476,37 @@ export function DiagnosticsContent() {
           </div>
         )}
       </div>
+
+      <HelpModal isOpen={qaHelpOpen} title="QA sub-agent (auto-fix after Gatekeeper)" onClose={() => setQaHelpOpen(false)}>
+        <div className="space-y-3 text-sm">
+          <p>
+            When Gatekeeper rejects a feature (tests/lint/typecheck fail), AutoCoder can optionally spawn a short-lived QA sub-agent to fix the
+            failure and resubmit on the <span className="font-mono">same branch</span> (no new scope).
+          </p>
+          <div className="neo-card p-3">
+            <div className="font-display font-bold mb-1">Provider</div>
+            <ul className="list-disc ml-5 space-y-1">
+              <li>
+                <span className="font-mono">claude</span>: uses Claude Agent SDK (default).
+              </li>
+              <li>
+                <span className="font-mono">codex_cli</span> / <span className="font-mono">gemini_cli</span>: uses the local CLIs.
+              </li>
+              <li>
+                <span className="font-mono">multi_cli</span>: tries Codex and/or Gemini in the order you choose.
+              </li>
+            </ul>
+          </div>
+          <div className="neo-card p-3">
+            <div className="font-display font-bold mb-1">Provider order (multi_cli)</div>
+            <ul className="list-disc ml-5 space-y-1">
+              <li>Allowed: <span className="font-mono">codex</span>, <span className="font-mono">gemini</span></li>
+              <li>Order matters: first selected agent runs first.</li>
+              <li>If a CLI is missing, it will be shown as <span className="font-mono">Missing</span> and cannot be newly selected.</li>
+            </ul>
+          </div>
+        </div>
+      </HelpModal>
 
       <div className="neo-card p-4">
         <div className="font-display font-bold uppercase mb-3">Parallel Mini E2E</div>
