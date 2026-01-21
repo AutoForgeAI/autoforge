@@ -685,6 +685,10 @@ function App() {
             setupStatus={setupStatus}
             backgroundRunProject={backgroundRunProject}
             onOpenProject={(name) => requestSelectProject(name)}
+            onManageProject={(name) => {
+              requestSelectProject(name)
+              window.location.hash = '#/settings/config'
+            }}
             onDismissBackgroundRun={() => setBackgroundRunProject(null)}
             onNewProject={() => setShowNewProjectModal(true)}
             onOpenSettings={() => {

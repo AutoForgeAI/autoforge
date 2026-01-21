@@ -23,6 +23,7 @@ interface DashboardPageProps {
   setupStatus?: SetupStatus
   backgroundRunProject: string | null
   onOpenProject: (projectName: string) => void
+  onManageProject: (projectName: string) => void
   onDismissBackgroundRun: () => void
   onNewProject: () => void
   onOpenSettings: () => void
@@ -34,6 +35,7 @@ export function DashboardPage({
   setupStatus,
   backgroundRunProject,
   onOpenProject,
+  onManageProject,
   onDismissBackgroundRun,
   onNewProject,
   onOpenSettings,
@@ -157,12 +159,9 @@ export function DashboardPage({
                 const pct = Math.max(0, Math.min(100, project.stats.percentage))
 
                 return (
-                  <button
+                  <div
                     key={project.name}
-                    type="button"
-                    className="neo-card neo-card-flat cursor-pointer p-4 text-left hover:bg-[var(--color-neo-hover-subtle)] transition-colors"
-                    onClick={() => onOpenProject(project.name)}
-                    title="Open project"
+                    className="neo-card neo-card-flat p-4 text-left hover:bg-[var(--color-neo-hover-subtle)] transition-colors"
                   >
                     <div className="flex items-start justify-between gap-3">
                       <div className="min-w-0">
@@ -202,7 +201,27 @@ export function DashboardPage({
                         />
                       </div>
                     </div>
-                  </button>
+
+                    <div className="mt-4 flex flex-wrap items-center gap-2">
+                      <button
+                        type="button"
+                        className="neo-btn neo-btn-primary text-xs"
+                        onClick={() => onOpenProject(project.name)}
+                      >
+                        Open
+                      </button>
+                      <button
+                        type="button"
+                        className="neo-btn neo-btn-secondary text-xs"
+                        onClick={() => onManageProject(project.name)}
+                      >
+                        Manage
+                      </button>
+                      <span className="text-xs text-[var(--color-neo-text-secondary)]">
+                        Reset/Delete inside Settings → Config
+                      </span>
+                    </div>
+                  </div>
                 )
               })}
             </div>
