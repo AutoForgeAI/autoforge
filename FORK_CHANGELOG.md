@@ -9,6 +9,48 @@ Format based on [Keep a Changelog](https://keepachangelog.com/).
 - Fork documentation (FORK_README.md, FORK_CHANGELOG.md)
 - Configuration system via `.autocoder/config.json`
 
+## [2025-01-21] Stack Detector (Import Projects - Phase 1)
+
+### Added
+- New module: `analyzers/` - Codebase analysis for project import
+- `analyzers/base_analyzer.py` - Abstract base class with TypedDicts
+- `analyzers/stack_detector.py` - Orchestrator for running all analyzers
+- `analyzers/react_analyzer.py` - React, Vite, Next.js detection
+- `analyzers/node_analyzer.py` - Express, NestJS, Fastify detection
+- `analyzers/python_analyzer.py` - FastAPI, Django, Flask detection
+- `analyzers/vue_analyzer.py` - Vue.js, Nuxt detection
+
+### Features
+- Auto-detect tech stack from package.json, requirements.txt, config files
+- Extract routes from React Router, Next.js file-based, Vue Router
+- Extract API endpoints from Express, FastAPI, Django, NestJS
+- Extract components from components/, views/, models/ directories
+- Confidence scoring for each detected stack
+
+### Usage
+```python
+from analyzers import StackDetector
+
+detector = StackDetector(project_dir)
+result = detector.detect()  # Full analysis
+quick = detector.detect_quick()  # Fast preview
+```
+
+### Supported Stacks
+| Stack | Indicators |
+|-------|-----------|
+| React | "react" in package.json, src/App.tsx |
+| Next.js | next.config.js, pages/ or app/ dirs |
+| Vue.js | "vue" in package.json, src/App.vue |
+| Nuxt | nuxt.config.js, pages/ |
+| Express | "express" in package.json, routes/ |
+| NestJS | "@nestjs/core" in package.json |
+| FastAPI | "from fastapi import" in main.py |
+| Django | manage.py in root |
+| Flask | "from flask import" in app.py |
+
+---
+
 ## [2025-01-21] Quality Gates
 
 ### Added
