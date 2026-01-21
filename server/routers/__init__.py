@@ -25,6 +25,7 @@ from .templates import router as templates_router
 from .review import router as review_router
 from .documentation import router as documentation_router
 from .design_tokens import router as design_tokens_router
+from .visual_regression import router as visual_regression_router
 
 __all__ = [
     "projects_router",
@@ -47,4 +48,5 @@ __all__ = [
     "review_router",
     "documentation_router",
     "design_tokens_router",
+    "visual_regression_router",
 ]
