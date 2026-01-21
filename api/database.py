@@ -34,6 +34,14 @@ class Feature(Base):
     # NULL/empty = no dependencies (backwards compatible)
     dependencies = Column(JSON, nullable=True, default=None)
 
+    # Error Recovery: Track failures for retry logic and escalation
+    failure_reason = Column(Text, nullable=True)  # Last failure reason
+    failure_count = Column(Integer, nullable=False, default=0)  # Number of failed attempts
+    last_failure_at = Column(Text, nullable=True)  # ISO timestamp of last failure
+
+    # Quality Gates: Store quality check results
+    quality_result = Column(JSON, nullable=True)  # {"passed": bool, "checks": {...}, "timestamp": "..."}
+
     def to_dict(self) -> dict:
         """Convert feature to dictionary for JSON serialization."""
         return {
@@ -48,6 +56,12 @@ class Feature(Base):
             "in_progress": self.in_progress if self.in_progress is not None else False,
             # Dependencies: NULL/empty treated as empty list for backwards compat
             "dependencies": self.dependencies if self.dependencies else [],
+            # Error Recovery fields
+            "failure_reason": self.failure_reason,
+            "failure_count": self.failure_count if self.failure_count is not None else 0,
+            "last_failure_at": self.last_failure_at,
+            # Quality Gates field
+            "quality_result": self.quality_result,
         }
 
     def get_dependencies_safe(self) -> list[int]:
@@ -110,6 +124,45 @@ def _migrate_add_dependencies_column(engine) -> None:
         if "dependencies" not in columns:
             # Use TEXT for SQLite JSON storage, NULL default for backwards compat
             conn.execute(text("ALTER TABLE features ADD COLUMN dependencies TEXT DEFAULT NULL"))
+            conn.commit()
+
+
+def _migrate_add_error_recovery_columns(engine) -> None:
+    """Add error recovery columns to existing databases.
+
+    Columns added:
+    - failure_reason: TEXT - last failure reason
+    - failure_count: INTEGER - number of failed attempts
+    - last_failure_at: TEXT - ISO timestamp of last failure
+    """
+    with engine.connect() as conn:
+        result = conn.execute(text("PRAGMA table_info(features)"))
+        columns = [row[1] for row in result.fetchall()]
+
+        if "failure_reason" not in columns:
+            conn.execute(text("ALTER TABLE features ADD COLUMN failure_reason TEXT DEFAULT NULL"))
+
+        if "failure_count" not in columns:
+            conn.execute(text("ALTER TABLE features ADD COLUMN failure_count INTEGER DEFAULT 0"))
+
+        if "last_failure_at" not in columns:
+            conn.execute(text("ALTER TABLE features ADD COLUMN last_failure_at TEXT DEFAULT NULL"))
+
+        conn.commit()
+
+
+def _migrate_add_quality_result_column(engine) -> None:
+    """Add quality_result column to existing databases.
+
+    Stores JSON with quality check results:
+    {"passed": bool, "checks": {...}, "timestamp": "..."}
+    """
+    with engine.connect() as conn:
+        result = conn.execute(text("PRAGMA table_info(features)"))
+        columns = [row[1] for row in result.fetchall()]
+
+        if "quality_result" not in columns:
+            conn.execute(text("ALTER TABLE features ADD COLUMN quality_result TEXT DEFAULT NULL"))
             conn.commit()
 
 
@@ -195,6 +248,8 @@ def create_database(project_dir: Path) -> tuple:
     _migrate_add_in_progress_column(engine)
     _migrate_fix_null_boolean_fields(engine)
     _migrate_add_dependencies_column(engine)
+    _migrate_add_error_recovery_columns(engine)
+    _migrate_add_quality_result_column(engine)
 
     SessionLocal = sessionmaker(autocommit=False, autoflush=False, bind=engine)
     return engine, SessionLocal

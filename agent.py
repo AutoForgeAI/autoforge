@@ -23,7 +23,13 @@ if sys.platform == "win32":
     sys.stderr = io.TextIOWrapper(sys.stderr.buffer, encoding="utf-8", errors="replace", line_buffering=True)
 
 from client import create_client
-from progress import count_passing_tests, has_features, print_progress_summary, print_session_header
+from progress import (
+    clear_stuck_features,
+    count_passing_tests,
+    has_features,
+    print_progress_summary,
+    print_session_header,
+)
 from prompts import (
     copy_spec_to_project,
     get_coding_prompt,
@@ -148,6 +154,10 @@ async def run_autonomous_agent(
 
     # Create project directory
     project_dir.mkdir(parents=True, exist_ok=True)
+
+    # Auto-recovery: Clear stuck features from previous interrupted sessions
+    # This prevents features from being orphaned when agents are stopped mid-work
+    clear_stuck_features(project_dir)
 
     # Determine agent type if not explicitly set
     if agent_type is None:
