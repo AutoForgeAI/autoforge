@@ -31,6 +31,7 @@ from .routers import (
     import_project_router,
     logs_router,
     projects_router,
+    security_router,
     settings_router,
     spec_creation_router,
     terminal_router,
@@ -121,6 +122,7 @@ app.include_router(settings_router)
 app.include_router(terminal_router)
 app.include_router(import_project_router)
 app.include_router(logs_router)
+app.include_router(security_router)
 
 
 # ============================================================================
