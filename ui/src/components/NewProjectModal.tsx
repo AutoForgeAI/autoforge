@@ -10,15 +10,17 @@
  */
 
 import { useState } from 'react'
-import { X, Bot, FileEdit, ArrowRight, ArrowLeft, Loader2, CheckCircle2, Folder } from 'lucide-react'
+import { X, Bot, FileEdit, ArrowRight, ArrowLeft, Loader2, CheckCircle2, Folder, Download } from 'lucide-react'
 import { useCreateProject } from '../hooks/useProjects'
 import { SpecCreationChat } from './SpecCreationChat'
 import { FolderBrowser } from './FolderBrowser'
+import { ImportProjectModal } from './ImportProjectModal'
 import { startAgent } from '../lib/api'
 
 type InitializerStatus = 'idle' | 'starting' | 'error'
 
-type Step = 'name' | 'folder' | 'method' | 'chat' | 'complete'
+type Step = 'choose' | 'name' | 'folder' | 'method' | 'chat' | 'complete' | 'import'
+type ProjectType = 'new' | 'import'
 type SpecMethod = 'claude' | 'manual'
 
 interface NewProjectModalProps {
@@ -34,7 +36,8 @@ export function NewProjectModal({
   onProjectCreated,
   onStepChange,
 }: NewProjectModalProps) {
-  const [step, setStep] = useState<Step>('name')
+  const [step, setStep] = useState<Step>('choose')
+  const [_projectType, setProjectType] = useState<ProjectType | null>(null)
   const [projectName, setProjectName] = useState('')
   const [projectPath, setProjectPath] = useState<string | null>(null)
   const [_specMethod, setSpecMethod] = useState<SpecMethod | null>(null)
@@ -165,7 +168,8 @@ export function NewProjectModal({
   }
 
   const handleClose = () => {
-    changeStep('name')
+    changeStep('choose')
+    setProjectType(null)
     setProjectName('')
     setProjectPath(null)
     setSpecMethod(null)
@@ -183,7 +187,35 @@ export function NewProjectModal({
     } else if (step === 'folder') {
       changeStep('name')
       setProjectPath(null)
+    } else if (step === 'name') {
+      changeStep('choose')
+      setProjectType(null)
     }
+  }
+
+  const handleProjectTypeSelect = (type: ProjectType) => {
+    setProjectType(type)
+    if (type === 'new') {
+      changeStep('name')
+    } else {
+      changeStep('import')
+    }
+  }
+
+  const handleImportComplete = (importedProjectName: string) => {
+    onProjectCreated(importedProjectName)
+    handleClose()
+  }
+
+  // Import project view
+  if (step === 'import') {
+    return (
+      <ImportProjectModal
+        isOpen={true}
+        onClose={handleClose}
+        onProjectImported={handleImportComplete}
+      />
+    )
   }
 
   // Full-screen chat view
@@ -253,6 +285,7 @@ export function NewProjectModal({
         {/* Header */}
         <div className="flex items-center justify-between p-4 border-b-3 border-[var(--color-neo-border)]">
           <h2 className="font-display font-bold text-xl text-[var(--color-neo-text)]">
+            {step === 'choose' && 'New Project'}
             {step === 'name' && 'Create New Project'}
             {step === 'method' && 'Choose Setup Method'}
             {step === 'complete' && 'Project Created!'}
@@ -267,6 +300,74 @@ export function NewProjectModal({
 
         {/* Content */}
         <div className="p-6">
+          {/* Step 0: Choose project type */}
+          {step === 'choose' && (
+            <div>
+              <p className="text-[var(--color-neo-text-secondary)] mb-6">
+                What would you like to do?
+              </p>
+
+              <div className="space-y-4">
+                {/* New project option */}
+                <button
+                  onClick={() => handleProjectTypeSelect('new')}
+                  className="
+                    w-full text-left p-4
+                    hover:translate-x-[-2px] hover:translate-y-[-2px]
+                    transition-all duration-150
+                    neo-card
+                  "
+                >
+                  <div className="flex items-start gap-4">
+                    <div
+                      className="p-2 bg-[var(--color-neo-done)] border-2 border-[var(--color-neo-border)]"
+                      style={{ boxShadow: 'var(--shadow-neo-sm)' }}
+                    >
+                      <Bot size={24} className="text-[var(--color-neo-text-on-bright)]" />
+                    </div>
+                    <div className="flex-1">
+                      <div className="flex items-center gap-2">
+                        <span className="font-bold text-lg text-[var(--color-neo-text)]">Create New Project</span>
+                        <span className="neo-badge bg-[var(--color-neo-done)] text-[var(--color-neo-text-on-bright)] text-xs">
+                          Recommended
+                        </span>
+                      </div>
+                      <p className="text-sm text-[var(--color-neo-text-secondary)] mt-1">
+                        Start from scratch with an interactive conversation to define your app.
+                      </p>
+                    </div>
+                  </div>
+                </button>
+
+                {/* Import existing option */}
+                <button
+                  onClick={() => handleProjectTypeSelect('import')}
+                  className="
+                    w-full text-left p-4
+                    hover:translate-x-[-2px] hover:translate-y-[-2px]
+                    transition-all duration-150
+                    neo-card
+                  "
+                >
+                  <div className="flex items-start gap-4">
+                    <div
+                      className="p-2 bg-[var(--color-neo-progress)] border-2 border-[var(--color-neo-border)]"
+                      style={{ boxShadow: 'var(--shadow-neo-sm)' }}
+                    >
+                      <Download size={24} className="text-[var(--color-neo-text-on-bright)]" />
+                    </div>
+                    <div className="flex-1">
+                      <span className="font-bold text-lg text-[var(--color-neo-text)]">Import Existing Project</span>
+                      <p className="text-sm text-[var(--color-neo-text-secondary)] mt-1">
+                        Analyze an existing codebase and extract features automatically.
+                      </p>
+                    </div>
+                  </div>
+                </button>
+              </div>
+            </div>
+          )}
+
           {/* Step 1: Project Name */}
           {step === 'name' && (
             <form onSubmit={handleNameSubmit}>
@@ -294,7 +395,15 @@ export function NewProjectModal({
                 </div>
               )}
 
-              <div className="flex justify-end">
+              <div className="flex justify-between">
+                <button
+                  type="button"
+                  onClick={handleBack}
+                  className="neo-btn neo-btn-ghost"
+                >
+                  <ArrowLeft size={16} />
+                  Back
+                </button>
                 <button
                   type="submit"
                   className="neo-btn neo-btn-primary"
