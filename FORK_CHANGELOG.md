@@ -9,6 +9,93 @@ Format based on [Keep a Changelog](https://keepachangelog.com/).
 - Fork documentation (FORK_README.md, FORK_CHANGELOG.md)
 - Configuration system via `.autocoder/config.json`
 
+## [2025-01-21] Visual Regression Testing
+
+### Added
+- New module: `visual_regression.py` - Screenshot comparison testing
+- New router: `server/routers/visual_regression.py` - REST API for visual testing
+
+### Features
+- **Screenshot capture** via Playwright (chromium)
+- **Baseline management** in `.visual-snapshots/baselines/`
+- **Diff generation** with pixel-level comparison
+- **Multi-viewport support** (desktop 1920x1080, tablet 768x1024, mobile 375x667)
+- **Configurable threshold** for acceptable difference (default: 0.1%)
+- **Automatic reports** saved to `.visual-snapshots/reports/`
+
+### Storage Structure
+```
+.visual-snapshots/
+├── baselines/          # Baseline screenshots
+│   ├── home_desktop.png
+│   └── dashboard_mobile.png
+├── current/            # Latest test screenshots
+├── diffs/              # Diff images (only when failed)
+└── reports/            # JSON test reports
+```
+
+### API Endpoints
+| Endpoint | Method | Description |
+|----------|--------|-------------|
+| `/api/visual/test` | POST | Run visual tests |
+| `/api/visual/baselines/{project}` | GET | List baselines |
+| `/api/visual/reports/{project}` | GET | List reports |
+| `/api/visual/reports/{project}/{filename}` | GET | Get report |
+| `/api/visual/update-baseline` | POST | Accept current as baseline |
+| `/api/visual/baselines/{project}/{name}/{viewport}` | DELETE | Delete baseline |
+| `/api/visual/snapshot/{project}/{type}/{filename}` | GET | Get snapshot image |
+
+### Usage
+```python
+from visual_regression import VisualRegressionTester, run_visual_tests
+
+# Quick test
+report = await run_visual_tests(
+    project_dir,
+    base_url="http://localhost:3000",
+    routes=[
+        {"path": "/", "name": "home"},
+        {"path": "/dashboard", "name": "dashboard", "wait_for": "#app"},
+    ],
+)
+
+# Custom configuration
+tester = VisualRegressionTester(
+    project_dir,
+    threshold=0.1,
+    viewports=[Viewport.desktop(), Viewport.mobile()],
+)
+report = await tester.test_page("http://localhost:3000", "homepage")
+```
+
+### Configuration
+```json
+{
+  "visual_regression": {
+    "enabled": true,
+    "threshold": 0.1,
+    "capture_on_pass": true,
+    "viewports": [
+      {"name": "desktop", "width": 1920, "height": 1080},
+      {"name": "mobile", "width": 375, "height": 667}
+    ]
+  }
+}
+```
+
+### Requirements
+```bash
+pip install playwright Pillow
+playwright install chromium
+```
+
+### How to Disable
+```json
+{"visual_regression": {"enabled": false}}
+```
+
+---
+
 ## [2025-01-21] Design Tokens
 
 ### Added
@@ -779,4 +866,4 @@ The following features are planned for implementation:
 - [x] Template Library - SaaS, e-commerce, dashboard templates ✅
 - [x] Auto Documentation - README, API docs generation ✅
 - [x] Design Tokens - Consistent styling ✅
-- [ ] Visual Regression - Screenshot comparison testing
+- [x] Visual Regression - Screenshot comparison testing ✅
