@@ -245,6 +245,9 @@ def feature_mark_passing(
 ) -> str:
     """Mark a feature as passing after successful implementation.
 
+    IMPORTANT: In strict mode (default), this will automatically run quality checks
+    (lint, type-check) and BLOCK if they fail. You must fix the issues and try again.
+
     Updates the feature's passes field to true and clears the in_progress flag.
     Use this after you have implemented the feature and verified it works correctly.
 
@@ -258,6 +261,10 @@ def feature_mark_passing(
     Returns:
         JSON with success confirmation: {success, feature_id, name}
     """
+    # Import quality gates module
+    sys.path.insert(0, str(Path(__file__).parent.parent))
+    from quality_gates import verify_quality, load_quality_config
+
     session = get_session()
     try:
         feature = session.query(Feature).filter(Feature.id == feature_id).first()
@@ -265,6 +272,50 @@ def feature_mark_passing(
         if feature is None:
             return json.dumps({"error": f"Feature with ID {feature_id} not found"})
 
+        # Load quality gates config
+        config = load_quality_config(PROJECT_DIR)
+        quality_enabled = config.get("enabled", True)
+        strict_mode = config.get("strict_mode", True)
+
+        # Run quality checks in strict mode
+        if quality_enabled and strict_mode:
+            checks_config = config.get("checks", {})
+
+            quality_result = verify_quality(
+                PROJECT_DIR,
+                run_lint=checks_config.get("lint", True),
+                run_type_check=checks_config.get("type_check", True),
+                run_custom=True,
+                custom_script_path=checks_config.get("custom_script"),
+            )
+
+            # Store the quality result
+            feature.quality_result = quality_result
+
+            # Block if quality checks failed
+            if not quality_result["passed"]:
+                feature.in_progress = False  # Release the feature
+                session.commit()
+
+                # Build detailed error message
+                failed_checks = []
+                for name, check in quality_result["checks"].items():
+                    if not check["passed"]:
+                        output_preview = check["output"][:500] if check["output"] else "No output"
+                        failed_checks.append({
+                            "check": check["name"],
+                            "output": output_preview,
+                        })
+
+                return json.dumps({
+                    "error": "quality_check_failed",
+                    "message": f"Cannot mark feature #{feature_id} as passing - quality checks failed",
+                    "summary": quality_result["summary"],
+                    "failed_checks": failed_checks,
+                    "hint": "Fix the issues above and try feature_mark_passing again",
+                }, indent=2)
+
+        # All checks passed (or disabled) - mark as passing
         feature.passes = True
         feature.in_progress = False
         feature.completed_at = _utc_now()
@@ -1610,6 +1661,283 @@ def feature_resolve_error(
     except Exception as e:
         session.rollback()
         return json.dumps({"error": f"Failed to resolve error: {str(e)}"})
+    finally:
+        session.close()
+
+
+# =============================================================================
+# Quality Gates Tools
+# =============================================================================
+
+
+@mcp.tool()
+def feature_verify_quality(
+    feature_id: Annotated[int, Field(ge=1, description="Feature ID to verify quality for")]
+) -> str:
+    """Verify code quality before marking a feature as passing.
+
+    Runs configured quality checks:
+    - Lint (ESLint/Biome for JS/TS, ruff/flake8 for Python)
+    - Type check (TypeScript tsc, Python mypy)
+    - Custom script (.autocoder/quality-checks.sh if exists)
+
+    Configuration is loaded from .autocoder/config.json (quality_gates section).
+
+    IMPORTANT: In strict mode (default), feature_mark_passing will automatically
+    call this and BLOCK if quality checks fail. Use this tool for manual checks
+    or to preview quality status.
+
+    Args:
+        feature_id: The ID of the feature being verified
+
+    Returns:
+        JSON with: passed (bool), checks (dict), summary (str)
+    """
+    # Import here to avoid circular imports
+    sys.path.insert(0, str(Path(__file__).parent.parent))
+    from quality_gates import verify_quality, load_quality_config
+
+    session = get_session()
+    try:
+        feature = session.query(Feature).filter(Feature.id == feature_id).first()
+        if feature is None:
+            return json.dumps({"error": f"Feature with ID {feature_id} not found"})
+
+        # Load config
+        config = load_quality_config(PROJECT_DIR)
+
+        if not config.get("enabled", True):
+            return json.dumps({
+                "passed": True,
+                "summary": "Quality gates disabled in config",
+                "checks": {}
+            })
+
+        checks_config = config.get("checks", {})
+
+        # Run quality checks
+        result = verify_quality(
+            PROJECT_DIR,
+            run_lint=checks_config.get("lint", True),
+            run_type_check=checks_config.get("type_check", True),
+            run_custom=True,
+            custom_script_path=checks_config.get("custom_script"),
+        )
+
+        # Store result in database
+        feature.quality_result = result
+        session.commit()
+
+        return json.dumps({
+            "feature_id": feature_id,
+            "passed": result["passed"],
+            "summary": result["summary"],
+            "checks": result["checks"],
+            "timestamp": result["timestamp"],
+        }, indent=2)
+    finally:
+        session.close()
+
+
+# =============================================================================
+# Error Recovery Tools
+# =============================================================================
+
+
+@mcp.tool()
+def feature_report_failure(
+    feature_id: Annotated[int, Field(ge=1, description="Feature ID that failed")],
+    reason: Annotated[str, Field(min_length=1, description="Description of why the feature failed")]
+) -> str:
+    """Report a failure for a feature, incrementing its failure count.
+
+    Use this when you encounter an error implementing a feature.
+    The failure information helps with retry logic and escalation.
+
+    Behavior based on failure_count:
+    - count < 3: Agent should retry with the failure reason as context
+    - count >= 3: Agent should skip this feature (use feature_skip)
+    - count >= 5: Feature may need to be broken into smaller features
+    - count >= 7: Feature is escalated for human review
+
+    Args:
+        feature_id: The ID of the feature that failed
+        reason: Description of the failure (error message, blocker, etc.)
+
+    Returns:
+        JSON with updated failure info: failure_count, failure_reason, recommendation
+    """
+    from datetime import datetime
+
+    session = get_session()
+    try:
+        feature = session.query(Feature).filter(Feature.id == feature_id).first()
+
+        if feature is None:
+            return json.dumps({"error": f"Feature with ID {feature_id} not found"})
+
+        # Update failure tracking
+        feature.failure_count = (feature.failure_count or 0) + 1
+        feature.failure_reason = reason
+        feature.last_failure_at = datetime.utcnow().isoformat()
+
+        # Clear in_progress so the feature returns to pending
+        feature.in_progress = False
+
+        session.commit()
+        session.refresh(feature)
+
+        # Determine recommendation based on failure count
+        count = feature.failure_count
+        if count < 3:
+            recommendation = "retry"
+            message = f"Retry #{count}. Include the failure reason in your next attempt."
+        elif count < 5:
+            recommendation = "skip"
+            message = f"Failed {count} times. Consider skipping with feature_skip and trying later."
+        elif count < 7:
+            recommendation = "decompose"
+            message = f"Failed {count} times. This feature may need to be broken into smaller parts."
+        else:
+            recommendation = "escalate"
+            message = f"Failed {count} times. This feature needs human review."
+
+        return json.dumps({
+            "feature_id": feature_id,
+            "failure_count": feature.failure_count,
+            "failure_reason": feature.failure_reason,
+            "last_failure_at": feature.last_failure_at,
+            "recommendation": recommendation,
+            "message": message
+        }, indent=2)
+    finally:
+        session.close()
+
+
+@mcp.tool()
+def feature_get_stuck() -> str:
+    """Get all features that have failed at least once.
+
+    Returns features sorted by failure_count (descending), showing
+    which features are having the most trouble.
+
+    Use this to identify problematic features that may need:
+    - Manual intervention
+    - Decomposition into smaller features
+    - Dependency adjustments
+
+    Returns:
+        JSON with: features (list with failure info), count (int)
+    """
+    session = get_session()
+    try:
+        features = (
+            session.query(Feature)
+            .filter(Feature.failure_count > 0)
+            .order_by(Feature.failure_count.desc())
+            .all()
+        )
+
+        result = []
+        for f in features:
+            result.append({
+                "id": f.id,
+                "name": f.name,
+                "category": f.category,
+                "failure_count": f.failure_count,
+                "failure_reason": f.failure_reason,
+                "last_failure_at": f.last_failure_at,
+                "passes": f.passes,
+                "in_progress": f.in_progress,
+            })
+
+        return json.dumps({
+            "features": result,
+            "count": len(result)
+        }, indent=2)
+    finally:
+        session.close()
+
+
+@mcp.tool()
+def feature_clear_all_in_progress() -> str:
+    """Clear ALL in_progress flags from all features.
+
+    Use this on agent startup to unstick features from previous
+    interrupted sessions. When an agent is stopped mid-work, features
+    can be left with in_progress=True and become orphaned.
+
+    This does NOT affect:
+    - passes status (completed features stay completed)
+    - failure_count (failure history is preserved)
+    - priority (queue order is preserved)
+
+    Returns:
+        JSON with: cleared (int) - number of features that were unstuck
+    """
+    session = get_session()
+    try:
+        # Count features that will be cleared
+        in_progress_count = (
+            session.query(Feature)
+            .filter(Feature.in_progress == True)
+            .count()
+        )
+
+        if in_progress_count == 0:
+            return json.dumps({
+                "cleared": 0,
+                "message": "No features were in_progress"
+            })
+
+        # Clear all in_progress flags
+        session.execute(
+            text("UPDATE features SET in_progress = 0 WHERE in_progress = 1")
+        )
+        session.commit()
+
+        return json.dumps({
+            "cleared": in_progress_count,
+            "message": f"Cleared in_progress flag from {in_progress_count} feature(s)"
+        }, indent=2)
+    finally:
+        session.close()
+
+
+@mcp.tool()
+def feature_reset_failure(
+    feature_id: Annotated[int, Field(ge=1, description="Feature ID to reset")]
+) -> str:
+    """Reset the failure counter and reason for a feature.
+
+    Use this when you want to give a feature a fresh start,
+    for example after fixing an underlying issue.
+
+    Args:
+        feature_id: The ID of the feature to reset
+
+    Returns:
+        JSON with the updated feature details
+    """
+    session = get_session()
+    try:
+        feature = session.query(Feature).filter(Feature.id == feature_id).first()
+
+        if feature is None:
+            return json.dumps({"error": f"Feature with ID {feature_id} not found"})
+
+        feature.failure_count = 0
+        feature.failure_reason = None
+        feature.last_failure_at = None
+
+        session.commit()
+        session.refresh(feature)
+
+        return json.dumps({
+            "success": True,
+            "message": f"Reset failure tracking for feature #{feature_id}",
+            "feature": feature.to_dict()
+        }, indent=2)
     finally:
         session.close()
 
