@@ -9,6 +9,70 @@ Format based on [Keep a Changelog](https://keepachangelog.com/).
 - Fork documentation (FORK_README.md, FORK_CHANGELOG.md)
 - Configuration system via `.autocoder/config.json`
 
+## [2025-01-21] Template Library
+
+### Added
+- New module: `templates/` - Project template library
+- New router: `server/routers/templates.py` - REST API for templates
+
+### Available Templates
+| Template | Description | Features |
+|----------|-------------|----------|
+| `saas-starter` | Multi-tenant SaaS with auth, billing | ~45 |
+| `ecommerce` | Online store with cart, checkout | ~50 |
+| `admin-dashboard` | Admin panel with CRUD, charts | ~40 |
+| `blog-cms` | Blog/CMS with posts, comments | ~35 |
+| `api-service` | RESTful API with auth, docs | ~30 |
+
+### API Endpoints
+| Endpoint | Method | Description |
+|----------|--------|-------------|
+| `/api/templates` | GET | List all templates |
+| `/api/templates/{id}` | GET | Get template details |
+| `/api/templates/preview` | POST | Preview app_spec.txt |
+| `/api/templates/apply` | POST | Apply template to project |
+| `/api/templates/{id}/features` | GET | Get template features |
+
+### Template Format (YAML)
+```yaml
+name: "Template Name"
+description: "Description"
+tech_stack:
+  frontend: "Next.js"
+  backend: "FastAPI"
+  database: "PostgreSQL"
+feature_categories:
+  authentication:
+    - "User login"
+    - "User registration"
+design_tokens:
+  colors:
+    primary: "#3B82F6"
+estimated_features: 30
+tags: ["saas", "auth"]
+```
+
+### Usage
+```bash
+# List templates
+curl http://localhost:8888/api/templates
+
+# Get template details
+curl http://localhost:8888/api/templates/saas-starter
+
+# Preview app_spec.txt
+curl -X POST http://localhost:8888/api/templates/preview \
+  -H "Content-Type: application/json" \
+  -d '{"template_id": "saas-starter", "app_name": "My SaaS"}'
+
+# Apply template
+curl -X POST http://localhost:8888/api/templates/apply \
+  -H "Content-Type: application/json" \
+  -d '{"template_id": "saas-starter", "project_name": "my-saas", "project_dir": "/path/to/project"}'
+```
+
+---
+
 ## [2025-01-21] CI/CD Integration
 
 ### Added
@@ -426,7 +490,7 @@ The following features are planned for implementation:
 - [x] CI/CD Integration - GitHub Actions generation ✅
 
 ### Phase 4: Polish & Ecosystem
-- [ ] Template Library - SaaS, e-commerce, dashboard templates
+- [x] Template Library - SaaS, e-commerce, dashboard templates ✅
 - [ ] Auto Documentation - README, API docs generation
 - [ ] Design Tokens - Consistent styling
 - [ ] Visual Regression - Screenshot comparison testing
