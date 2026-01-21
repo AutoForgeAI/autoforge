@@ -9,6 +9,63 @@ Format based on [Keep a Changelog](https://keepachangelog.com/).
 - Fork documentation (FORK_README.md, FORK_CHANGELOG.md)
 - Configuration system via `.autocoder/config.json`
 
+## [2025-01-21] Feature Branches Git Workflow
+
+### Added
+- New module: `git_workflow.py` - Git workflow management for feature branches
+- New router: `server/routers/git_workflow.py` - REST API for git operations
+
+### Workflow Modes
+| Mode | Description |
+|------|-------------|
+| `feature_branches` | Create branch per feature, merge on completion |
+| `trunk` | All changes on main branch (default) |
+| `none` | No git operations |
+
+### Branch Naming
+- Format: `feature/{id}-{slugified-name}`
+- Example: `feature/42-user-can-login`
+
+### API Endpoints
+| Endpoint | Method | Description |
+|----------|--------|-------------|
+| `/api/git/status/{project}` | GET | Get current git status |
+| `/api/git/start-feature` | POST | Start feature (create branch) |
+| `/api/git/complete-feature` | POST | Complete feature (merge) |
+| `/api/git/abort-feature` | POST | Abort feature |
+| `/api/git/commit` | POST | Commit changes |
+| `/api/git/branches/{project}` | GET | List feature branches |
+
+### Configuration
+```json
+{
+  "git_workflow": {
+    "mode": "feature_branches",
+    "branch_prefix": "feature/",
+    "main_branch": "main",
+    "auto_merge": false
+  }
+}
+```
+
+### Usage
+```python
+from git_workflow import get_workflow
+
+workflow = get_workflow(project_dir)
+
+# Start working on a feature
+result = workflow.start_feature(42, "User can login")
+
+# Commit progress
+result = workflow.commit_feature_progress(42, "Add login form")
+
+# Complete feature (merge to main if auto_merge enabled)
+result = workflow.complete_feature(42)
+```
+
+---
+
 ## [2025-01-21] Security Scanning
 
 ### Added
@@ -303,7 +360,7 @@ The following features are planned for implementation:
 - [ ] Import Wizard UI - Chat-based project import (UI component)
 
 ### Phase 3: Workflow Improvements
-- [ ] Feature Branches - Git workflow with feature branches
+- [x] Feature Branches - Git workflow with feature branches ✅
 - [x] Error Recovery - Handle stuck features, auto-clear on startup ✅
 - [ ] Review Agent - Automatic code review
 - [ ] CI/CD Integration - GitHub Actions generation
