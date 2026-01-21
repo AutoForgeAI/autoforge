@@ -72,6 +72,11 @@ export interface ProjectPrompts {
   coding_prompt: string
 }
 
+export interface DeleteProjectResponse {
+  success: boolean
+  message: string
+}
+
 // Knowledge files
 export interface KnowledgeFileSummary {
   name: string

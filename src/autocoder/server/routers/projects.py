@@ -10,9 +10,12 @@ import re
 import os
 import shutil
 import subprocess
+import stat
+import time
+import json
 from pathlib import Path
 
-from fastapi import APIRouter, HTTPException
+from fastapi import APIRouter, HTTPException, status
 
 from ..schemas import (
     ProjectCreate,
@@ -140,6 +143,55 @@ def _git_dirty(project_dir: Path) -> bool:
     if result.returncode != 0:
         return False
     return bool(result.stdout.strip())
+
+
+def _cleanup_queue_path(project_dir: Path) -> Path:
+    return (project_dir / ".autocoder" / "cleanup_queue.json").resolve()
+
+
+def _rmtree_force(path: Path) -> None:
+    def onerror(func, p, excinfo):  # type: ignore[no-untyped-def]
+        try:
+            os.chmod(p, stat.S_IWRITE)
+        except Exception:
+            pass
+        try:
+            func(p)
+        except Exception:
+            pass
+
+    shutil.rmtree(path, onerror=onerror)
+
+
+def _enqueue_cleanup(project_dir: Path, target: Path, *, reason: str) -> Path:
+    autocoder_dir = project_dir / ".autocoder"
+    autocoder_dir.mkdir(parents=True, exist_ok=True)
+    queue_path = _cleanup_queue_path(project_dir)
+    try:
+        data = json.loads(queue_path.read_text(encoding="utf-8")) if queue_path.exists() else []
+    except Exception:
+        data = []
+    if not isinstance(data, list):
+        data = []
+    now = time.time()
+    target_str = str(target)
+    for item in data:
+        if item.get("path") == target_str:
+            item["reason"] = reason
+            item["next_try_at"] = now
+            queue_path.write_text(json.dumps(data, indent=2), encoding="utf-8")
+            return queue_path
+    data.append(
+        {
+            "path": target_str,
+            "attempts": 0,
+            "next_try_at": now,
+            "added_at": now,
+            "reason": reason,
+        }
+    )
+    queue_path.write_text(json.dumps(data, indent=2), encoding="utf-8")
+    return queue_path
 
 
 def _collect_non_runtime_entries(project_dir: Path, max_items: int = 12) -> tuple[list[str], int, bool]:
@@ -413,8 +465,27 @@ async def delete_project(name: str, delete_files: bool = False):
     # Optionally delete files
     if delete_files and project_dir.exists():
         try:
-            shutil.rmtree(project_dir)
-        except Exception as e:
+            _rmtree_force(project_dir)
+        except PermissionError as e:
+            # Windows file locking: queue cleanup for later.
+            queue_path = _enqueue_cleanup(project_dir, project_dir, reason="project delete failed (locked files)")
+            raise HTTPException(
+                status_code=status.HTTP_409_CONFLICT,
+                detail=(
+                    f"Failed to delete project files (locked). Cleanup queued at {queue_path}. "
+                    "Close any apps using the project and retry."
+                ),
+            )
+        except OSError as e:
+            if os.name == "nt" and getattr(e, "winerror", None) == 5:
+                queue_path = _enqueue_cleanup(project_dir, project_dir, reason="project delete failed (WinError 5)")
+                raise HTTPException(
+                    status_code=status.HTTP_409_CONFLICT,
+                    detail=(
+                        f"Failed to delete project files (locked). Cleanup queued at {queue_path}. "
+                        "Close any apps using the project and retry."
+                    ),
+                )
             raise HTTPException(status_code=500, detail=f"Failed to delete project files: {e}")
 
     # Unregister from registry

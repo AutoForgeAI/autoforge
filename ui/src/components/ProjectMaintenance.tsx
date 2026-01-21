@@ -44,9 +44,13 @@ export function ProjectMaintenance({ projectName }: ProjectMaintenanceProps) {
     setError(null)
     setMessage(null)
     try {
-      await deleteProject.mutateAsync({ name: projectName, deleteFiles })
-      setMessage('Project deleted.')
-      window.location.hash = ''
+      const resp = await deleteProject.mutateAsync({ name: projectName, deleteFiles })
+      if (resp?.success) {
+        setMessage(resp.message || 'Project deleted.')
+        window.location.hash = ''
+      } else {
+        setMessage(resp?.message || 'Delete queued. Close any apps using files and retry.')
+      }
     } catch (e: any) {
       setError(String(e?.message || e))
     }

@@ -162,6 +162,7 @@ autocoder-ui
   - **Reset** clears runtime artifacts (`agent_system.db`, `.autocoder/`, `worktrees/`).
   - **Full reset** also wipes `prompts/` so the spec must be recreated.
   - **Delete** shows a safety summary (git status, non-runtime files) and requires typed confirmation before deleting on disk.
+  - On Windows, delete may queue a cleanup if files are locked; use **Settings → Diagnostics → Worktree Cleanup** to retry.
 
 If the agent fails due to missing authentication, the UI log stream will emit a short fix-it hint (e.g. `claude login` or env var guidance).
 

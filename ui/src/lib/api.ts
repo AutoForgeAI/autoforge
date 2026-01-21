@@ -7,6 +7,7 @@ import type {
   ProjectDetail,
   ProjectDeleteInfo,
   ProjectPrompts,
+  DeleteProjectResponse,
   KnowledgeFilesResponse,
   KnowledgeFile,
   FeatureListResponse,
@@ -83,9 +84,9 @@ export async function getProjectDeleteInfo(name: string): Promise<ProjectDeleteI
   return fetchJSON(`/projects/${encodeURIComponent(name)}/delete-info`)
 }
 
-export async function deleteProject(name: string, deleteFiles: boolean = false): Promise<void> {
+export async function deleteProject(name: string, deleteFiles: boolean = false): Promise<DeleteProjectResponse> {
   const params = deleteFiles ? '?delete_files=1' : ''
-  await fetchJSON(`/projects/${encodeURIComponent(name)}${params}`, {
+  return fetchJSON(`/projects/${encodeURIComponent(name)}${params}`, {
     method: 'DELETE',
   })
 }
