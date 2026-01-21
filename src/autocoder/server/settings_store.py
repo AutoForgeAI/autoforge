@@ -57,7 +57,7 @@ class AdvancedSettings:
     qa_fix_enabled: bool = False
     qa_model: str = ""
     qa_max_sessions: int = 0
-    qa_subagent_enabled: bool = False
+    qa_subagent_enabled: bool = True
     qa_subagent_max_iterations: int = 2
     qa_subagent_provider: str = "claude"  # claude|codex_cli|gemini_cli|multi_cli
     qa_subagent_agents: str = "codex,gemini"  # csv; used when provider=multi_cli
@@ -239,12 +239,22 @@ def apply_advanced_settings_env(env: dict[str, str]) -> dict[str, str]:
     but only when settings were actually saved. Empty string values do not override.
     """
     settings = load_persisted_advanced_settings()
-    if not settings:
+    if settings:
+        # Explicitly persisted settings: override env for this UI-launched subprocess.
+        for k, v in settings.to_env().items():
+            if v == "":
+                continue
+            env[k] = v
         return env
-    for k, v in settings.to_env().items():
+
+    # No persisted settings yet:
+    # apply safe defaults only when the user hasn't already set an env var.
+    defaults = AdvancedSettings()
+    for k, v in defaults.to_env().items():
         if v == "":
             continue
-        env[k] = v
+        if not env.get(k):
+            env[k] = v
     return env
 
 

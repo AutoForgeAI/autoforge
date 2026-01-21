@@ -52,7 +52,7 @@ class AdvancedSettingsModel(BaseModel):
     qa_fix_enabled: bool = False
     qa_model: str = Field(default="", max_length=128)
     qa_max_sessions: int = Field(default=0, ge=0, le=50)
-    qa_subagent_enabled: bool = False
+    qa_subagent_enabled: bool = True
     qa_subagent_max_iterations: int = Field(default=2, ge=1, le=20)
     qa_subagent_provider: WorkerProvider = Field(default="claude")
     qa_subagent_agents: str = Field(default="codex,gemini", max_length=256)

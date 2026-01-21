@@ -40,7 +40,7 @@ const DEFAULTS: AdvancedSettings = {
   qa_fix_enabled: false,
   qa_model: '',
   qa_max_sessions: 0,
-  qa_subagent_enabled: false,
+  qa_subagent_enabled: true,
   qa_subagent_max_iterations: 2,
   qa_subagent_provider: 'claude',
   qa_subagent_agents: 'codex,gemini',
@@ -270,6 +270,12 @@ const HELP_CONTENT: Record<HelpTopic, { title: string; body: JSX.Element }> = {
             </li>
           </ul>
         </div>
+        <div className="neo-card p-4 bg-[var(--color-neo-bg)] space-y-2">
+          <div className="font-display font-bold uppercase text-xs">Important</div>
+          <p className="text-[var(--color-neo-text-secondary)]">
+            <span className="font-mono">multi_cli</span> means <span className="font-bold">Codex + Gemini</span> only. Claude is a separate provider.
+          </p>
+        </div>
         <p className="text-[var(--color-neo-text-secondary)]">
           Patch order only matters for <span className="font-mono">multi_cli</span>. If a CLI isn’t installed, it’s skipped automatically.
         </p>
@@ -295,6 +301,9 @@ const HELP_CONTENT: Record<HelpTopic, { title: string; body: JSX.Element }> = {
             Spawns a short‑lived fixer in the same feature branch. It only fixes the failure excerpt and resubmits — no new scope creep.
           </p>
         </div>
+        <p className="text-[var(--color-neo-text-secondary)]">
+          Recommended default: enable <span className="font-bold">QA sub‑agent</span> (low noise; runs only on failures). Keep Controller off unless you want stricter preflight.
+        </p>
         <div className="neo-card p-4 bg-[var(--color-neo-bg)] space-y-2">
           <div className="font-display font-bold uppercase text-xs">Controller preflight</div>
           <p className="text-[var(--color-neo-text-secondary)]">
