@@ -180,6 +180,10 @@ def scaffold_project_prompts(project_dir: Path) -> Path:
     project_prompts = get_project_prompts_dir(project_dir)
     project_prompts.mkdir(parents=True, exist_ok=True)
 
+    # Create .autocoder directory for configuration files
+    autocoder_dir = project_dir / ".autocoder"
+    autocoder_dir.mkdir(parents=True, exist_ok=True)
+
     # Define template mappings: (source_template, destination_name)
     templates = [
         ("app_spec.template.txt", "app_spec.txt"),
@@ -201,8 +205,19 @@ def scaffold_project_prompts(project_dir: Path) -> Path:
             except (OSError, PermissionError) as e:
                 print(f"  Warning: Could not copy {dest_name}: {e}")
 
+    # Copy allowed_commands.yaml template to .autocoder/
+    examples_dir = Path(__file__).parent / "examples"
+    allowed_commands_template = examples_dir / "project_allowed_commands.yaml"
+    allowed_commands_dest = autocoder_dir / "allowed_commands.yaml"
+    if allowed_commands_template.exists() and not allowed_commands_dest.exists():
+        try:
+            shutil.copy(allowed_commands_template, allowed_commands_dest)
+            copied_files.append(".autocoder/allowed_commands.yaml")
+        except (OSError, PermissionError) as e:
+            print(f"  Warning: Could not copy allowed_commands.yaml: {e}")
+
     if copied_files:
-        print(f"  Created prompt files: {', '.join(copied_files)}")
+        print(f"  Created project files: {', '.join(copied_files)}")
 
     return project_prompts
 

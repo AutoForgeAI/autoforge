@@ -261,6 +261,14 @@ def create_client(
         if "ANTHROPIC_BASE_URL" in sdk_env:
             print(f"   - GLM Mode: Using {sdk_env['ANTHROPIC_BASE_URL']}")
 
+    # Create a wrapper for bash_security_hook that passes project_dir via context
+    async def bash_hook_with_context(input_data, tool_use_id=None, context=None):
+        """Wrapper that injects project_dir into context for security hook."""
+        if context is None:
+            context = {}
+        context["project_dir"] = str(project_dir.resolve())
+        return await bash_security_hook(input_data, tool_use_id, context)
+
     return ClaudeSDKClient(
         options=ClaudeAgentOptions(
             model=model,
@@ -272,7 +280,7 @@ def create_client(
             mcp_servers=mcp_servers,
             hooks={
                 "PreToolUse": [
-                    HookMatcher(matcher="Bash", hooks=[bash_security_hook]),
+                    HookMatcher(matcher="Bash", hooks=[bash_hook_with_context]),
                 ],
             },
             max_turns=1000,
