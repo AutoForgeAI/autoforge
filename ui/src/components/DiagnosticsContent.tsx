@@ -49,6 +49,7 @@ export function DiagnosticsContent() {
   const [notice, setNotice] = useState<{ type: InlineNoticeType; message: string } | null>(null)
   const noticeTimer = useRef<number | null>(null)
   const [showHelp, setShowHelp] = useState(false)
+  const [helpAnchor, setHelpAnchor] = useState<string>('diag-help-overview')
 
   const tail = useDiagnosticsRunTail(selectedRunName, tailMaxChars)
   const cleanup = useCleanupQueue(selectedProject)
@@ -94,6 +95,29 @@ export function DiagnosticsContent() {
       flash('error', String(e?.message || e))
     }
   }
+
+  const openHelp = (anchor: string) => {
+    setHelpAnchor(anchor)
+    setShowHelp(true)
+  }
+
+  useEffect(() => {
+    if (!showHelp) return
+    const anchor = (helpAnchor || '').trim()
+    if (!anchor) return
+
+    const t = window.setTimeout(() => {
+      const el = document.getElementById(anchor)
+      if (!el) return
+      try {
+        el.scrollIntoView({ behavior: 'smooth', block: 'start' })
+      } catch {
+        el.scrollIntoView()
+      }
+    }, 60)
+
+    return () => window.clearTimeout(t)
+  }, [showHelp, helpAnchor])
 
   // Keep the draft in sync with server settings (first load).
   useEffect(() => {
@@ -194,7 +218,7 @@ export function DiagnosticsContent() {
           <div className="flex items-center gap-2">
             <button
               className="neo-btn neo-btn-secondary text-sm"
-              onClick={() => setShowHelp(true)}
+              onClick={() => openHelp('diag-help-overview')}
               title="Explain Diagnostics"
             >
               <Info size={18} />
@@ -214,7 +238,7 @@ export function DiagnosticsContent() {
 
       <HelpModal isOpen={showHelp} title="Diagnostics: what this does" onClose={() => setShowHelp(false)}>
         <div className="space-y-5 text-sm">
-          <div>
+          <div id="diag-help-overview">
             <div className="font-display font-bold uppercase mb-1">Why Diagnostics exists</div>
             <div className="text-[var(--color-neo-text-secondary)]">
               It’s a deterministic “does the machine work?” suite. These fixtures run in isolated directories and are
@@ -222,7 +246,7 @@ export function DiagnosticsContent() {
             </div>
           </div>
 
-          <div>
+          <div id="diag-help-system">
             <div className="font-display font-bold uppercase mb-1">System Status</div>
             <div className="text-[var(--color-neo-text-secondary)]">
               Verifies the API is reachable and checks whether tools are detected on your PATH (Claude/Codex/Gemini,
@@ -230,7 +254,7 @@ export function DiagnosticsContent() {
             </div>
           </div>
 
-          <div>
+          <div id="diag-help-build">
             <div className="font-display font-bold uppercase mb-1">Build Info</div>
             <div className="text-[var(--color-neo-text-secondary)]">
               Shows a UI build id and backend git SHA. If the UI looks “weird” after updating, hit Refresh. “Copy debug
@@ -238,7 +262,7 @@ export function DiagnosticsContent() {
             </div>
           </div>
 
-          <div>
+          <div id="diag-help-fixtures">
             <div className="font-display font-bold uppercase mb-1">Fixtures Directory</div>
             <div className="text-[var(--color-neo-text-secondary)]">
               Where fixture projects are created. Changing this doesn’t move your real projects — it only affects where
@@ -246,15 +270,15 @@ export function DiagnosticsContent() {
             </div>
           </div>
 
-          <div>
-            <div className="font-display font-bold uppercase mb-1">QA Provider E2E</div>
+          <div id="diag-help-qa">
+            <div className="font-display font-bold uppercase mb-1">QA Engine E2E</div>
             <div className="text-[var(--color-neo-text-secondary)]">
               Creates a tiny repo with an intentional verification failure, then proves the QA chain can fix it and
               resubmit until Gatekeeper merges. The “Engines” order is the order tried (Claude first by default).
             </div>
           </div>
 
-          <div>
+          <div id="diag-help-parallel">
             <div className="font-display font-bold uppercase mb-1">Parallel Mini E2E</div>
             <div className="text-[var(--color-neo-text-secondary)]">
               Creates a small Python repo with a 3-feature dependency chain and runs parallel orchestration end-to-end:
@@ -262,7 +286,7 @@ export function DiagnosticsContent() {
             </div>
           </div>
 
-          <div>
+          <div id="diag-help-runs">
             <div className="font-display font-bold uppercase mb-1">Runs + Logs</div>
             <div className="text-[var(--color-neo-text-secondary)]">
               Shows recent Diagnostics runs and lets you tail logs. If something fails, copy the tail + debug info and
@@ -270,7 +294,7 @@ export function DiagnosticsContent() {
             </div>
           </div>
 
-          <div>
+          <div id="diag-help-cleanup">
             <div className="font-display font-bold uppercase mb-1">Worktree Cleanup</div>
             <div className="text-[var(--color-neo-text-secondary)]">
               Windows sometimes locks files (especially node_modules). When cleanup/delete can’t remove a directory, we
@@ -281,7 +305,12 @@ export function DiagnosticsContent() {
       </HelpModal>
 
       <div className="neo-card p-4">
-        <div className="font-display font-bold uppercase mb-3">System Status</div>
+        <div className="flex items-center justify-between gap-3 mb-3">
+          <div className="font-display font-bold uppercase">System Status</div>
+          <button className="neo-btn neo-btn-ghost p-2" onClick={() => openHelp('diag-help-system')} title="About System Status" aria-label="About System Status">
+            <Info size={18} />
+          </button>
+        </div>
         <div className="grid grid-cols-1 md:grid-cols-2 gap-3">
           <div className="neo-card p-3">
             <div className="text-xs font-mono text-[var(--color-neo-text-secondary)] mb-2">Server</div>
@@ -326,7 +355,12 @@ export function DiagnosticsContent() {
         </div>
 
         <div className="neo-card p-3 mt-3">
-          <div className="text-xs font-mono text-[var(--color-neo-text-secondary)] mb-2">Build Info</div>
+          <div className="flex items-center justify-between gap-2 mb-2">
+            <div className="text-xs font-mono text-[var(--color-neo-text-secondary)]">Build Info</div>
+            <button className="neo-btn neo-btn-ghost p-1" onClick={() => openHelp('diag-help-build')} title="About Build Info" aria-label="About Build Info">
+              <Info size={16} />
+            </button>
+          </div>
           <div className="grid grid-cols-1 md:grid-cols-3 gap-2 text-xs font-mono">
             <div className="neo-card p-2">
               <div className="text-[var(--color-neo-text-muted)]">UI</div>
@@ -385,7 +419,12 @@ export function DiagnosticsContent() {
       </div>
 
       <div className="neo-card p-4">
-        <div className="font-display font-bold uppercase mb-3">Fixtures Directory</div>
+        <div className="flex items-center justify-between gap-3 mb-3">
+          <div className="font-display font-bold uppercase">Fixtures Directory</div>
+          <button className="neo-btn neo-btn-ghost p-2" onClick={() => openHelp('diag-help-fixtures')} title="About Fixtures Directory" aria-label="About Fixtures Directory">
+            <Info size={18} />
+          </button>
+        </div>
         <div className="grid grid-cols-1 md:grid-cols-2 gap-3">
           <div className="neo-card p-3">
             <div className="text-xs font-mono text-[var(--color-neo-text-secondary)] mb-1">Configured</div>
@@ -417,7 +456,12 @@ export function DiagnosticsContent() {
 
       <div className="neo-card p-4">
         <div className="flex flex-wrap items-center justify-between gap-3 mb-3">
-          <div className="font-display font-bold uppercase">Worktree Cleanup</div>
+          <div className="flex items-center gap-2">
+            <div className="font-display font-bold uppercase">Worktree Cleanup</div>
+            <button className="neo-btn neo-btn-ghost p-2" onClick={() => openHelp('diag-help-cleanup')} title="About Worktree Cleanup" aria-label="About Worktree Cleanup">
+              <Info size={18} />
+            </button>
+          </div>
           <div className="flex items-center gap-2">
             <div className="text-xs font-mono text-[var(--color-neo-text-secondary)]">Project</div>
             <select
@@ -503,7 +547,12 @@ export function DiagnosticsContent() {
       </div>
 
       <div className="neo-card p-4">
-        <div className="font-display font-bold uppercase mb-3">QA Engine E2E</div>
+        <div className="flex items-center justify-between gap-3 mb-3">
+          <div className="font-display font-bold uppercase">QA Engine E2E</div>
+          <button className="neo-btn neo-btn-ghost p-2" onClick={() => openHelp('diag-help-qa')} title="About QA Engine E2E" aria-label="About QA Engine E2E">
+            <Info size={18} />
+          </button>
+        </div>
         <div className="grid grid-cols-1 md:grid-cols-4 gap-3">
           <div>
             <div className="text-xs font-mono text-[var(--color-neo-text-secondary)] mb-1">Fixture</div>
@@ -583,7 +632,12 @@ export function DiagnosticsContent() {
       </div>
 
       <div className="neo-card p-4">
-        <div className="font-display font-bold uppercase mb-3">Parallel Mini E2E</div>
+        <div className="flex items-center justify-between gap-3 mb-3">
+          <div className="font-display font-bold uppercase">Parallel Mini E2E</div>
+          <button className="neo-btn neo-btn-ghost p-2" onClick={() => openHelp('diag-help-parallel')} title="About Parallel Mini E2E" aria-label="About Parallel Mini E2E">
+            <Info size={18} />
+          </button>
+        </div>
         <div className="text-xs text-[var(--color-neo-text-secondary)] mb-3">
           Runs a tiny repo end-to-end in parallel mode (workers + Gatekeeper merge). Can take a few minutes.
         </div>
@@ -661,7 +715,12 @@ export function DiagnosticsContent() {
 
       <div className="neo-card p-4">
         <div className="flex items-center justify-between gap-3 mb-3">
-          <div className="font-display font-bold uppercase">Run Logs</div>
+          <div className="flex items-center gap-2">
+            <div className="font-display font-bold uppercase">Run Logs</div>
+            <button className="neo-btn neo-btn-ghost p-2" onClick={() => openHelp('diag-help-runs')} title="About Run Logs" aria-label="About Run Logs">
+              <Info size={18} />
+            </button>
+          </div>
           <button className="neo-btn neo-btn-secondary text-sm" onClick={() => runs.refetch()} title="Refresh list">
             <RefreshCcw size={18} />
             Refresh
