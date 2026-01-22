@@ -1,4 +1,4 @@
-import { X } from 'lucide-react'
+import { CheckCircle2, Info, X, XCircle } from 'lucide-react'
 
 export type InlineNoticeType = 'success' | 'error' | 'info'
 
@@ -30,10 +30,14 @@ export function InlineNotice({
   onClose?: () => void
 }) {
   const styles = STYLES[type]
+  const Icon = type === 'success' ? CheckCircle2 : type === 'error' ? XCircle : Info
   return (
     <div className={`neo-card p-3 border-3 ${styles.border} ${styles.bg}`}>
       <div className="flex items-start justify-between gap-3">
-        <div className={`text-sm ${styles.text}`}>{message}</div>
+        <div className="flex items-start gap-2">
+          <Icon size={18} className={`neo-notice-icon ${styles.text}`} aria-hidden="true" />
+          <div className={`text-sm ${styles.text}`}>{message}</div>
+        </div>
         {onClose && (
           <button className="neo-btn neo-btn-secondary text-xs" onClick={onClose} title="Dismiss">
             <X size={14} />
