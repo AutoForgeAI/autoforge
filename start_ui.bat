@@ -9,6 +9,12 @@ echo   AutoCoder UI
 echo ====================================
 echo.
 
+REM Kill any existing processes on port 8888
+echo Cleaning up old processes...
+for /f "tokens=5" %%a in ('netstat -aon ^| findstr ":8888" ^| findstr "LISTENING"') do (
+    taskkill /F /PID %%a >nul 2>&1
+)
+
 REM Check if Python is available
 where python >nul 2>&1
 if %ERRORLEVEL% neq 0 (

@@ -14,6 +14,29 @@ export default defineConfig({
       '@': path.resolve(__dirname, './src'),
     },
   },
+  build: {
+    rollupOptions: {
+      output: {
+        manualChunks: {
+          // React core
+          'vendor-react': ['react', 'react-dom'],
+          // Data fetching
+          'vendor-query': ['@tanstack/react-query'],
+          // Flow/graph visualization (largest dependency)
+          'vendor-flow': ['@xyflow/react', 'dagre'],
+          // Terminal emulator
+          'vendor-xterm': ['@xterm/xterm', '@xterm/addon-fit', '@xterm/addon-web-links'],
+          // UI components
+          'vendor-ui': [
+            '@radix-ui/react-dialog',
+            '@radix-ui/react-dropdown-menu',
+            '@radix-ui/react-tooltip',
+            'lucide-react',
+          ],
+        },
+      },
+    },
+  },
   server: {
     proxy: {
       '/api': {

@@ -7,9 +7,11 @@ interface KanbanBoardProps {
   onAddFeature?: () => void
   onExpandProject?: () => void
   activeAgents?: ActiveAgent[]
+  onCreateSpec?: () => void  // Callback to start spec creation
+  hasSpec?: boolean          // Whether the project has a spec
 }
 
-export function KanbanBoard({ features, onFeatureClick, onAddFeature, onExpandProject, activeAgents = [] }: KanbanBoardProps) {
+export function KanbanBoard({ features, onFeatureClick, onAddFeature, onExpandProject, activeAgents = [], onCreateSpec, hasSpec = true }: KanbanBoardProps) {
   const hasFeatures = features && (features.pending.length + features.in_progress.length + features.done.length) > 0
 
   // Combine all features for dependency status calculation
@@ -47,6 +49,8 @@ export function KanbanBoard({ features, onFeatureClick, onAddFeature, onExpandPr
         onAddFeature={onAddFeature}
         onExpandProject={onExpandProject}
         showExpandButton={hasFeatures}
+        onCreateSpec={onCreateSpec}
+        showCreateSpec={!hasSpec && !hasFeatures}
       />
       <KanbanColumn
         title="In Progress"

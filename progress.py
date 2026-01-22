@@ -10,7 +10,7 @@ import json
 import os
 import sqlite3
 import urllib.request
-from datetime import datetime
+from datetime import datetime, timezone
 from pathlib import Path
 
 WEBHOOK_URL = os.environ.get("PROGRESS_N8N_WEBHOOK_URL")
@@ -171,7 +171,7 @@ def send_progress_webhook(passing: int, total: int, project_dir: Path) -> None:
             "tests_completed_this_session": passing - previous,
             "completed_tests": completed_tests,
             "project": project_dir.name,
-            "timestamp": datetime.utcnow().isoformat() + "Z",
+            "timestamp": datetime.now(timezone.utc).isoformat().replace("+00:00", "Z"),
         }
 
         try:

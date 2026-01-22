@@ -595,9 +595,3 @@ export function AgentAvatar({ name, state, size = 'md', showName = false }: Agen
     </div>
   )
 }
-
-// Get mascot name by index (cycles through available mascots)
-export function getMascotName(index: number): AgentMascot {
-  const mascots = Object.keys(MASCOT_SVGS) as AgentMascot[]
-  return mascots[index % mascots.length]
-}

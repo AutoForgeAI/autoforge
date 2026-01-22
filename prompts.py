@@ -74,9 +74,38 @@ def get_coding_prompt(project_dir: Path | None = None) -> str:
     return load_prompt("coding_prompt", project_dir)
 
 
-def get_testing_prompt(project_dir: Path | None = None) -> str:
-    """Load the testing agent prompt (project-specific if available)."""
-    return load_prompt("testing_prompt", project_dir)
+def get_testing_prompt(project_dir: Path | None = None, testing_feature_id: int | None = None) -> str:
+    """Load the testing agent prompt (project-specific if available).
+
+    Args:
+        project_dir: Optional project directory for project-specific prompts
+        testing_feature_id: If provided, the pre-assigned feature ID to test.
+            The orchestrator claims the feature before spawning the agent.
+
+    Returns:
+        The testing prompt, with pre-assigned feature instructions if applicable.
+    """
+    base_prompt = load_prompt("testing_prompt", project_dir)
+
+    if testing_feature_id is not None:
+        # Prepend pre-assigned feature instructions
+        pre_assigned_header = f"""## ASSIGNED FEATURE
+
+**You are assigned to regression test Feature #{testing_feature_id}.**
+
+The orchestrator has already claimed this feature for you.
+
+### Your workflow:
+1. Call `feature_get_by_id` with ID {testing_feature_id} to get the feature details
+2. Verify the feature through the UI using browser automation
+3. When done, call `feature_release_testing` with feature_id={testing_feature_id}
+
+---
+
+"""
+        return pre_assigned_header + base_prompt
+
+    return base_prompt
 
 
 def get_single_feature_prompt(feature_id: int, project_dir: Path | None = None, yolo_mode: bool = False) -> str:
@@ -100,26 +129,26 @@ def get_single_feature_prompt(feature_id: int, project_dir: Path | None = None, 
     base_prompt = get_coding_prompt(project_dir)
 
     # Prepend single-feature instructions
-    single_feature_header = f"""## SINGLE FEATURE MODE
+    single_feature_header = f"""## ASSIGNED FEATURE
 
-**CRITICAL: You are assigned to work on Feature #{feature_id} ONLY.**
+**You are assigned to work on Feature #{feature_id} ONLY.**
 
-This session is part of a parallel execution where multiple agents work on different features simultaneously. You MUST:
+This session is part of a parallel execution where multiple agents work on different features simultaneously.
 
-1. **Skip the `feature_get_next` step** - Your feature is already assigned: #{feature_id}
-2. **Immediately mark feature #{feature_id} as in-progress** using `feature_mark_in_progress`
-3. **Focus ONLY on implementing and testing feature #{feature_id}**
-4. **Do NOT work on any other features** - other agents are handling them
+### Your workflow:
 
-When you complete feature #{feature_id}:
-- Mark it as passing with `feature_mark_passing`
-- Commit your changes
-- End the session
+1. **Get feature details** using `feature_get_by_id` with ID {feature_id}
+2. **Mark as in-progress** using `feature_mark_in_progress` with ID {feature_id}
+   - If you get "already in-progress" error, that's OK - continue with implementation
+3. **Implement the feature** following the steps from the feature details
+4. **Test your implementation** to verify it works correctly
+5. **Mark as passing** using `feature_mark_passing` with ID {feature_id}
+6. **Commit your changes** and end the session
 
-If you cannot complete feature #{feature_id} due to a blocker:
-- Use `feature_skip` to move it to the end of the queue
-- Document the blocker in claude-progress.txt
-- End the session
+### Important rules:
+
+- **Do NOT** work on any other features - other agents are handling them
+- If blocked, use `feature_skip` and document the blocker in claude-progress.txt
 
 ---
 

@@ -23,15 +23,16 @@ import os
 import subprocess
 import sys
 import threading
-from datetime import datetime
+from datetime import datetime, timedelta, timezone
 from pathlib import Path
 from typing import Callable, Literal
 
-import psutil
+from sqlalchemy import text
 
 from api.database import Feature, create_database
 from api.dependency_resolver import are_dependencies_satisfied, compute_scheduling_scores
 from progress import has_features
+from server.utils.process_utils import kill_process_tree
 
 # Root directory of autocoder (where this script and autonomous_agent_demo.py live)
 AUTOCODER_ROOT = Path(__file__).parent.resolve()
@@ -98,70 +99,44 @@ def _dump_database_state(session, label: str = ""):
         pending_count=len(pending),
         pending_ids=[f.id for f in pending[:10]])  # First 10 pending only
 
-# Performance: Limit parallel agents to prevent memory exhaustion
+# =============================================================================
+# Process Limits
+# =============================================================================
+# These constants bound the number of concurrent agent processes to prevent
+# resource exhaustion (memory, CPU, API rate limits).
+#
+# MAX_PARALLEL_AGENTS: Max concurrent coding agents (each is a Claude session)
+# MAX_TOTAL_AGENTS: Hard limit on total child processes (coding + testing)
+#
+# Expected process count during normal operation:
+#   - 1 orchestrator process (this script)
+#   - Up to MAX_PARALLEL_AGENTS coding agents
+#   - Up to max_concurrency testing agents
+#   - Total never exceeds MAX_TOTAL_AGENTS + 1 (including orchestrator)
+#
+# Stress test verification:
+#   1. Note baseline: tasklist | findstr python | find /c /v ""
+#   2. Run: python autonomous_agent_demo.py --project-dir test --parallel --max-concurrency 5
+#   3. During run: count should never exceed baseline + 11 (1 orchestrator + 10 agents)
+#   4. After stop: should return to baseline
+# =============================================================================
 MAX_PARALLEL_AGENTS = 5
-MAX_TOTAL_AGENTS = 10  # Hard limit on total agents (coding + testing)
+MAX_TOTAL_AGENTS = 10
 DEFAULT_CONCURRENCY = 3
 POLL_INTERVAL = 5  # seconds between checking for ready features
 MAX_FEATURE_RETRIES = 3  # Maximum times to retry a failed feature
 INITIALIZER_TIMEOUT = 1800  # 30 minutes timeout for initializer
-
-
-def _kill_process_tree(proc: subprocess.Popen, timeout: float = 5.0) -> None:
-    """Kill a process and all its child processes.
-
-    On Windows, subprocess.terminate() only kills the immediate process, leaving
-    orphaned child processes (e.g., spawned browser instances). This function
-    uses psutil to kill the entire process tree.
-
-    Args:
-        proc: The subprocess.Popen object to kill
-        timeout: Seconds to wait for graceful termination before force-killing
-    """
-    try:
-        parent = psutil.Process(proc.pid)
-        # Get all children recursively before terminating
-        children = parent.children(recursive=True)
-
-        # Terminate children first (graceful)
-        for child in children:
-            try:
-                child.terminate()
-            except psutil.NoSuchProcess:
-                pass
-
-        # Wait for children to terminate
-        _, still_alive = psutil.wait_procs(children, timeout=timeout)
-
-        # Force kill any remaining children
-        for child in still_alive:
-            try:
-                child.kill()
-            except psutil.NoSuchProcess:
-                pass
-
-        # Now terminate the parent
-        proc.terminate()
-        try:
-            proc.wait(timeout=timeout)
-        except subprocess.TimeoutExpired:
-            proc.kill()
-            proc.wait()
-
-    except psutil.NoSuchProcess:
-        # Process already dead, just ensure cleanup
-        try:
-            proc.terminate()
-            proc.wait(timeout=1)
-        except (subprocess.TimeoutExpired, OSError):
-            try:
-                proc.kill()
-            except OSError:
-                pass
+STALE_TESTING_LOCK_MINUTES = 30  # Auto-release testing locks older than this
 
 
 class ParallelOrchestrator:
-    """Orchestrates parallel execution of independent features."""
+    """Orchestrates parallel execution of independent features.
+
+    Process bounds:
+    - Up to MAX_PARALLEL_AGENTS (5) coding agents concurrently
+    - Up to max_concurrency testing agents concurrently
+    - Hard limit of MAX_TOTAL_AGENTS (10) total child processes
+    """
 
     def __init__(
         self,
@@ -170,7 +145,6 @@ class ParallelOrchestrator:
         model: str = None,
         yolo_mode: bool = False,
         testing_agent_ratio: int = 1,
-        count_testing_in_concurrency: bool = False,
         on_output: Callable[[int, str], None] = None,
         on_status: Callable[[int, str], None] = None,
     ):
@@ -178,11 +152,12 @@ class ParallelOrchestrator:
 
         Args:
             project_dir: Path to the project directory
-            max_concurrency: Maximum number of concurrent coding agents (1-5)
+            max_concurrency: Maximum number of concurrent coding agents (1-5).
+                Also caps testing agents at the same limit.
             model: Claude model to use (or None for default)
-            yolo_mode: Whether to run in YOLO mode (skip testing agents)
-            testing_agent_ratio: Testing agents per coding agent (0-3, default 1)
-            count_testing_in_concurrency: If True, testing agents count toward concurrency limit
+            yolo_mode: Whether to run in YOLO mode (skip testing agents entirely)
+            testing_agent_ratio: Number of regression testing agents to maintain (0-3).
+                0 = disabled, 1-3 = maintain that many testing agents running independently.
             on_output: Callback for agent output (feature_id, line)
             on_status: Callback for agent status changes (feature_id, status)
         """
@@ -191,7 +166,6 @@ class ParallelOrchestrator:
         self.model = model
         self.yolo_mode = yolo_mode
         self.testing_agent_ratio = min(max(testing_agent_ratio, 0), 3)  # Clamp 0-3
-        self.count_testing_in_concurrency = count_testing_in_concurrency
         self.on_output = on_output
         self.on_status = on_status
 
@@ -199,8 +173,8 @@ class ParallelOrchestrator:
         self._lock = threading.Lock()
         # Coding agents: feature_id -> process
         self.running_coding_agents: dict[int, subprocess.Popen] = {}
-        # Testing agents: list of processes (not tied to specific features)
-        self.running_testing_agents: list[subprocess.Popen] = []
+        # Testing agents: feature_id -> process (feature being tested)
+        self.running_testing_agents: dict[int, subprocess.Popen] = {}
         # Legacy alias for backward compatibility
         self.running_agents = self.running_coding_agents
         self.abort_events: dict[int, threading.Event] = {}
@@ -209,12 +183,84 @@ class ParallelOrchestrator:
         # Track feature failures to prevent infinite retry loops
         self._failure_counts: dict[int, int] = {}
 
+        # Session tracking for logging/debugging
+        self.session_start_time: datetime = None
+
         # Database session for this orchestrator
         self._engine, self._session_maker = create_database(project_dir)
 
     def get_session(self):
         """Get a new database session."""
         return self._session_maker()
+
+    def claim_feature_for_testing(self) -> int | None:
+        """Claim a random passing feature for regression testing.
+
+        Returns the feature ID if successful, None if no features available.
+        Sets testing_in_progress=True on the claimed feature.
+        """
+        session = self.get_session()
+        try:
+            from sqlalchemy.sql.expression import func
+
+            # Find a passing feature that's not being worked on
+            # Exclude features already being tested by this orchestrator
+            with self._lock:
+                testing_feature_ids = set(self.running_testing_agents.keys())
+
+            candidate = (
+                session.query(Feature)
+                .filter(Feature.passes == True)
+                .filter(Feature.in_progress == False)
+                .filter(Feature.testing_in_progress == False)
+                .filter(~Feature.id.in_(testing_feature_ids) if testing_feature_ids else True)
+                .order_by(func.random())
+                .first()
+            )
+
+            if not candidate:
+                return None
+
+            # Atomic claim using UPDATE with WHERE clause
+            result = session.execute(
+                text("""
+                    UPDATE features
+                    SET testing_in_progress = 1
+                    WHERE id = :feature_id
+                      AND passes = 1
+                      AND in_progress = 0
+                      AND testing_in_progress = 0
+                """),
+                {"feature_id": candidate.id}
+            )
+            session.commit()
+
+            if result.rowcount == 0:
+                # Another process claimed it
+                return None
+
+            return candidate.id
+        except Exception as e:
+            session.rollback()
+            debug_log.log("TESTING", f"Failed to claim feature for testing: {e}")
+            return None
+        finally:
+            session.close()
+
+    def release_testing_claim(self, feature_id: int):
+        """Release a testing claim on a feature (called when testing agent exits)."""
+        session = self.get_session()
+        try:
+            session.execute(
+                text("UPDATE features SET testing_in_progress = 0 WHERE id = :feature_id"),
+                {"feature_id": feature_id}
+            )
+            session.commit()
+        except Exception as e:
+            session.rollback()
+            debug_log.log("TESTING", f"Failed to release testing claim for feature {feature_id}: {e}")
+        finally:
+            session.close()
 
     def get_resumable_features(self) -> list[dict]:
         """Get features that were left in_progress from a previous session.
@@ -369,6 +415,110 @@ class ParallelOrchestrator:
         finally:
             session.close()
 
+    def _cleanup_stale_testing_locks(self) -> None:
+        """Release stale testing locks from crashed testing agents.
+
+        A feature is considered stale if:
+        - testing_in_progress=True AND
+        - last_tested_at is NOT NULL AND older than STALE_TESTING_LOCK_MINUTES
+
+        Note: We do NOT release features with last_tested_at=NULL because that would
+        incorrectly release features that are legitimately in the middle of their
+        first test. The last_tested_at is only set when testing completes.
+
+        This handles the case where a testing agent crashes mid-test, leaving
+        the feature locked until orchestrator restart. By checking periodically,
+        we can release these locks without requiring a restart.
+        """
+        session = self.get_session()
+        try:
+            # Use timezone-aware UTC, then strip timezone for SQLite compatibility
+            # (SQLite stores datetimes as naive strings, but we want consistency with
+            # datetime.now(timezone.utc) used elsewhere in the codebase)
+            cutoff_time = (datetime.now(timezone.utc) - timedelta(minutes=STALE_TESTING_LOCK_MINUTES)).replace(tzinfo=None)
+
+            # Find stale locks: testing_in_progress=True AND last_tested_at < cutoff
+            # Excludes NULL last_tested_at to avoid false positives on first-time tests
+            stale_features = (
+                session.query(Feature)
+                .filter(Feature.testing_in_progress == True)
+                .filter(Feature.last_tested_at.isnot(None))
+                .filter(Feature.last_tested_at < cutoff_time)
+                .all()
+            )
+
+            if stale_features:
+                stale_ids = [f.id for f in stale_features]
+                # Use ORM update instead of raw SQL for SQLite IN clause compatibility
+                session.query(Feature).filter(Feature.id.in_(stale_ids)).update(
+                    {"testing_in_progress": False},
+                    synchronize_session=False
+                )
+                session.commit()
+                print(f"[CLEANUP] Released {len(stale_ids)} stale testing locks: {stale_ids}", flush=True)
+                debug_log.log("CLEANUP", "Released stale testing locks", feature_ids=stale_ids)
+        except Exception as e:
+            session.rollback()
+            print(f"[CLEANUP] Error cleaning stale locks: {e}", flush=True)
+            debug_log.log("CLEANUP", f"Error cleaning stale locks: {e}")
+        finally:
+            session.close()
+
+    def _maintain_testing_agents(self) -> None:
+        """Maintain the desired count of testing agents independently.
+
+        This runs every loop iteration and spawns testing agents as needed to maintain
+        the configured testing_agent_ratio. Testing agents run independently from
+        coding agents and continuously re-test passing features to catch regressions.
+
+        Also periodically releases stale testing locks (features stuck in
+        testing_in_progress=True for more than STALE_TESTING_LOCK_MINUTES).
+
+        Stops spawning when:
+        - YOLO mode is enabled
+        - testing_agent_ratio is 0
+        - No passing features exist yet
+        """
+        # Skip if testing is disabled
+        if self.yolo_mode or self.testing_agent_ratio == 0:
+            return
+
+        # Periodically clean up stale testing locks (features stuck mid-test due to crash)
+        # A feature is considered stale if testing_in_progress=True and last_tested_at
+        # is either NULL or older than STALE_TESTING_LOCK_MINUTES
+        self._cleanup_stale_testing_locks()
+
+        # No testing until there are passing features
+        passing_count = self.get_passing_count()
+        if passing_count == 0:
+            return
+
+        # Spawn testing agents one at a time, re-checking limits each time
+        # This avoids TOCTOU race by holding lock during the decision
+        while True:
+            # Check limits and decide whether to spawn (atomically)
+            with self._lock:
+                current_testing = len(self.running_testing_agents)
+                desired = self.testing_agent_ratio
+                total_agents = len(self.running_coding_agents) + current_testing
+
+                # Check if we need more testing agents
+                if current_testing >= desired:
+                    return  # Already at desired count
+
+                # Check hard limit on total agents
+                if total_agents >= MAX_TOTAL_AGENTS:
+                    return  # At max total agents
+
+                # We're going to spawn - log while still holding lock
+                spawn_index = current_testing + 1
+                debug_log.log("TESTING", f"Spawning testing agent ({spawn_index}/{desired})",
+                    passing_count=passing_count)
+
+            # Spawn outside lock (I/O bound operation)
+            print(f"[DEBUG] Spawning testing agent ({spawn_index}/{desired})", flush=True)
+            self._spawn_testing_agent()
+
     def start_feature(self, feature_id: int, resume: bool = False) -> tuple[bool, str]:
         """Start a single coding agent for a feature.
 
@@ -384,6 +534,10 @@ class ParallelOrchestrator:
                 return False, "Feature already running"
             if len(self.running_coding_agents) >= self.max_concurrency:
                 return False, "At max concurrency"
+            # Enforce hard limit on total agents (coding + testing)
+            total_agents = len(self.running_coding_agents) + len(self.running_testing_agents)
+            if total_agents >= MAX_TOTAL_AGENTS:
+                return False, f"At max total agents ({total_agents}/{MAX_TOTAL_AGENTS})"
 
         # Mark as in_progress in database (or verify it's resumable)
         session = self.get_session()
@@ -412,9 +566,8 @@ class ParallelOrchestrator:
         if not success:
             return False, message
 
-        # NOTE: Testing agents are spawned in _on_agent_complete() after a coding agent
-        # succeeds, not here. This ensures we only spawn testing agents when there are
-        # actually passing features to test.
+        # NOTE: Testing agents are now maintained independently via _maintain_testing_agents()
+        # called in the main loop, rather than being spawned when coding agents start.
 
         return True, f"Started feature {feature_id}"
 
@@ -476,69 +629,82 @@ class ParallelOrchestrator:
         print(f"Started coding agent for feature #{feature_id}", flush=True)
         return True, f"Started feature {feature_id}"
 
-    def _spawn_testing_agents(self) -> None:
-        """Spawn testing agents based on testing_agent_ratio."""
-        for _ in range(self.testing_agent_ratio):
-            # Check resource limits
-            with self._lock:
-                total_agents = len(self.running_coding_agents) + len(self.running_testing_agents)
-                if total_agents >= MAX_TOTAL_AGENTS:
-                    print(f"[DEBUG] At max total agents ({MAX_TOTAL_AGENTS}), skipping testing agent", flush=True)
-                    break
-
-                if self.count_testing_in_concurrency:
-                    if total_agents >= self.max_concurrency:
-                        print("[DEBUG] Testing agents count toward concurrency, at limit", flush=True)
-                        break
-
-            # Spawn a testing agent
-            self._spawn_testing_agent()
-
     def _spawn_testing_agent(self) -> tuple[bool, str]:
-        """Spawn a testing agent subprocess for regression testing."""
-        debug_log.log("TESTING", "Attempting to spawn testing agent subprocess")
+        """Spawn a testing agent subprocess for regression testing.
 
-        cmd = [
-            sys.executable,
-            "-u",
-            str(AUTOCODER_ROOT / "autonomous_agent_demo.py"),
-            "--project-dir", str(self.project_dir),
-            "--max-iterations", "1",
-            "--agent-type", "testing",
-        ]
-        if self.model:
-            cmd.extend(["--model", self.model])
-        # Testing agents don't need --yolo flag (they use testing prompt regardless)
-
-        try:
-            proc = subprocess.Popen(
-                cmd,
-                stdout=subprocess.PIPE,
-                stderr=subprocess.STDOUT,
-                text=True,
-                cwd=str(AUTOCODER_ROOT),
-                env={**os.environ, "PYTHONUNBUFFERED": "1"},
-            )
-        except Exception as e:
-            debug_log.log("TESTING", f"FAILED to spawn testing agent: {e}")
-            return False, f"Failed to start testing agent: {e}"
-
+        Claims a feature BEFORE spawning the agent (same pattern as coding agents).
+        This ensures we know which feature is being tested for UI display.
+        """
+        # Check limits first (under lock)
         with self._lock:
-            self.running_testing_agents.append(proc)
+            current_testing_count = len(self.running_testing_agents)
+            if current_testing_count >= self.max_concurrency:
+                debug_log.log("TESTING", f"Skipped spawn - at max testing agents ({current_testing_count}/{self.max_concurrency})")
+                return False, f"At max testing agents ({current_testing_count})"
+            total_agents = len(self.running_coding_agents) + len(self.running_testing_agents)
+            if total_agents >= MAX_TOTAL_AGENTS:
+                debug_log.log("TESTING", f"Skipped spawn - at max total agents ({total_agents}/{MAX_TOTAL_AGENTS})")
+                return False, f"At max total agents ({total_agents})"
+
+        # Claim a feature for testing (outside lock to avoid holding during DB ops)
+        feature_id = self.claim_feature_for_testing()
+        if feature_id is None:
+            debug_log.log("TESTING", "No features available for testing")
+            return False, "No features available for testing"
+
+        debug_log.log("TESTING", f"Claimed feature #{feature_id} for testing")
+
+        # Now spawn with the claimed feature ID
+        with self._lock:
+            # Re-check limits in case another thread spawned while we were claiming
+            current_testing_count = len(self.running_testing_agents)
+            if current_testing_count >= self.max_concurrency:
+                self.release_testing_claim(feature_id)
+                return False, f"At max testing agents ({current_testing_count})"
+
+            cmd = [
+                sys.executable,
+                "-u",
+                str(AUTOCODER_ROOT / "autonomous_agent_demo.py"),
+                "--project-dir", str(self.project_dir),
+                "--max-iterations", "1",
+                "--agent-type", "testing",
+                "--testing-feature-id", str(feature_id),
+            ]
+            if self.model:
+                cmd.extend(["--model", self.model])
+
+            try:
+                proc = subprocess.Popen(
+                    cmd,
+                    stdout=subprocess.PIPE,
+                    stderr=subprocess.STDOUT,
+                    text=True,
+                    cwd=str(AUTOCODER_ROOT),
+                    env={**os.environ, "PYTHONUNBUFFERED": "1"},
+                )
+            except Exception as e:
+                debug_log.log("TESTING", f"FAILED to spawn testing agent: {e}")
+                self.release_testing_claim(feature_id)
+                return False, f"Failed to start testing agent: {e}"
+
+            # Register process with feature ID (same pattern as coding agents)
+            self.running_testing_agents[feature_id] = proc
             testing_count = len(self.running_testing_agents)
 
-        # Start output reader thread (feature_id=None for testing agents)
+        # Start output reader thread with feature ID (same as coding agents)
         threading.Thread(
             target=self._read_output,
-            args=(None, proc, threading.Event(), "testing"),
+            args=(feature_id, proc, threading.Event(), "testing"),
             daemon=True
         ).start()
 
-        print(f"Started testing agent (PID {proc.pid})", flush=True)
-        debug_log.log("TESTING", "Successfully spawned testing agent",
+        print(f"Started testing agent for feature #{feature_id} (PID {proc.pid})", flush=True)
+        debug_log.log("TESTING", f"Successfully spawned testing agent for feature #{feature_id}",
             pid=proc.pid,
+            feature_id=feature_id,
             total_testing_agents=testing_count)
-        return True, "Started testing agent"
+        return True, f"Started testing agent for feature #{feature_id}"
 
     async def _run_initializer(self) -> bool:
         """Run initializer agent as blocking subprocess.
@@ -591,7 +757,9 @@ class ParallelOrchestrator:
             print(f"ERROR: Initializer timed out after {INITIALIZER_TIMEOUT // 60} minutes", flush=True)
             debug_log.log("INIT", "TIMEOUT - Initializer exceeded time limit",
                 timeout_minutes=INITIALIZER_TIMEOUT // 60)
-            _kill_process_tree(proc)
+            result = kill_process_tree(proc)
+            debug_log.log("INIT", "Killed timed-out initializer process tree",
+                status=result.status, children_found=result.children_found)
             return False
 
         debug_log.log("INIT", "Initializer subprocess completed",
@@ -620,10 +788,8 @@ class ParallelOrchestrator:
                 if self.on_output:
                     self.on_output(feature_id or 0, line)
                 else:
-                    if agent_type == "testing":
-                        print(f"[Testing] {line}", flush=True)
-                    else:
-                        print(f"[Feature #{feature_id}] {line}", flush=True)
+                    # Both coding and testing agents now use [Feature #X] format
+                    print(f"[Feature #{feature_id}] {line}", flush=True)
             proc.wait()
         finally:
             self._on_agent_complete(feature_id, proc.returncode, agent_type, proc)
@@ -644,17 +810,27 @@ class ParallelOrchestrator:
           is safe.
 
         For testing agents:
-        - Just remove from the running list.
+        - Remove from running dict and release testing claim on feature.
         """
         if agent_type == "testing":
             with self._lock:
-                if proc in self.running_testing_agents:
-                    self.running_testing_agents.remove(proc)
+                # Remove from dict by finding the feature_id for this proc
+                found_feature_id = None
+                for fid, p in list(self.running_testing_agents.items()):
+                    if p is proc:
+                        found_feature_id = fid
+                        del self.running_testing_agents[fid]
+                        break
+
+            # Release testing claim on the feature
+            if found_feature_id is not None:
+                self.release_testing_claim(found_feature_id)
 
             status = "completed" if return_code == 0 else "failed"
-            print(f"Testing agent (PID {proc.pid}) {status}", flush=True)
-            debug_log.log("COMPLETE", "Testing agent finished",
+            print(f"Feature #{feature_id} testing {status}", flush=True)
+            debug_log.log("COMPLETE", f"Testing agent for feature #{feature_id} finished",
                 pid=proc.pid,
+                feature_id=feature_id,
                 status=status)
             return
 
@@ -724,23 +900,8 @@ class ParallelOrchestrator:
         # CRITICAL: This print triggers the WebSocket to emit agent_update with state='error' or 'success'
         print(f"Feature #{feature_id} {status}", flush=True)
 
-        # Spawn testing agents after successful coding agent completion
-        # This is the correct place to spawn testing agents - after we know there are
-        # passing features (the one this agent just completed, plus any previous ones)
-        if return_code == 0 and not self.yolo_mode and self.testing_agent_ratio > 0:
-            passing_count = self.get_passing_count()
-            print(f"[DEBUG] Coding agent completed successfully, passing_count={passing_count}", flush=True)
-            debug_log.log("TESTING", "Checking if testing agents should spawn",
-                yolo_mode=self.yolo_mode,
-                testing_agent_ratio=self.testing_agent_ratio,
-                passing_count=passing_count)
-            if passing_count > 0:
-                print(f"[DEBUG] Spawning testing agents (ratio={self.testing_agent_ratio})", flush=True)
-                debug_log.log("TESTING", f"Spawning {self.testing_agent_ratio} testing agent(s)")
-                self._spawn_testing_agents()
-        elif return_code == 0:
-            debug_log.log("TESTING", "Skipping testing agents",
-                reason="yolo_mode" if self.yolo_mode else f"ratio={self.testing_agent_ratio}")
+        # NOTE: Testing agents are now spawned in start_feature() when coding agents START,
+        # not here when they complete. This ensures 1:1 ratio and proper termination.
 
     def stop_feature(self, feature_id: int) -> tuple[bool, str]:
         """Stop a running coding agent and all its child processes."""
@@ -755,7 +916,10 @@ class ParallelOrchestrator:
             abort.set()
         if proc:
             # Kill entire process tree to avoid orphaned children (e.g., browser instances)
-            _kill_process_tree(proc, timeout=5.0)
+            result = kill_process_tree(proc, timeout=5.0)
+            debug_log.log("STOP", f"Killed feature {feature_id} process tree",
+                status=result.status, children_found=result.children_found,
+                children_terminated=result.children_terminated, children_killed=result.children_killed)
 
         return True, f"Stopped feature {feature_id}"
 
@@ -772,17 +936,38 @@ class ParallelOrchestrator:
 
         # Stop testing agents
         with self._lock:
-            testing_procs = list(self.running_testing_agents)
+            testing_items = list(self.running_testing_agents.items())
 
-        for proc in testing_procs:
-            _kill_process_tree(proc, timeout=5.0)
+        for feature_id, proc in testing_items:
+            result = kill_process_tree(proc, timeout=5.0)
+            self.release_testing_claim(feature_id)
+            debug_log.log("STOP", f"Killed testing agent for feature #{feature_id} (PID {proc.pid})",
+                status=result.status, children_found=result.children_found,
+                children_terminated=result.children_terminated, children_killed=result.children_killed)
 
     async def run_loop(self):
         """Main orchestration loop."""
         self.is_running = True
 
-        # Start debug logging session (clears previous logs)
+        # Track session start for regression testing (UTC for consistency with last_tested_at)
+        self.session_start_time = datetime.now(timezone.utc)
+
+        # Start debug logging session FIRST (clears previous logs)
+        # Must happen before any debug_log.log() calls
         debug_log.start_session()
+
+        # Clear stale testing_in_progress flags from crashed testing agents
+        # This ensures features aren't permanently locked if a previous session crashed
+        session = self.get_session()
+        try:
+            stale_count = session.query(Feature).filter(Feature.testing_in_progress == True).count()
+            if stale_count > 0:
+                session.execute(text("UPDATE features SET testing_in_progress = 0 WHERE testing_in_progress = 1"))
+                session.commit()
+                print(f"[STARTUP] Cleared {stale_count} stale testing_in_progress flags", flush=True)
+                debug_log.log("STARTUP", f"Cleared {stale_count} stale testing_in_progress flags")
+        finally:
+            session.close()
 
         # Log startup to debug file
         debug_log.section("ORCHESTRATOR STARTUP")
@@ -791,7 +976,7 @@ class ParallelOrchestrator:
             max_concurrency=self.max_concurrency,
             yolo_mode=self.yolo_mode,
             testing_agent_ratio=self.testing_agent_ratio,
-            count_testing_in_concurrency=self.count_testing_in_concurrency)
+            session_start_time=self.session_start_time.isoformat())
 
         print("=" * 70, flush=True)
         print("  UNIFIED ORCHESTRATOR SETTINGS", flush=True)
@@ -799,8 +984,7 @@ class ParallelOrchestrator:
         print(f"Project: {self.project_dir}", flush=True)
         print(f"Max concurrency: {self.max_concurrency} coding agents", flush=True)
         print(f"YOLO mode: {self.yolo_mode}", flush=True)
-        print(f"Testing agent ratio: {self.testing_agent_ratio} per coding agent", flush=True)
-        print(f"Count testing in concurrency: {self.count_testing_in_concurrency}", flush=True)
+        print(f"Regression agents: {self.testing_agent_ratio} (maintained independently)", flush=True)
         print("=" * 70, flush=True)
         print(flush=True)
 
@@ -898,6 +1082,9 @@ class ParallelOrchestrator:
                 if self.get_all_complete():
                     print("\nAll features complete!", flush=True)
                     break
+
+                # Maintain testing agents independently (runs every iteration)
+                self._maintain_testing_agents()
 
                 # Check capacity
                 with self._lock:
@@ -1011,7 +1198,6 @@ class ParallelOrchestrator:
                 "count": len(self.running_coding_agents),  # Legacy compatibility
                 "max_concurrency": self.max_concurrency,
                 "testing_agent_ratio": self.testing_agent_ratio,
-                "count_testing_in_concurrency": self.count_testing_in_concurrency,
                 "is_running": self.is_running,
                 "yolo_mode": self.yolo_mode,
             }
@@ -1023,7 +1209,6 @@ async def run_parallel_orchestrator(
     model: str = None,
     yolo_mode: bool = False,
     testing_agent_ratio: int = 1,
-    count_testing_in_concurrency: bool = False,
 ) -> None:
     """Run the unified orchestrator.
 
@@ -1032,8 +1217,7 @@ async def run_parallel_orchestrator(
         max_concurrency: Maximum number of concurrent coding agents
         model: Claude model to use
         yolo_mode: Whether to run in YOLO mode (skip testing agents)
-        testing_agent_ratio: Testing agents per coding agent (0-3)
-        count_testing_in_concurrency: If True, testing agents count toward concurrency limit
+        testing_agent_ratio: Number of regression agents to maintain (0-3)
     """
     print(f"[ORCHESTRATOR] run_parallel_orchestrator called with max_concurrency={max_concurrency}", flush=True)
     orchestrator = ParallelOrchestrator(
@@ -1042,7 +1226,6 @@ async def run_parallel_orchestrator(
         model=model,
         yolo_mode=yolo_mode,
         testing_agent_ratio=testing_agent_ratio,
-        count_testing_in_concurrency=count_testing_in_concurrency,
     )
 
     try:
@@ -1090,6 +1273,12 @@ def main():
         default=False,
         help="Enable YOLO mode: rapid prototyping without browser testing",
     )
+    parser.add_argument(
+        "--testing-agent-ratio",
+        type=int,
+        default=1,
+        help="Number of regression testing agents (0-3, default: 1). Set to 0 to disable testing agents.",
+    )
 
     args = parser.parse_args()
 
@@ -1115,6 +1304,7 @@ def main():
             max_concurrency=args.max_concurrency,
             model=args.model,
             yolo_mode=args.yolo,
+            testing_agent_ratio=args.testing_agent_ratio,
         ))
     except KeyboardInterrupt:
         print("\n\nInterrupted by user", flush=True)

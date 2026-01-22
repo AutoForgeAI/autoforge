@@ -5,6 +5,7 @@
  * Supports user, assistant, and system messages with neobrutalism styling.
  */
 
+import { memo } from 'react'
 import { Bot, User, Info } from 'lucide-react'
 import type { ChatMessage as ChatMessageType } from '../lib/types'
 
@@ -12,7 +13,10 @@ interface ChatMessageProps {
   message: ChatMessageType
 }
 
-export function ChatMessage({ message }: ChatMessageProps) {
+// Module-level regex to avoid recreating on each render
+const BOLD_REGEX = /\*\*(.*?)\*\*/g
+
+export const ChatMessage = memo(function ChatMessage({ message }: ChatMessageProps) {
   const { role, content, attachments, timestamp, isStreaming } = message
 
   // Format timestamp
@@ -112,13 +116,13 @@ export function ChatMessage({ message }: ChatMessageProps) {
             {content && (
               <div className={`whitespace-pre-wrap text-sm leading-relaxed ${config.textColor}`}>
                 {content.split('\n').map((line, i) => {
-                  // Bold text
-                  const boldRegex = /\*\*(.*?)\*\*/g
+                  // Bold text - use module-level regex, reset lastIndex for each line
+                  BOLD_REGEX.lastIndex = 0
                   const parts = []
                   let lastIndex = 0
                   let match
 
-                  while ((match = boldRegex.exec(line)) !== null) {
+                  while ((match = BOLD_REGEX.exec(line)) !== null) {
                     if (match.index > lastIndex) {
                       parts.push(line.slice(lastIndex, match.index))
                     }
@@ -196,4 +200,4 @@ export function ChatMessage({ message }: ChatMessageProps) {
       </div>
     </div>
   )
-}
+})

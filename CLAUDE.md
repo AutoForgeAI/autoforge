@@ -215,6 +215,62 @@ When running with `--parallel`, the orchestrator:
 4. Browser contexts are isolated per agent using `--isolated` flag
 5. AgentTracker parses output and emits `agent_update` messages for UI
 
+### Process Limits (Parallel Mode)
+
+The orchestrator enforces strict bounds on concurrent processes:
+- `MAX_PARALLEL_AGENTS = 5` - Maximum concurrent coding agents
+- `MAX_TOTAL_AGENTS = 10` - Hard limit on total agents (coding + testing)
+- Testing agents are capped at `max_concurrency` (same as coding agents)
+
+**Expected process count during normal operation:**
+- 1 orchestrator process
+- Up to 5 coding agents
+- Up to 5 testing agents
+- Total: never exceeds 11 Python processes
+
+**Stress Test Verification:**
+
+```bash
+# Windows - verify process bounds
+# 1. Note baseline count
+tasklist | findstr python | find /c /v ""
+
+# 2. Start parallel agent (max concurrency)
+python autonomous_agent_demo.py --project-dir test --parallel --max-concurrency 5
+
+# 3. During run - should NEVER exceed baseline + 11
+tasklist | findstr python | find /c /v ""
+
+# 4. After stop via UI - should return to baseline
+tasklist | findstr python | find /c /v ""
+```
+
+```bash
+# macOS/Linux - verify process bounds
+# 1. Note baseline count
+pgrep -c python
+
+# 2. Start parallel agent
+python autonomous_agent_demo.py --project-dir test --parallel --max-concurrency 5
+
+# 3. During run - should NEVER exceed baseline + 11
+pgrep -c python
+
+# 4. After stop - should return to baseline
+pgrep -c python
+```
+
+**Log Verification:**
+
+```bash
+# Check spawn vs completion balance
+grep "Started testing agent" orchestrator_debug.log | wc -l
+grep "Testing agent.*completed\|failed" orchestrator_debug.log | wc -l
+
+# Watch for cap enforcement messages
+grep "at max testing agents\|At max total agents" orchestrator_debug.log
+```
+
 ### Design System
 
 The UI uses a **neobrutalism** design with Tailwind CSS v4:

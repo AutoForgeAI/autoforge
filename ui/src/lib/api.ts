@@ -26,6 +26,11 @@ import type {
   DevServerStatusResponse,
   DevServerConfig,
   TerminalInfo,
+  Schedule,
+  ScheduleCreate,
+  ScheduleUpdate,
+  ScheduleListResponse,
+  NextRunResponse,
 } from './types'
 
 const API_BASE = '/api'
@@ -42,6 +47,11 @@ async function fetchJSON<T>(url: string, options?: RequestInit): Promise<T> {
   if (!response.ok) {
     const error = await response.json().catch(() => ({ detail: 'Unknown error' }))
     throw new Error(error.detail || `HTTP ${response.status}`)
+  }
+
+  // Handle 204 No Content responses
+  if (response.status === 204) {
+    return undefined as T
   }
 
   return response.json()
@@ -201,7 +211,6 @@ export async function startAgent(
     parallelMode?: boolean
     maxConcurrency?: number
     testingAgentRatio?: number
-    countTestingInConcurrency?: boolean
   } = {}
 ): Promise<AgentActionResponse> {
   return fetchJSON(`/projects/${encodeURIComponent(projectName)}/agent/start`, {
@@ -211,7 +220,6 @@ export async function startAgent(
       parallel_mode: options.parallelMode ?? false,
       max_concurrency: options.maxConcurrency,
       testing_agent_ratio: options.testingAgentRatio,
-      count_testing_in_concurrency: options.countTestingInConcurrency,
     }),
   })
 }
@@ -440,4 +448,53 @@ export async function deleteTerminal(
   await fetchJSON(`/terminal/${encodeURIComponent(projectName)}/${terminalId}`, {
     method: 'DELETE',
   })
+}
+
+// ============================================================================
+// Schedule API
+// ============================================================================
+
+export async function listSchedules(projectName: string): Promise<ScheduleListResponse> {
+  return fetchJSON(`/projects/${encodeURIComponent(projectName)}/schedules`)
+}
+
+export async function createSchedule(
+  projectName: string,
+  schedule: ScheduleCreate
+): Promise<Schedule> {
+  return fetchJSON(`/projects/${encodeURIComponent(projectName)}/schedules`, {
+    method: 'POST',
+    body: JSON.stringify(schedule),
+  })
+}
+
+export async function getSchedule(
+  projectName: string,
+  scheduleId: number
+): Promise<Schedule> {
+  return fetchJSON(`/projects/${encodeURIComponent(projectName)}/schedules/${scheduleId}`)
+}
+
+export async function updateSchedule(
+  projectName: string,
+  scheduleId: number,
+  update: ScheduleUpdate
+): Promise<Schedule> {
+  return fetchJSON(`/projects/${encodeURIComponent(projectName)}/schedules/${scheduleId}`, {
+    method: 'PATCH',
+    body: JSON.stringify(update),
+  })
+}
+
+export async function deleteSchedule(
+  projectName: string,
+  scheduleId: number
+): Promise<void> {
+  await fetchJSON(`/projects/${encodeURIComponent(projectName)}/schedules/${scheduleId}`, {
+    method: 'DELETE',
+  })
+}
+
+export async function getNextScheduledRun(projectName: string): Promise<NextRunResponse> {
+  return fetchJSON(`/projects/${encodeURIComponent(projectName)}/schedules/next`)
 }

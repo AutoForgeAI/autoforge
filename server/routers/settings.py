@@ -79,7 +79,6 @@ async def get_settings():
         model=all_settings.get("model", DEFAULT_MODEL),
         glm_mode=_is_glm_mode(),
         testing_agent_ratio=_parse_int(all_settings.get("testing_agent_ratio"), 1),
-        count_testing_in_concurrency=_parse_bool(all_settings.get("count_testing_in_concurrency")),
     )
 
 
@@ -95,9 +94,6 @@ async def update_settings(update: SettingsUpdate):
     if update.testing_agent_ratio is not None:
         set_setting("testing_agent_ratio", str(update.testing_agent_ratio))
 
-    if update.count_testing_in_concurrency is not None:
-        set_setting("count_testing_in_concurrency", "true" if update.count_testing_in_concurrency else "false")
-
     # Return updated settings
     all_settings = get_all_settings()
     return SettingsResponse(
@@ -105,5 +101,4 @@ async def update_settings(update: SettingsUpdate):
         model=all_settings.get("model", DEFAULT_MODEL),
         glm_mode=_is_glm_mode(),
         testing_agent_ratio=_parse_int(all_settings.get("testing_agent_ratio"), 1),
-        count_testing_in_concurrency=_parse_bool(all_settings.get("count_testing_in_concurrency")),
     )

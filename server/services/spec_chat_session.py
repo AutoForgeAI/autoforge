@@ -179,13 +179,15 @@ class SpecChatSession:
                     model=model,
                     cli_path=system_cli,
                     # System prompt loaded from CLAUDE.md via setting_sources
-                    # This avoids Windows command line length limit (~8191 chars)
-                    setting_sources=["project"],
+                    # Include "user" for global skills and subagents from ~/.claude/
+                    setting_sources=["project", "user"],
                     allowed_tools=[
                         "Read",
                         "Write",
                         "Edit",
                         "Glob",
+                        "WebFetch",
+                        "WebSearch",
                     ],
                     permission_mode="acceptEdits",  # Auto-approve file writes for spec creation
                     max_turns=100,

@@ -18,6 +18,7 @@ import { CelebrationOverlay } from './components/CelebrationOverlay'
 import { AssistantFAB } from './components/AssistantFAB'
 import { AssistantPanel } from './components/AssistantPanel'
 import { ExpandProjectModal } from './components/ExpandProjectModal'
+import { SpecCreationChat } from './components/SpecCreationChat'
 import { SettingsModal } from './components/SettingsModal'
 import { DevServerControl } from './components/DevServerControl'
 import { ViewToggle, type ViewMode } from './components/ViewToggle'
@@ -51,6 +52,7 @@ function App() {
   const [showSettings, setShowSettings] = useState(false)
   const [showKeyboardHelp, setShowKeyboardHelp] = useState(false)
   const [isSpecCreating, setIsSpecCreating] = useState(false)
+  const [showSpecChat, setShowSpecChat] = useState(false)  // For "Create Spec" button in empty kanban
   const [darkMode, setDarkMode] = useState(() => {
     try {
       return localStorage.getItem(DARK_MODE_KEY) === 'true'
@@ -73,6 +75,10 @@ function App() {
   const { data: settings } = useSettings()
   useAgentStatus(selectedProject) // Keep polling for status updates
   const wsState = useProjectWebSocket(selectedProject)
+
+  // Get has_spec from the selected project
+  const selectedProjectData = projects?.find(p => p.name === selectedProject)
+  const hasSpec = selectedProjectData?.has_spec ?? true
 
   // Fetch graph data when in graph view
   const { data: graphData } = useQuery({
@@ -391,6 +397,8 @@ function App() {
                 onAddFeature={() => setShowAddFeature(true)}
                 onExpandProject={() => setShowExpandProject(true)}
                 activeAgents={wsState.activeAgents}
+                onCreateSpec={() => setShowSpecChat(true)}
+                hasSpec={hasSpec}
               />
             ) : (
               <div className="neo-card overflow-hidden" style={{ height: '600px' }}>
@@ -441,6 +449,23 @@ function App() {
         />
       )}
 
+      {/* Spec Creation Chat - for creating spec from empty kanban */}
+      {showSpecChat && selectedProject && (
+        <div className="fixed inset-0 z-50 bg-[var(--color-neo-bg)]">
+          <SpecCreationChat
+            projectName={selectedProject}
+            onComplete={() => {
+              setShowSpecChat(false)
+              // Refresh projects to update has_spec
+              queryClient.invalidateQueries({ queryKey: ['projects'] })
+              queryClient.invalidateQueries({ queryKey: ['features', selectedProject] })
+            }}
+            onCancel={() => setShowSpecChat(false)}
+            onExitToProject={() => setShowSpecChat(false)}
+          />
+        </div>
+      )}
+
       {/* Debug Log Viewer - fixed to bottom */}
       {selectedProject && (
         <DebugLogViewer
@@ -458,7 +483,7 @@ function App() {
       )}
 
       {/* Assistant FAB and Panel - hide when expand modal or spec creation is open */}
-      {selectedProject && !showExpandProject && !isSpecCreating && (
+      {selectedProject && !showExpandProject && !isSpecCreating && !showSpecChat && (
         <>
           <AssistantFAB
             onClick={() => setAssistantOpen(!assistantOpen)}

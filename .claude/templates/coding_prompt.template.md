@@ -29,9 +29,6 @@ Then use MCP tools to check feature status:
 ```
 # 6. Get progress statistics (passing/total counts)
 Use the feature_get_stats tool
-
-# 7. Get the next feature to work on
-Use the feature_get_next tool
 ```
 
 Understanding the `app_spec.txt` is critical - it contains the full requirements
@@ -48,7 +45,7 @@ chmod +x init.sh
 
 Otherwise, start servers manually and document the process.
 
-### STEP 3: CHOOSE ONE FEATURE TO IMPLEMENT
+### STEP 3: GET YOUR ASSIGNED FEATURE
 
 #### TEST-DRIVEN DEVELOPMENT MINDSET (CRITICAL)
 
@@ -63,19 +60,16 @@ Features are **test cases** that drive development. This is test-driven developm
 - WRONG: "Flashcard page doesn't exist yet" → skip feature
 - RIGHT: "Flashcard page doesn't exist yet" → build flashcard page → implement filter → test feature
 
-Get the next feature to implement:
+**Note:** Your feature has been pre-assigned by the orchestrator. Use `feature_get_by_id` with your assigned feature ID to get the details.
+
+Once you've retrieved the feature, **mark it as in-progress** (if not already):
 
 ```
-# Get the highest-priority pending feature
-Use the feature_get_next tool
+# Mark feature as in-progress
+Use the feature_mark_in_progress tool with feature_id={your_assigned_id}
 ```
 
-Once you've retrieved the feature, **immediately mark it as in-progress**:
-
-```
-# Mark feature as in-progress to prevent other sessions from working on it
-Use the feature_mark_in_progress tool with feature_id=42
-```
+If you get "already in-progress" error, that's OK - continue with implementation.
 
 Focus on completing one feature perfectly and completing its testing steps in this session before moving on to other features.
 It's ok if you only complete one feature in this session, as there will be more sessions later that continue to make progress.
@@ -337,10 +331,10 @@ The feature tools exist to reduce token usage. **DO NOT make exploratory queries
 # 1. Get progress stats (passing/in_progress/total counts)
 feature_get_stats
 
-# 2. Get the NEXT feature to work on (one feature only)
-feature_get_next
+# 2. Get your assigned feature details
+feature_get_by_id with feature_id={your_assigned_id}
 
-# 3. Mark a feature as in-progress (call immediately after feature_get_next)
+# 3. Mark a feature as in-progress
 feature_mark_in_progress with feature_id={id}
 
 # 4. Mark a feature as passing (after verification)
@@ -349,7 +343,7 @@ feature_mark_passing with feature_id={id}
 # 5. Mark a feature as failing (if you discover it's broken)
 feature_mark_failing with feature_id={id}
 
-# 6. Skip a feature (moves to end of queue) - ONLY when blocked by dependency
+# 6. Skip a feature (moves to end of queue) - ONLY when blocked by external dependency
 feature_skip with feature_id={id}
 
 # 7. Clear in-progress status (when abandoning a feature)
@@ -361,8 +355,9 @@ feature_clear_in_progress with feature_id={id}
 - Do NOT try to fetch lists of all features
 - Do NOT query features by category
 - Do NOT list all pending features
+- Your feature is pre-assigned by the orchestrator - use `feature_get_by_id` to get details
 
-**You do NOT need to see all features.** The feature_get_next tool tells you exactly what to work on. Trust it.
+**You do NOT need to see all features.** Work on your assigned feature only.
 
 ---
 

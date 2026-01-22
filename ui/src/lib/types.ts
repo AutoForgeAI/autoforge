@@ -129,8 +129,7 @@ export interface AgentStatusResponse {
   model: string | null  // Model being used by running agent
   parallel_mode: boolean  // DEPRECATED: Always true now (unified orchestrator)
   max_concurrency: number | null
-  testing_agent_ratio: number  // Testing agents per coding agent (0-3)
-  count_testing_in_concurrency: boolean  // Count testing toward concurrency limit
+  testing_agent_ratio: number  // Regression testing agents (0-3)
 }
 
 export interface AgentActionResponse {
@@ -479,13 +478,61 @@ export interface Settings {
   yolo_mode: boolean
   model: string
   glm_mode: boolean
-  testing_agent_ratio: number  // Testing agents per coding agent (0-3)
-  count_testing_in_concurrency: boolean  // Count testing toward concurrency limit
+  testing_agent_ratio: number  // Regression testing agents (0-3)
 }
 
 export interface SettingsUpdate {
   yolo_mode?: boolean
   model?: string
   testing_agent_ratio?: number
-  count_testing_in_concurrency?: boolean
+}
+
+// ============================================================================
+// Schedule Types
+// ============================================================================
+
+export interface Schedule {
+  id: number
+  project_name: string
+  start_time: string      // "HH:MM" in UTC
+  duration_minutes: number
+  days_of_week: number    // Bitfield: Mon=1, Tue=2, Wed=4, Thu=8, Fri=16, Sat=32, Sun=64
+  enabled: boolean
+  yolo_mode: boolean
+  model: string | null
+  max_concurrency: number // 1-5 concurrent agents
+  crash_count: number
+  created_at: string
+}
+
+export interface ScheduleCreate {
+  start_time: string      // "HH:MM" format (local time, will be stored as UTC)
+  duration_minutes: number
+  days_of_week: number
+  enabled: boolean
+  yolo_mode: boolean
+  model: string | null
+  max_concurrency: number // 1-5 concurrent agents
+}
+
+export interface ScheduleUpdate {
+  start_time?: string
+  duration_minutes?: number
+  days_of_week?: number
+  enabled?: boolean
+  yolo_mode?: boolean
+  model?: string | null
+  max_concurrency?: number
+}
+
+export interface ScheduleListResponse {
+  schedules: Schedule[]
+}
+
+export interface NextRunResponse {
+  has_schedules: boolean
+  next_start: string | null  // ISO datetime in UTC
+  next_end: string | null    // ISO datetime in UTC (latest end if overlapping)
+  is_currently_running: boolean
+  active_schedule_count: number
 }

@@ -23,6 +23,7 @@ import psutil
 sys.path.insert(0, str(Path(__file__).parent.parent.parent))
 from auth import AUTH_ERROR_HELP_SERVER as AUTH_ERROR_HELP  # noqa: E402
 from auth import is_auth_error
+from server.utils.process_utils import kill_process_tree
 
 logger = logging.getLogger(__name__)
 
@@ -83,8 +84,7 @@ class AgentProcessManager:
         self.model: str | None = None  # Model being used
         self.parallel_mode: bool = False  # Parallel execution mode
         self.max_concurrency: int | None = None  # Max concurrent agents
-        self.testing_agent_ratio: int = 1  # Testing agents per coding agent
-        self.count_testing_in_concurrency: bool = False  # Count testing toward limit
+        self.testing_agent_ratio: int = 1  # Regression testing agents (0-3)
 
         # Support multiple callbacks (for multiple WebSocket clients)
         self._output_callbacks: Set[Callable[[str], Awaitable[None]]] = set()
@@ -296,7 +296,6 @@ class AgentProcessManager:
         parallel_mode: bool = False,
         max_concurrency: int | None = None,
         testing_agent_ratio: int = 1,
-        count_testing_in_concurrency: bool = False,
     ) -> tuple[bool, str]:
         """
         Start the agent as a subprocess.
@@ -306,8 +305,7 @@ class AgentProcessManager:
             model: Model to use (e.g., claude-opus-4-5-20251101)
             parallel_mode: DEPRECATED - ignored, always uses unified orchestrator
             max_concurrency: Max concurrent coding agents (1-5, default 1)
-            testing_agent_ratio: Testing agents per coding agent (0-3, default 1)
-            count_testing_in_concurrency: If True, testing agents count toward limit
+            testing_agent_ratio: Number of regression testing agents (0-3, default 1)
 
         Returns:
             Tuple of (success, message)
@@ -324,7 +322,6 @@ class AgentProcessManager:
         self.parallel_mode = True  # Always True now (unified orchestrator)
         self.max_concurrency = max_concurrency or 1
         self.testing_agent_ratio = testing_agent_ratio
-        self.count_testing_in_concurrency = count_testing_in_concurrency
 
         # Build command - unified orchestrator with --concurrency
         cmd = [
@@ -348,8 +345,6 @@ class AgentProcessManager:
 
         # Add testing agent configuration
         cmd.extend(["--testing-ratio", str(testing_agent_ratio)])
-        if count_testing_in_concurrency:
-            cmd.append("--count-testing")
 
         try:
             # Start subprocess with piped stdout/stderr
@@ -387,7 +382,9 @@ class AgentProcessManager:
 
     async def stop(self) -> tuple[bool, str]:
         """
-        Stop the agent (SIGTERM then SIGKILL if needed).
+        Stop the agent and all its child processes (SIGTERM then SIGKILL if needed).
+
+        CRITICAL: Kills entire process tree to prevent orphaned coding/testing agents.
 
         Returns:
             Tuple of (success, message)
@@ -404,20 +401,16 @@ class AgentProcessManager:
                 except asyncio.CancelledError:
                     pass
 
-            # Terminate gracefully first
-            self.process.terminate()
-
-            # Wait up to 5 seconds for graceful shutdown
+            # CRITICAL: Kill entire process tree, not just orchestrator
+            # This ensures all spawned coding/testing agents are also terminated
+            proc = self.process  # Capture reference before async call
             loop = asyncio.get_running_loop()
-            try:
-                await asyncio.wait_for(
-                    loop.run_in_executor(None, self.process.wait),
-                    timeout=5.0
-                )
-            except asyncio.TimeoutError:
-                # Force kill if still running
-                self.process.kill()
-                await loop.run_in_executor(None, self.process.wait)
+            result = await loop.run_in_executor(None, kill_process_tree, proc, 10.0)
+            logger.debug(
+                "Process tree kill result: status=%s, children=%d (terminated=%d, killed=%d)",
+                result.status, result.children_found,
+                result.children_terminated, result.children_killed
+            )
 
             self._remove_lock()
             self.status = "stopped"
@@ -428,7 +421,6 @@ class AgentProcessManager:
             self.parallel_mode = False  # Reset parallel mode
             self.max_concurrency = None  # Reset concurrency
             self.testing_agent_ratio = 1  # Reset testing ratio
-            self.count_testing_in_concurrency = False  # Reset count testing
 
             return True, "Agent stopped"
         except Exception as e:
@@ -514,7 +506,6 @@ class AgentProcessManager:
             "parallel_mode": self.parallel_mode,
             "max_concurrency": self.max_concurrency,
             "testing_agent_ratio": self.testing_agent_ratio,
-            "count_testing_in_concurrency": self.count_testing_in_concurrency,
         }
 
 

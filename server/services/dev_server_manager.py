@@ -24,6 +24,7 @@ from typing import Awaitable, Callable, Literal, Set
 import psutil
 
 from registry import list_registered_projects
+from server.utils.process_utils import kill_process_tree
 
 logger = logging.getLogger(__name__)
 
@@ -370,37 +371,16 @@ class DevServerProcessManager:
                 except asyncio.CancelledError:
                     pass
 
-            # Use psutil to terminate the entire process tree
-            # This is important for dev servers that spawn child processes
-            try:
-                parent = psutil.Process(self.process.pid)
-                children = parent.children(recursive=True)
-
-                # Terminate children first
-                for child in children:
-                    try:
-                        child.terminate()
-                    except psutil.NoSuchProcess:
-                        pass
-
-                # Terminate parent
-                parent.terminate()
-
-                # Wait for graceful shutdown
-                _, still_alive = psutil.wait_procs(
-                    [parent] + children, timeout=5
-                )
-
-                # Force kill any remaining processes
-                for proc in still_alive:
-                    try:
-                        proc.kill()
-                    except psutil.NoSuchProcess:
-                        pass
-
-            except psutil.NoSuchProcess:
-                # Process already gone
-                pass
+            # Use shared utility to terminate the entire process tree
+            # This is important for dev servers that spawn child processes (like Node.js)
+            proc = self.process  # Capture reference before async call
+            loop = asyncio.get_running_loop()
+            result = await loop.run_in_executor(None, kill_process_tree, proc, 5.0)
+            logger.debug(
+                "Process tree kill result: status=%s, children=%d (terminated=%d, killed=%d)",
+                result.status, result.children_found,
+                result.children_terminated, result.children_killed
+            )
 
             self._remove_lock()
             self.status = "stopped"

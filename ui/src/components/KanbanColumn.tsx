@@ -1,5 +1,5 @@
 import { FeatureCard } from './FeatureCard'
-import { Plus, Sparkles } from 'lucide-react'
+import { Plus, Sparkles, Wand2 } from 'lucide-react'
 import type { Feature, ActiveAgent } from '../lib/types'
 
 interface KanbanColumnProps {
@@ -13,6 +13,8 @@ interface KanbanColumnProps {
   onAddFeature?: () => void
   onExpandProject?: () => void
   showExpandButton?: boolean
+  onCreateSpec?: () => void  // Callback to start spec creation
+  showCreateSpec?: boolean   // Show "Create Spec" button when project has no spec
 }
 
 const colorMap = {
@@ -32,6 +34,8 @@ export function KanbanColumn({
   onAddFeature,
   onExpandProject,
   showExpandButton,
+  onCreateSpec,
+  showCreateSpec,
 }: KanbanColumnProps) {
   // Create a map of feature ID to active agent for quick lookup
   const agentByFeatureId = new Map(
@@ -81,7 +85,20 @@ export function KanbanColumn({
       <div className="p-4 space-y-3 max-h-[600px] overflow-y-auto bg-[var(--color-neo-bg)]">
         {features.length === 0 ? (
           <div className="text-center py-8 text-[var(--color-neo-text-secondary)]">
-            No features
+            {showCreateSpec && onCreateSpec ? (
+              <div className="space-y-4">
+                <p>No spec created yet</p>
+                <button
+                  onClick={onCreateSpec}
+                  className="neo-btn neo-btn-primary inline-flex items-center gap-2"
+                >
+                  <Wand2 size={18} />
+                  Create Spec with AI
+                </button>
+              </div>
+            ) : (
+              'No features'
+            )}
           </div>
         ) : (
           features.map((feature, index) => (

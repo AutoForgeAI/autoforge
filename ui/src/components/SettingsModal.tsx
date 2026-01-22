@@ -76,12 +76,6 @@ export function SettingsModal({ onClose }: SettingsModalProps) {
     }
   }
 
-  const handleCountTestingToggle = () => {
-    if (settings && !updateSettings.isPending) {
-      updateSettings.mutate({ count_testing_in_concurrency: !settings.count_testing_in_concurrency })
-    }
-  }
-
   const models = modelsData?.models ?? []
   const isSaving = updateSettings.isPending
 
@@ -211,16 +205,16 @@ export function SettingsModal({ onClose }: SettingsModalProps) {
               </div>
             </div>
 
-            {/* Testing Agent Ratio */}
+            {/* Regression Agents */}
             <div>
               <label
                 id="testing-ratio-label"
                 className="font-display font-bold text-base block mb-1"
               >
-                Testing Agents per Coding Agent
+                Regression Agents
               </label>
               <p className="text-sm text-[var(--color-neo-text-secondary)] mb-2">
-                Regression testing agents spawned per coding agent (0 = disabled)
+                Number of regression testing agents (0 = disabled)
               </p>
               <div
                 className="flex border-3 border-[var(--color-neo-border)]"
@@ -243,41 +237,6 @@ export function SettingsModal({ onClose }: SettingsModalProps) {
                     {ratio}
                   </button>
                 ))}
-              </div>
-            </div>
-
-            {/* Count Testing in Concurrency Toggle */}
-            <div>
-              <div className="flex items-center justify-between">
-                <div>
-                  <label
-                    id="count-testing-label"
-                    className="font-display font-bold text-base"
-                  >
-                    Count Testing in Concurrency
-                  </label>
-                  <p className="text-sm text-[var(--color-neo-text-secondary)] mt-1">
-                    If enabled, testing agents count toward the concurrency limit
-                  </p>
-                </div>
-                <button
-                  onClick={handleCountTestingToggle}
-                  disabled={isSaving}
-                  className={`relative w-14 h-8 rounded-none border-3 border-[var(--color-neo-border)] transition-colors ${
-                    settings.count_testing_in_concurrency
-                      ? 'bg-[var(--color-neo-progress)]'
-                      : 'bg-[var(--color-neo-card)]'
-                  } ${isSaving ? 'opacity-50 cursor-not-allowed' : ''}`}
-                  role="switch"
-                  aria-checked={settings.count_testing_in_concurrency}
-                  aria-labelledby="count-testing-label"
-                >
-                  <span
-                    className={`absolute top-1 w-5 h-5 bg-[var(--color-neo-border)] transition-transform ${
-                      settings.count_testing_in_concurrency ? 'left-7' : 'left-1'
-                    }`}
-                  />
-                </button>
               </div>
             </div>
 

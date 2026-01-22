@@ -123,6 +123,7 @@ async def run_autonomous_agent(
     yolo_mode: bool = False,
     feature_id: Optional[int] = None,
     agent_type: Optional[str] = None,
+    testing_feature_id: Optional[int] = None,
 ) -> None:
     """
     Run the autonomous agent loop.
@@ -134,6 +135,7 @@ async def run_autonomous_agent(
         yolo_mode: If True, skip browser testing in coding agent prompts
         feature_id: If set, work only on this specific feature (used by orchestrator for coding agents)
         agent_type: Type of agent: "initializer", "coding", "testing", or None (auto-detect)
+        testing_feature_id: For testing agents, the pre-claimed feature ID to test
     """
     print("\n" + "=" * 70)
     print("  AUTONOMOUS CODING AGENT")
@@ -230,7 +232,7 @@ async def run_autonomous_agent(
         if agent_type == "initializer":
             prompt = get_initializer_prompt(project_dir)
         elif agent_type == "testing":
-            prompt = get_testing_prompt(project_dir)
+            prompt = get_testing_prompt(project_dir, testing_feature_id)
         elif feature_id:
             # Single-feature mode (used by orchestrator for coding agents)
             prompt = get_single_feature_prompt(feature_id, project_dir, yolo_mode)
@@ -247,6 +249,14 @@ async def run_autonomous_agent(
             print(f"Client/MCP server error: {e}")
             # Don't crash - return error status so the loop can retry
             status, response = "error", str(e)
+
+        # Check for project completion - EXIT when all features pass
+        if "all features are passing" in response.lower() or "no more work to do" in response.lower():
+            print("\n" + "=" * 70)
+            print("  🎉 PROJECT COMPLETE - ALL FEATURES PASSING!")
+            print("=" * 70)
+            print_progress_summary(project_dir)
+            break
 
         # Handle status
         if status == "continue":
@@ -316,9 +326,12 @@ async def run_autonomous_agent(
                 print("The autonomous agent has finished its work.")
                 break
 
-            # Single-feature mode: exit after one session (orchestrator manages agents)
-            if feature_id is not None:
-                print(f"\nSingle-feature mode: Feature #{feature_id} session complete.")
+            # Single-feature mode OR testing agent: exit after one session
+            if feature_id is not None or agent_type == "testing":
+                if agent_type == "testing":
+                    print("\nTesting agent complete. Terminating session.")
+                else:
+                    print(f"\nSingle-feature mode: Feature #{feature_id} session complete.")
                 break
 
             await asyncio.sleep(delay_seconds)

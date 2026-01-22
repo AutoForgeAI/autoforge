@@ -359,7 +359,7 @@ export function Terminal({ projectName, terminalId, isActive }: TerminalProps) {
     // when the container is first rendered.
 
     // Handle keyboard input
-    terminal.onData((data) => {
+    terminal.onData((data: string) => {
       // If shell has exited, reconnect on any key
       // Use ref to avoid re-creating this callback when hasExited changes
       if (hasExitedRef.current) {
@@ -378,7 +378,7 @@ export function Terminal({ projectName, terminalId, isActive }: TerminalProps) {
     })
 
     // Handle terminal resize
-    terminal.onResize(({ cols, rows }) => {
+    terminal.onResize(({ cols, rows }: { cols: number; rows: number }) => {
       sendResize(cols, rows)
     })
   }, [encodeBase64, sendMessage, sendResize])

@@ -54,9 +54,7 @@ def get_playwright_headless() -> bool:
 FEATURE_MCP_TOOLS = [
     # Core feature operations
     "mcp__features__feature_get_stats",
-    "mcp__features__feature_get_next",
-    "mcp__features__feature_claim_next",  # Atomic get+claim for parallel execution
-    "mcp__features__feature_get_for_regression",
+    "mcp__features__feature_get_by_id",  # Get assigned feature details
     "mcp__features__feature_mark_in_progress",
     "mcp__features__feature_mark_passing",
     "mcp__features__feature_mark_failing",  # Mark regression detected
@@ -64,11 +62,12 @@ FEATURE_MCP_TOOLS = [
     "mcp__features__feature_create_bulk",
     "mcp__features__feature_create",
     "mcp__features__feature_clear_in_progress",
+    "mcp__features__feature_release_testing",  # Release testing claim
     # Dependency management
     "mcp__features__feature_add_dependency",
     "mcp__features__feature_remove_dependency",
     "mcp__features__feature_set_dependencies",
-    # Parallel execution support
+    # Query tools
     "mcp__features__feature_get_ready",
     "mcp__features__feature_get_blocked",
     "mcp__features__feature_get_graph",

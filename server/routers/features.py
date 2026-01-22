@@ -258,15 +258,16 @@ async def create_features_bulk(project_name: str, bulk: FeatureBulkCreate):
 
     try:
         with get_db_session(project_dir) as session:
-            # Determine starting priority with row-level lock to prevent race conditions
+            # Determine starting priority
+            # Note: SQLite uses file-level locking, not row-level locking, so we rely on
+            # SQLite's transaction isolation. Concurrent bulk creates may get overlapping
+            # priorities, but this is acceptable since priorities can be reordered.
             if bulk.starting_priority is not None:
                 current_priority = bulk.starting_priority
             else:
-                # Lock the max priority row to prevent concurrent inserts from getting same priority
                 max_priority_feature = (
                     session.query(Feature)
                     .order_by(Feature.priority.desc())
-                    .with_for_update()
                     .first()
                 )
                 current_priority = (max_priority_feature.priority + 1) if max_priority_feature else 1

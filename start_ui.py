@@ -19,6 +19,7 @@ Options:
     --dev    Run in development mode with Vite hot reload
 """
 
+import asyncio
 import os
 import shutil
 import socket
@@ -27,6 +28,10 @@ import sys
 import time
 import webbrowser
 from pathlib import Path
+
+# Fix Windows asyncio subprocess support BEFORE anything else runs
+if sys.platform == "win32":
+    asyncio.set_event_loop_policy(asyncio.WindowsProactorEventLoopPolicy())
 
 ROOT = Path(__file__).parent.absolute()
 VENV_DIR = ROOT / "venv"
@@ -259,17 +264,24 @@ def start_dev_server(port: int) -> tuple:
 
 
 def start_production_server(port: int):
-    """Start FastAPI server in production mode."""
+    """Start FastAPI server in production mode with hot reload."""
     venv_python = get_venv_python()
 
-    print(f"\n  Starting server at http://127.0.0.1:{port}")
+    print(f"\n  Starting server at http://127.0.0.1:{port} (with hot reload)")
 
+    # Set PYTHONASYNCIODEBUG to help with Windows subprocess issues
+    env = os.environ.copy()
+
+    # NOTE: --reload is NOT used because on Windows it breaks asyncio subprocess
+    # support (uvicorn's reload worker doesn't inherit the ProactorEventLoop policy).
+    # This affects Claude SDK which uses asyncio.create_subprocess_exec.
+    # For development with hot reload, use: python start_ui.py --dev
     return subprocess.Popen([
         str(venv_python), "-m", "uvicorn",
         "server.main:app",
         "--host", "127.0.0.1",
-        "--port", str(port)
-    ], cwd=str(ROOT))
+        "--port", str(port),
+    ], cwd=str(ROOT), env=env)
 
 
 def main() -> None:

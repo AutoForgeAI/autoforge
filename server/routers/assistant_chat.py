@@ -260,7 +260,7 @@ async def assistant_chat_websocket(websocket: WebSocket, project_name: str):
                 data = await websocket.receive_text()
                 message = json.loads(data)
                 msg_type = message.get("type")
-                logger.info(f"Assistant received message type: {msg_type}")
+                logger.debug(f"Assistant received message type: {msg_type}")
 
                 if msg_type == "ping":
                     await websocket.send_json({"type": "pong"})
@@ -269,18 +269,24 @@ async def assistant_chat_websocket(websocket: WebSocket, project_name: str):
                 elif msg_type == "start":
                     # Get optional conversation_id to resume
                     conversation_id = message.get("conversation_id")
+                    logger.debug(f"Processing start message with conversation_id={conversation_id}")
 
                     try:
                         # Create a new session
+                        logger.debug(f"Creating session for {project_name}")
                         session = await create_session(
                             project_name,
                             project_dir,
                             conversation_id=conversation_id,
                         )
+                        logger.debug("Session created, starting...")
 
                         # Stream the initial greeting
                         async for chunk in session.start():
+                            if logger.isEnabledFor(logging.DEBUG):
+                                logger.debug(f"Sending chunk: {chunk.get('type')}")
                             await websocket.send_json(chunk)
+                        logger.debug("Session start complete")
                     except Exception as e:
                         logger.exception(f"Error starting assistant session for {project_name}")
                         await websocket.send_json({

@@ -171,8 +171,7 @@ class AgentStartRequest(BaseModel):
     model: str | None = None  # None means use global settings
     parallel_mode: bool | None = None  # DEPRECATED: Use max_concurrency instead
     max_concurrency: int | None = None  # Max concurrent coding agents (1-5)
-    testing_agent_ratio: int | None = None  # Testing agents per coding agent (0-3)
-    count_testing_in_concurrency: bool | None = None  # Count testing toward limit
+    testing_agent_ratio: int | None = None  # Regression testing agents (0-3)
 
     @field_validator('model')
     @classmethod
@@ -208,8 +207,7 @@ class AgentStatus(BaseModel):
     model: str | None = None  # Model being used by running agent
     parallel_mode: bool = False  # DEPRECATED: Always True now (unified orchestrator)
     max_concurrency: int | None = None
-    testing_agent_ratio: int = 1  # Testing agents per coding agent
-    count_testing_in_concurrency: bool = False  # Count testing toward limit
+    testing_agent_ratio: int = 1  # Regression testing agents (0-3)
 
 
 class AgentActionResponse(BaseModel):
@@ -384,8 +382,7 @@ class SettingsResponse(BaseModel):
     yolo_mode: bool = False
     model: str = DEFAULT_MODEL
     glm_mode: bool = False  # True if GLM API is configured via .env
-    testing_agent_ratio: int = 1  # Testing agents per coding agent (0-3)
-    count_testing_in_concurrency: bool = False  # Count testing toward concurrency
+    testing_agent_ratio: int = 1  # Regression testing agents (0-3)
 
 
 class ModelsResponse(BaseModel):
@@ -399,7 +396,6 @@ class SettingsUpdate(BaseModel):
     yolo_mode: bool | None = None
     model: str | None = None
     testing_agent_ratio: int | None = None  # 0-3
-    count_testing_in_concurrency: bool | None = None
 
     @field_validator('model')
     @classmethod
@@ -472,3 +468,100 @@ class WSDevServerStatusMessage(BaseModel):
     type: Literal["dev_server_status"] = "dev_server_status"
     status: Literal["stopped", "running", "crashed"]
     url: str | None = None
+
+
+# ============================================================================
+# Schedule Schemas
+# ============================================================================
+
+
+class ScheduleCreate(BaseModel):
+    """Request schema for creating a schedule."""
+    start_time: str = Field(
+        ...,
+        pattern=r'^([0-1][0-9]|2[0-3]):[0-5][0-9]$',
+        description="Start time in HH:MM format (local time, will be stored as UTC)"
+    )
+    duration_minutes: int = Field(
+        ...,
+        ge=1,
+        le=1440,
+        description="Duration in minutes (1-1440)"
+    )
+    days_of_week: int = Field(
+        default=127,
+        ge=0,
+        le=127,
+        description="Bitfield: Mon=1, Tue=2, Wed=4, Thu=8, Fri=16, Sat=32, Sun=64"
+    )
+    enabled: bool = True
+    yolo_mode: bool = False
+    model: str | None = None
+    max_concurrency: int = Field(
+        default=3,
+        ge=1,
+        le=5,
+        description="Max concurrent agents (1-5)"
+    )
+
+    @field_validator('model')
+    @classmethod
+    def validate_model(cls, v: str | None) -> str | None:
+        """Validate model is in the allowed list."""
+        if v is not None and v not in VALID_MODELS:
+            raise ValueError(f"Invalid model. Must be one of: {VALID_MODELS}")
+        return v
+
+
+class ScheduleUpdate(BaseModel):
+    """Request schema for updating a schedule (partial updates allowed)."""
+    start_time: str | None = Field(
+        None,
+        pattern=r'^([0-1][0-9]|2[0-3]):[0-5][0-9]$'
+    )
+    duration_minutes: int | None = Field(None, ge=1, le=1440)
+    days_of_week: int | None = Field(None, ge=0, le=127)
+    enabled: bool | None = None
+    yolo_mode: bool | None = None
+    model: str | None = None
+    max_concurrency: int | None = Field(None, ge=1, le=5)
+
+    @field_validator('model')
+    @classmethod
+    def validate_model(cls, v: str | None) -> str | None:
+        """Validate model is in the allowed list."""
+        if v is not None and v not in VALID_MODELS:
+            raise ValueError(f"Invalid model. Must be one of: {VALID_MODELS}")
+        return v
+
+
+class ScheduleResponse(BaseModel):
+    """Response schema for a schedule."""
+    id: int
+    project_name: str
+    start_time: str  # UTC, frontend converts to local
+    duration_minutes: int
+    days_of_week: int
+    enabled: bool
+    yolo_mode: bool
+    model: str | None
+    max_concurrency: int
+    crash_count: int
+    created_at: datetime
+
+    class Config:
+        from_attributes = True
+
+
+class ScheduleListResponse(BaseModel):
+    """Response containing list of schedules."""
+    schedules: list[ScheduleResponse]
+
+
+class NextRunResponse(BaseModel):
+    """Response for next scheduled run calculation."""
+    has_schedules: bool
+    next_start: datetime | None  # UTC
+    next_end: datetime | None  # UTC (latest end if overlapping)
+    is_currently_running: bool
+    active_schedule_count: int

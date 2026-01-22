@@ -3,10 +3,14 @@
  *
  * Slide-in panel container for the project assistant chat.
  * Slides in from the right side of the screen.
+ * Manages conversation state with localStorage persistence.
  */
 
+import { useState, useEffect, useCallback } from 'react'
 import { X, Bot } from 'lucide-react'
 import { AssistantChat } from './AssistantChat'
+import { useConversation } from '../hooks/useConversations'
+import type { ChatMessage } from '../lib/types'
 
 interface AssistantPanelProps {
   projectName: string
@@ -14,7 +18,75 @@ interface AssistantPanelProps {
   onClose: () => void
 }
 
+const STORAGE_KEY_PREFIX = 'assistant-conversation-'
+
+function getStoredConversationId(projectName: string): number | null {
+  try {
+    const stored = localStorage.getItem(`${STORAGE_KEY_PREFIX}${projectName}`)
+    if (stored) {
+      const data = JSON.parse(stored)
+      return data.conversationId || null
+    }
+  } catch {
+    // Invalid stored data, ignore
+  }
+  return null
+}
+
+function setStoredConversationId(projectName: string, conversationId: number | null) {
+  const key = `${STORAGE_KEY_PREFIX}${projectName}`
+  if (conversationId) {
+    localStorage.setItem(key, JSON.stringify({ conversationId }))
+  } else {
+    localStorage.removeItem(key)
+  }
+}
+
 export function AssistantPanel({ projectName, isOpen, onClose }: AssistantPanelProps) {
+  // Load initial conversation ID from localStorage
+  const [conversationId, setConversationId] = useState<number | null>(() =>
+    getStoredConversationId(projectName)
+  )
+
+  // Fetch conversation details when we have an ID
+  const { data: conversationDetail, isLoading: isLoadingConversation } = useConversation(
+    projectName,
+    conversationId
+  )
+
+  // Convert API messages to ChatMessage format for the chat component
+  const initialMessages: ChatMessage[] | undefined = conversationDetail?.messages.map((msg) => ({
+    id: `db-${msg.id}`,
+    role: msg.role,
+    content: msg.content,
+    timestamp: msg.timestamp ? new Date(msg.timestamp) : new Date(),
+  }))
+
+  // Persist conversation ID changes to localStorage
+  useEffect(() => {
+    setStoredConversationId(projectName, conversationId)
+  }, [projectName, conversationId])
+
+  // Reset conversation ID when project changes
+  useEffect(() => {
+    setConversationId(getStoredConversationId(projectName))
+  }, [projectName])
+
+  // Handle starting a new chat
+  const handleNewChat = useCallback(() => {
+    setConversationId(null)
+  }, [])
+
+  // Handle selecting a conversation from history
+  const handleSelectConversation = useCallback((id: number) => {
+    setConversationId(id)
+  }, [])
+
+  // Handle when a new conversation is created (from WebSocket)
+  const handleConversationCreated = useCallback((id: number) => {
+    setConversationId(id)
+  }, [])
+
   return (
     <>
       {/* Backdrop - click to close */}
@@ -74,7 +146,17 @@ export function AssistantPanel({ projectName, isOpen, onClose }: AssistantPanelP
 
         {/* Chat area */}
         <div className="flex-1 overflow-hidden">
-          {isOpen && <AssistantChat projectName={projectName} />}
+          {isOpen && (
+            <AssistantChat
+              projectName={projectName}
+              conversationId={conversationId}
+              initialMessages={initialMessages}
+              isLoadingConversation={isLoadingConversation}
+              onNewChat={handleNewChat}
+              onSelectConversation={handleSelectConversation}
+              onConversationCreated={handleConversationCreated}
+            />
+          )}
         </div>
       </div>
     </>

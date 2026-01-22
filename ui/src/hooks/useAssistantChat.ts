@@ -120,6 +120,9 @@ export function useAssistantChat({
     ws.onmessage = (event) => {
       try {
         const data = JSON.parse(event.data) as AssistantChatServerMessage;
+        if (import.meta.env.DEV) {
+          console.debug('[useAssistantChat] Received WebSocket message:', data.type, data);
+        }
 
         switch (data.type) {
           case "text": {
@@ -277,6 +280,9 @@ export function useAssistantChat({
             payload.conversation_id = existingConversationId;
             setConversationId(existingConversationId);
           }
+          if (import.meta.env.DEV) {
+            console.debug('[useAssistantChat] Sending start message:', payload);
+          }
           wsRef.current.send(JSON.stringify(payload));
         } else if (wsRef.current?.readyState === WebSocket.CONNECTING) {
           checkAndSendTimeoutRef.current = window.setTimeout(checkAndSend, 100);
@@ -336,7 +342,7 @@ export function useAssistantChat({
 
   const clearMessages = useCallback(() => {
     setMessages([]);
-    setConversationId(null);
+    // Don't reset conversationId here - it will be set by start() when switching
   }, []);
 
   return {

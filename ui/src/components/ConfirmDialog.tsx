@@ -5,12 +5,13 @@
  * Used to confirm destructive actions like deleting projects.
  */
 
+import type { ReactNode } from 'react'
 import { AlertTriangle, X } from 'lucide-react'
 
 interface ConfirmDialogProps {
   isOpen: boolean
   title: string
-  message: string
+  message: ReactNode
   confirmLabel?: string
   cancelLabel?: string
   variant?: 'danger' | 'warning'
@@ -75,9 +76,9 @@ export function ConfirmDialog({
 
         {/* Content */}
         <div className="p-6">
-          <p className="text-[var(--color-neo-text-secondary)] mb-6">
+          <div className="text-[var(--color-neo-text-secondary)] mb-6">
             {message}
-          </p>
+          </div>
 
           {/* Actions */}
           <div className="flex justify-end gap-3">

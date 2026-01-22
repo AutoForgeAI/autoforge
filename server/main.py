@@ -6,10 +6,16 @@ Main entry point for the Autonomous Coding UI server.
 Provides REST API, WebSocket, and static file serving.
 """
 
+import asyncio
 import os
 import shutil
+import sys
 from contextlib import asynccontextmanager
 from pathlib import Path
+
+# Fix for Windows subprocess support in asyncio
+if sys.platform == "win32":
+    asyncio.set_event_loop_policy(asyncio.WindowsProactorEventLoopPolicy())
 
 from dotenv import load_dotenv
 
@@ -36,6 +42,7 @@ from .routers import (
     logs_router,
     projects_router,
     review_router,
+    schedules_router,
     security_router,
     settings_router,
     spec_creation_router,
@@ -51,6 +58,7 @@ from .services.dev_server_manager import (
 )
 from .services.expand_chat_session import cleanup_all_expand_sessions
 from .services.process_manager import cleanup_all_managers, cleanup_orphaned_locks
+from .services.scheduler_service import cleanup_scheduler, get_scheduler
 from .services.terminal_manager import cleanup_all_terminals
 from .websocket import project_websocket
 
@@ -65,8 +73,16 @@ async def lifespan(app: FastAPI):
     # Startup - clean up orphaned lock files from previous runs
     cleanup_orphaned_locks()
     cleanup_orphaned_devserver_locks()
+
+    # Start the scheduler service
+    scheduler = get_scheduler()
+    await scheduler.start()
+
     yield
-    # Shutdown - cleanup all running agents, sessions, terminals, and dev servers
+
+    # Shutdown - cleanup scheduler first to stop triggering new starts
+    await cleanup_scheduler()
+    # Then cleanup all running agents, sessions, terminals, and dev servers
     await cleanup_all_managers()
     await cleanup_assistant_sessions()
     await cleanup_all_expand_sessions()
@@ -120,6 +136,7 @@ async def require_localhost(request: Request, call_next):
 app.include_router(projects_router)
 app.include_router(features_router)
 app.include_router(agent_router)
+app.include_router(schedules_router)
 app.include_router(devserver_router)
 app.include_router(spec_creation_router)
 app.include_router(expand_project_router)

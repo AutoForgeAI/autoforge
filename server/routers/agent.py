@@ -26,11 +26,11 @@ def _get_project_path(project_name: str) -> Path:
     return get_project_path(project_name)
 
 
-def _get_settings_defaults() -> tuple[bool, str, int, bool]:
+def _get_settings_defaults() -> tuple[bool, str, int]:
     """Get defaults from global settings.
 
     Returns:
-        Tuple of (yolo_mode, model, testing_agent_ratio, count_testing_in_concurrency)
+        Tuple of (yolo_mode, model, testing_agent_ratio)
     """
     import sys
     root = Path(__file__).parent.parent.parent
@@ -49,9 +49,7 @@ def _get_settings_defaults() -> tuple[bool, str, int, bool]:
     except (ValueError, TypeError):
         testing_agent_ratio = 1
 
-    count_testing = (settings.get("count_testing_in_concurrency") or "false").lower() == "true"
-
-    return yolo_mode, model, testing_agent_ratio, count_testing
+    return yolo_mode, model, testing_agent_ratio
 
 
 router = APIRouter(prefix="/api/projects/{project_name}/agent", tags=["agent"])
@@ -101,7 +99,6 @@ async def get_agent_status(project_name: str):
         parallel_mode=manager.parallel_mode,
         max_concurrency=manager.max_concurrency,
         testing_agent_ratio=manager.testing_agent_ratio,
-        count_testing_in_concurrency=manager.count_testing_in_concurrency,
     )
 
 
@@ -114,21 +111,26 @@ async def start_agent(
     manager = get_project_manager(project_name)
 
     # Get defaults from global settings if not provided in request
-    default_yolo, default_model, default_testing_ratio, default_count_testing = _get_settings_defaults()
+    default_yolo, default_model, default_testing_ratio = _get_settings_defaults()
 
     yolo_mode = request.yolo_mode if request.yolo_mode is not None else default_yolo
     model = request.model if request.model else default_model
     max_concurrency = request.max_concurrency or 1
     testing_agent_ratio = request.testing_agent_ratio if request.testing_agent_ratio is not None else default_testing_ratio
-    count_testing = request.count_testing_in_concurrency if request.count_testing_in_concurrency is not None else default_count_testing
 
     success, message = await manager.start(
         yolo_mode=yolo_mode,
         model=model,
         max_concurrency=max_concurrency,
         testing_agent_ratio=testing_agent_ratio,
-        count_testing_in_concurrency=count_testing,
     )
+
+    # Notify scheduler of manual start (to prevent auto-stop during scheduled window)
+    if success:
+        from ..services.scheduler_service import get_scheduler
+        project_dir = _get_project_path(project_name)
+        if project_dir:
+            get_scheduler().notify_manual_start(project_name, project_dir)
 
     return AgentActionResponse(
         success=success,
@@ -143,6 +145,13 @@ async def stop_agent(project_name: str):
     manager = get_project_manager(project_name)
 
     success, message = await manager.stop()
+
+    # Notify scheduler of manual stop (to prevent auto-start during scheduled window)
+    if success:
+        from ..services.scheduler_service import get_scheduler
+        project_dir = _get_project_path(project_name)
+        if project_dir:
+            get_scheduler().notify_manual_stop(project_name, project_dir)
 
     return AgentActionResponse(
         success=success,
