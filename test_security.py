@@ -178,6 +178,11 @@ def test_pattern_matching():
         ("swift", "swift*", True, "swift matches swift*"),
         ("npm", "swift*", False, "npm doesn't match swift*"),
 
+        # Bare wildcard (security: should NOT match anything)
+        ("npm", "*", False, "bare wildcard doesn't match npm"),
+        ("sudo", "*", False, "bare wildcard doesn't match sudo"),
+        ("anything", "*", False, "bare wildcard doesn't match anything"),
+
         # Local script paths
         ("build.sh", "./scripts/build.sh", True, "script name matches path"),
         ("./scripts/build.sh", "./scripts/build.sh", True, "exact script path"),
@@ -292,6 +297,9 @@ def test_command_validation():
         ({"description": "No name"}, False, "missing name field"),
         ({"name": ""}, False, "empty name"),
         ({"name": 123}, False, "non-string name"),
+
+        # Security: Bare wildcard not allowed
+        ({"name": "*"}, False, "bare wildcard rejected"),
 
         # Blocklisted commands
         ({"name": "sudo"}, False, "blocklisted sudo"),

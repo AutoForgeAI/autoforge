@@ -371,6 +371,10 @@ def matches_pattern(command: str, pattern: str) -> bool:
     Returns:
         True if command matches pattern
     """
+    # Reject bare wildcards - security measure to prevent matching everything
+    if pattern == "*":
+        return False
+
     # Exact match
     if command == pattern:
         return True
@@ -378,6 +382,9 @@ def matches_pattern(command: str, pattern: str) -> bool:
     # Prefix wildcard (e.g., "swift*" matches "swiftc", "swiftlint")
     if pattern.endswith("*"):
         prefix = pattern[:-1]
+        # Also reject if prefix is empty (would be bare "*")
+        if not prefix:
+            return False
         return command.startswith(prefix)
 
     # Local script paths (./scripts/build.sh matches build.sh)
@@ -523,6 +530,10 @@ def validate_project_command(cmd_config: dict) -> tuple[bool, str]:
     name = cmd_config["name"]
     if not isinstance(name, str) or not name:
         return False, "Command name must be a non-empty string"
+
+    # Reject bare wildcard - security measure to prevent matching all commands
+    if name == "*":
+        return False, "Bare wildcard '*' is not allowed (security risk: matches all commands)"
 
     # Check if command is in the blocklist or dangerous commands
     base_cmd = os.path.basename(name.rstrip("*"))
