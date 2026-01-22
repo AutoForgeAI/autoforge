@@ -438,6 +438,32 @@ def get_dev_port(project_dir: Path) -> int | None:
     return None
 
 
+def set_dev_port(project_dir: Path, port: int) -> None:
+    """
+    Save a custom dev port for a project.
+
+    Args:
+        project_dir: Path to the project directory.
+        port: The port number to save (must be 1-65535).
+
+    Raises:
+        ValueError: If port is not a valid integer in range 1-65535,
+            or if project_dir is invalid.
+        OSError: If the config file cannot be written.
+    """
+    if not isinstance(port, int) or port < 1 or port > 65535:
+        raise ValueError("Port must be an integer between 1 and 65535")
+
+    project_dir = _validate_project_dir(project_dir)
+
+    # Load existing config and update
+    config = _load_config(project_dir)
+    config["dev_port"] = port
+
+    _save_config(project_dir, config)
+    logger.info("Set custom dev port for %s: %d", project_dir.name, port)
+
+
 def clear_dev_command(project_dir: Path) -> None:
     """
     Remove the custom dev command, reverting to auto-detection.
