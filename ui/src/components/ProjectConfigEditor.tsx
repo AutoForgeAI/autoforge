@@ -64,12 +64,109 @@ export function ProjectConfigEditor({ projectName }: { projectName: string }) {
   const [notice, setNotice] = useState<{ type: InlineNoticeType; message: string } | null>(null)
   const noticeTimer = useRef<number | null>(null)
   const savedTimer = useRef<number | null>(null)
+  const [securityStrict, setSecurityStrict] = useState(false)
+  const [securityAllow, setSecurityAllow] = useState<string[]>([])
+  const [securityInput, setSecurityInput] = useState('')
+  const [securitySyncing, setSecuritySyncing] = useState(false)
 
   useEffect(() => {
     if (!q.data) return
     if (dirty) return
     setDraft(q.data.content || '')
   }, [q.data, dirty])
+
+  const parseSecurityFromYaml = (content: string) => {
+    const lines = content.split(/\r?\n/)
+    const start = lines.findIndex((line) => line.trim() === 'security:')
+    if (start === -1) {
+      return { strict: false, allow: [] as string[] }
+    }
+    const baseIndent = lines[start].match(/^(\s*)/)?.[1]?.length ?? 0
+    let end = lines.length
+    for (let i = start + 1; i < lines.length; i += 1) {
+      const line = lines[i]
+      if (!line.trim()) continue
+      const indent = line.match(/^(\s*)/)?.[1]?.length ?? 0
+      if (indent <= baseIndent) {
+        end = i
+        break
+      }
+    }
+    let strict = false
+    let allow: string[] = []
+    let inAllow = false
+    for (let i = start + 1; i < end; i += 1) {
+      const raw = lines[i]
+      const trimmed = raw.trim()
+      if (!trimmed) continue
+      if (trimmed.startsWith('strict:')) {
+        const value = trimmed.split(':')[1]?.trim().toLowerCase()
+        strict = value === 'true' || value === 'yes' || value === '1' || value === 'on'
+        inAllow = false
+        continue
+      }
+      if (trimmed.startsWith('allow_commands:')) {
+        inAllow = true
+        continue
+      }
+      if (inAllow && trimmed.startsWith('-')) {
+        let token = trimmed.replace(/^-+/, '').trim()
+        token = token.replace(/^['"]/, '').replace(/['"]$/, '')
+        if (token) allow.push(token)
+        continue
+      }
+      if (!trimmed.startsWith('-')) {
+        inAllow = false
+      }
+    }
+    allow = Array.from(new Set(allow.map((t) => t.trim()).filter(Boolean)))
+    return { strict, allow }
+  }
+
+  const normalizeSecurityToken = (raw: string) => {
+    const token = raw.trim()
+    if (!token) return null
+    if (token.includes(' ') || token.includes('/') || token.includes('\\')) return null
+    if (!/^[A-Za-z0-9._+-]{1,64}$/.test(token)) return null
+    return token
+  }
+
+  const replaceSecurityBlock = (content: string, strict: boolean, allow: string[]) => {
+    const lines = content.split(/\r?\n/)
+    const blockLines: string[] = ['security:', `  strict: ${strict ? 'true' : 'false'}`]
+    if (allow.length > 0) {
+      blockLines.push('  allow_commands:')
+      allow.forEach((cmd) => {
+        blockLines.push(`    - "${cmd}"`)
+      })
+    }
+    const start = lines.findIndex((line) => line.trim() === 'security:')
+    if (start === -1) {
+      const separator = lines.length && lines[lines.length - 1].trim() !== '' ? [''] : []
+      return [...lines, ...separator, ...blockLines, ''].join('\n')
+    }
+    const baseIndent = lines[start].match(/^(\s*)/)?.[1]?.length ?? 0
+    let end = lines.length
+    for (let i = start + 1; i < lines.length; i += 1) {
+      const line = lines[i]
+      if (!line.trim()) continue
+      const indent = line.match(/^(\s*)/)?.[1]?.length ?? 0
+      if (indent <= baseIndent) {
+        end = i
+        break
+      }
+    }
+    const before = lines.slice(0, start)
+    const after = lines.slice(end)
+    return [...before, ...blockLines, ...after].join('\n')
+  }
+
+  useEffect(() => {
+    if (securitySyncing) return
+    const parsed = parseSecurityFromYaml(draft)
+    setSecurityStrict(parsed.strict)
+    setSecurityAllow(parsed.allow)
+  }, [draft, securitySyncing])
 
   const meta = useMemo(() => {
     if (!q.data) return null
@@ -135,6 +232,16 @@ export function ProjectConfigEditor({ projectName }: { projectName: string }) {
   const openHelp = (topic: HelpTopic) => {
     setHelpTopic(topic)
     setShowHelp(true)
+  }
+
+  const applySecurityUpdate = (nextStrict: boolean, nextAllow: string[]) => {
+    setSecuritySyncing(true)
+    setSecurityStrict(nextStrict)
+    setSecurityAllow(nextAllow)
+    const nextDraft = replaceSecurityBlock(draft || '', nextStrict, nextAllow)
+    setDraft(nextDraft)
+    setDirty(true)
+    window.setTimeout(() => setSecuritySyncing(false), 0)
   }
 
   return (
@@ -262,6 +369,85 @@ export function ProjectConfigEditor({ projectName }: { projectName: string }) {
               )}
             </div>
           )}
+
+          <div className="mt-3 neo-card p-3">
+            <div className="flex items-center justify-between gap-3 mb-2">
+              <div className="flex items-center gap-2">
+                <div className="text-sm font-display font-bold uppercase">Security Allowlist</div>
+                <button
+                  type="button"
+                  className="inline-flex items-center justify-center p-1 rounded hover:bg-black/5"
+                  onClick={() => openHelp('security')}
+                  title="Help: Security"
+                  aria-label="Help: Security"
+                >
+                  <Info size={16} className="text-[var(--color-neo-text-secondary)]" aria-hidden="true" />
+                </button>
+              </div>
+              <div className="flex items-center gap-2 text-xs text-[var(--color-neo-text-secondary)]">
+                <span>Strict mode</span>
+                <input
+                  type="checkbox"
+                  checked={securityStrict}
+                  onChange={(e) => applySecurityUpdate(e.target.checked, securityAllow)}
+                  className="w-4 h-4"
+                />
+              </div>
+            </div>
+            <div className="text-xs text-[var(--color-neo-text-secondary)] mb-3">
+              Adds project-specific CLI commands (never removes global blocks). Use strict mode to ignore overrides.
+            </div>
+            <div className="flex flex-wrap gap-2 mb-3">
+              {securityAllow.length === 0 && (
+                <span className="text-xs text-[var(--color-neo-text-secondary)]">No project commands added yet.</span>
+              )}
+              {securityAllow.map((cmd) => (
+                <span
+                  key={cmd}
+                  className="inline-flex items-center gap-2 px-2 py-1 border-2 border-[var(--color-neo-border)] bg-white text-xs font-mono"
+                >
+                  {cmd}
+                  <button
+                    type="button"
+                    className="neo-btn neo-btn-ghost p-1"
+                    onClick={() => applySecurityUpdate(securityStrict, securityAllow.filter((c) => c !== cmd))}
+                    aria-label={`Remove ${cmd}`}
+                  >
+                    ×
+                  </button>
+                </span>
+              ))}
+            </div>
+            <div className="flex flex-wrap gap-2">
+              <input
+                type="text"
+                value={securityInput}
+                onChange={(e) => setSecurityInput(e.target.value)}
+                placeholder="Add command (e.g. pnpm)"
+                className="neo-input max-w-xs"
+              />
+              <button
+                type="button"
+                className="neo-btn neo-btn-secondary text-sm"
+                onClick={() => {
+                  const token = normalizeSecurityToken(securityInput)
+                  if (!token) {
+                    flash('error', 'Command tokens must be 1-64 chars (letters/numbers/._+- only).')
+                    return
+                  }
+                  if (securityAllow.includes(token)) {
+                    flash('info', 'Command already added.')
+                    setSecurityInput('')
+                    return
+                  }
+                  applySecurityUpdate(securityStrict, [...securityAllow, token])
+                  setSecurityInput('')
+                }}
+              >
+                Add
+              </button>
+            </div>
+          </div>
 
           <div className="mt-3 neo-card p-3">
             <div className="flex items-center gap-2 mb-2">
