@@ -15,6 +15,7 @@ from pathlib import Path
 from fastapi import APIRouter, HTTPException
 
 from ..schemas import (
+    DatabaseHealth,
     ProjectCreate,
     ProjectDetail,
     ProjectPrompts,
