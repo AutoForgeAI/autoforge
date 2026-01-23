@@ -24,6 +24,7 @@ from ..services.project_config import (
     clear_dev_command,
     detect_project_type,
     get_dev_command,
+    get_dev_port,
     get_project_config,
     inject_port_into_command,
     set_dev_command,
@@ -218,6 +219,7 @@ async def get_devserver_config(project_name: str) -> DevServerConfigResponse:
     - detected_command: The default command for the detected type
     - custom_command: Any user-configured custom command
     - effective_command: The command that will actually be used (custom or detected)
+    - port: The configured port number (if set)
 
     Args:
         project_name: Name of the project
@@ -227,12 +229,14 @@ async def get_devserver_config(project_name: str) -> DevServerConfigResponse:
     """
     project_dir = get_project_dir(project_name)
     config = get_project_config(project_dir)
+    configured_port = get_dev_port(project_dir)
 
     return DevServerConfigResponse(
         detected_type=config["detected_type"],
         detected_command=config["detected_command"],
         custom_command=config["custom_command"],
         effective_command=config["effective_command"],
+        port=configured_port,
     )
 
 
