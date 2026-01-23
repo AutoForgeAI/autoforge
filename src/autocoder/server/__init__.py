@@ -11,6 +11,7 @@ import contextlib
 import os
 import shutil
 import sys
+import asyncio
 import threading
 import time
 import webbrowser
@@ -26,6 +27,9 @@ from autocoder.server.server_lock import ServerLock
 from autocoder.server.settings_store import apply_advanced_settings_env
 
 load_dotenv()
+
+if sys.platform == "win32":
+    asyncio.set_event_loop_policy(asyncio.WindowsProactorEventLoopPolicy())
 
 def start_server(host: str | None = None, port: int | None = None, reload: bool = False) -> None:
     """

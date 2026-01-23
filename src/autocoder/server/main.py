@@ -6,9 +6,11 @@ Main entry point for the Autonomous Coding UI server.
 Provides REST API, WebSocket, and static file serving.
 """
 
+import asyncio
 import mimetypes
 import shutil
 import os
+import sys
 from contextlib import asynccontextmanager
 from pathlib import Path
 
@@ -20,6 +22,9 @@ from fastapi.responses import FileResponse, HTMLResponse
 # Fix MIME types for JavaScript files on Windows
 mimetypes.add_type("application/javascript", ".js")
 mimetypes.add_type("text/css", ".css")
+
+if sys.platform == "win32":
+    asyncio.set_event_loop_policy(asyncio.WindowsProactorEventLoopPolicy())
 
 from .routers import (
     projects_router,
