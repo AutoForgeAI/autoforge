@@ -28,6 +28,7 @@ from ..services.project_config import (
     get_project_config,
     inject_port_into_command,
     set_dev_command,
+    set_dev_port,
 )
 
 # Add root to path for registry import
@@ -252,9 +253,12 @@ async def update_devserver_config(
     Set custom_command to null/None to clear the custom command and revert
     to using the auto-detected command.
 
+    Set port to an integer to configure a custom dev port.
+    Set port to null/None to clear the configured port.
+
     Args:
         project_name: Name of the project
-        update: Configuration update containing the new custom_command
+        update: Configuration update containing the new custom_command and/or port
 
     Returns:
         Updated configuration details for the project's dev server
@@ -280,12 +284,26 @@ async def update_devserver_config(
                 detail=f"Failed to save configuration: {e}"
             )
 
+    # Update the port if provided
+    if update.port is not None:
+        try:
+            set_dev_port(project_dir, update.port)
+        except ValueError as e:
+            raise HTTPException(status_code=400, detail=str(e))
+        except OSError as e:
+            raise HTTPException(
+                status_code=500,
+                detail=f"Failed to save configuration: {e}"
+            )
+
     # Return updated config
     config = get_project_config(project_dir)
+    configured_port = get_dev_port(project_dir)
 
     return DevServerConfigResponse(
         detected_type=config["detected_type"],
         detected_command=config["detected_command"],
         custom_command=config["custom_command"],
         effective_command=config["effective_command"],
+        port=configured_port,
     )
