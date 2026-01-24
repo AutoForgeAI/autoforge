@@ -10,6 +10,7 @@ import asyncio
 import json
 import logging
 import os
+import re
 import shutil
 import sys
 import threading
@@ -38,7 +39,7 @@ API_ENV_VARS = [
     "ANTHROPIC_DEFAULT_HAIKU_MODEL",
 ]
 
-# Feature MCP tools needed for expand session
+# Feature creation tools for expand session
 EXPAND_FEATURE_TOOLS = [
     "mcp__features__feature_create",
     "mcp__features__feature_create_bulk",
@@ -68,8 +69,9 @@ class ExpandChatSession:
 
     Unlike SpecChatSession which writes spec files, this session:
     1. Reads existing app_spec.txt for context
-    2. Chats with the user to define new features
-    3. Claude creates features via the feature_create_bulk MCP tool
+    2. Parses feature definitions from Claude's output
+    3. Creates features via REST API
+    4. Tracks which features were created during the session
     """
 
     def __init__(self, project_name: str, project_dir: Path):
@@ -151,17 +153,14 @@ class ExpandChatSession:
             return
 
         # Create temporary security settings file (unique per session to avoid conflicts)
-        # Note: permission_mode="bypassPermissions" is safe here because:
-        # 1. Only Read/Glob file tools are allowed (no Write/Edit)
-        # 2. MCP tools are restricted to feature creation only
-        # 3. No Bash access - cannot execute arbitrary commands
         security_settings = {
             "sandbox": {"enabled": True},
             "permissions": {
-                "defaultMode": "bypassPermissions",
+                "defaultMode": "acceptEdits",
                 "allow": [
                     "Read(./**)",
                     "Glob(./**)",
+                    *EXPAND_FEATURE_TOOLS,
                 ],
             },
         }
@@ -181,7 +180,7 @@ class ExpandChatSession:
         # This allows using alternative APIs (e.g., GLM via z.ai) that may not support Claude model names
         model = os.getenv("ANTHROPIC_DEFAULT_OPUS_MODEL", "claude-opus-4-5-20251101")
 
-        # Build MCP servers config for feature creation
+        # Build MCP servers config for feature management
         mcp_servers = {
             "features": {
                 "command": sys.executable,
@@ -206,7 +205,7 @@ class ExpandChatSession:
                         *EXPAND_FEATURE_TOOLS,
                     ],
                     mcp_servers=mcp_servers,
-                    permission_mode="bypassPermissions",
+                    permission_mode="acceptEdits",
                     max_turns=100,
                     cwd=str(self.project_dir.resolve()),
                     settings=str(settings_file.resolve()),
@@ -291,8 +290,7 @@ class ExpandChatSession:
         """
         Internal method to query Claude and stream responses.
 
-        Feature creation is handled by Claude calling the feature_create_bulk
-        MCP tool directly -- no text parsing needed.
+        Handles text responses and detects feature creation blocks.
         """
         if not self.client:
             return
@@ -316,6 +314,9 @@ class ExpandChatSession:
         else:
             await self.client.query(message)
 
+        # Accumulate full response to detect feature blocks
+        full_response = ""
+
         # Stream the response
         async for msg in self.client.receive_response():
             msg_type = type(msg).__name__
@@ -327,6 +328,7 @@ class ExpandChatSession:
                     if block_type == "TextBlock" and hasattr(block, "text"):
                         text = block.text
                         if text:
+                            full_response += text
                             yield {"type": "text", "content": text}
 
                             self.messages.append({
@@ -334,6 +336,123 @@ class ExpandChatSession:
                                 "content": text,
                                 "timestamp": datetime.now().isoformat()
                             })
+
+        # Check for feature creation blocks in full response (handle multiple blocks)
+        features_matches = re.findall(
+            r'<features_to_create>\s*(\[[\s\S]*?\])\s*</features_to_create>',
+            full_response
+        )
+
+        if features_matches:
+            # Collect all features from all blocks, deduplicating by name
+            all_features: list[dict] = []
+            seen_names: set[str] = set()
+
+            for features_json in features_matches:
+                try:
+                    features_data = json.loads(features_json)
+
+                    if features_data and isinstance(features_data, list):
+                        for feature in features_data:
+                            name = feature.get("name", "")
+                            if name and name not in seen_names:
+                                seen_names.add(name)
+                                all_features.append(feature)
+                except json.JSONDecodeError as e:
+                    logger.error(f"Failed to parse features JSON block: {e}")
+                    # Continue processing other blocks
+
+            if all_features:
+                try:
+                    # Create all deduplicated features
+                    created = await self._create_features_bulk(all_features)
+
+                    if created:
+                        self.features_created += len(created)
+                        self.created_feature_ids.extend([f["id"] for f in created])
+
+                        yield {
+                            "type": "features_created",
+                            "count": len(created),
+                            "features": created
+                        }
+
+                        logger.info(f"Created {len(created)} features for {self.project_name}")
+                except Exception:
+                    logger.exception("Failed to create features")
+                    yield {
+                        "type": "error",
+                        "content": "Failed to create features"
+                    }
+
+    async def _create_features_bulk(self, features: list[dict]) -> list[dict]:
+        """
+        Create features directly in the database.
+
+        Args:
+            features: List of feature dictionaries with category, name, description, steps
+
+        Returns:
+            List of created feature dictionaries with IDs
+
+        Note:
+            Uses flush() to get IDs immediately without re-querying by priority range,
+            which could pick up rows from concurrent writers.
+        """
+        # Import database classes
+        import sys
+        root = Path(__file__).parent.parent.parent
+        if str(root) not in sys.path:
+            sys.path.insert(0, str(root))
+
+        from api.database import Feature, create_database
+
+        # Get database session
+        _, SessionLocal = create_database(self.project_dir)
+        session = SessionLocal()
+
+        try:
+            # Determine starting priority
+            max_priority_feature = session.query(Feature).order_by(Feature.priority.desc()).first()
+            current_priority = (max_priority_feature.priority + 1) if max_priority_feature else 1
+
+            created_rows: list = []
+
+            for f in features:
+                db_feature = Feature(
+                    priority=current_priority,
+                    category=f.get("category", "functional"),
+                    name=f.get("name", "Unnamed feature"),
+                    description=f.get("description", ""),
+                    steps=f.get("steps", []),
+                    passes=False,
+                    in_progress=False,
+                )
+                session.add(db_feature)
+                created_rows.append(db_feature)
+                current_priority += 1
+
+            # Flush to get IDs without relying on priority range query
+            session.flush()
+
+            # Build result from the flushed objects (IDs are now populated)
+            created_features = [
+                {
+                    "id": db_feature.id,
+                    "name": db_feature.name,
+                    "category": db_feature.category,
+                }
+                for db_feature in created_rows
+            ]
+
+            session.commit()
+            return created_features
+
+        except Exception:
+            session.rollback()
+            raise
+        finally:
+            session.close()
 
     def get_features_created(self) -> int:
         """Get the total number of features created in this session."""
