@@ -176,6 +176,17 @@ def get_extra_read_paths() -> list[Path]:
     return validated_paths
 
 
+def get_playwright_browser() -> str:
+    """
+    Get the browser to use for Playwright.
+
+    Reads from PLAYWRIGHT_BROWSER environment variable, defaults to firefox.
+    Options: chrome, firefox, webkit, msedge
+    Firefox is recommended for lower CPU usage.
+    """
+    return os.getenv("PLAYWRIGHT_BROWSER", DEFAULT_PLAYWRIGHT_BROWSER).lower()
+
+
 # Feature MCP tools for feature/test management
 FEATURE_MCP_TOOLS = [
     # Core feature operations
