@@ -39,7 +39,7 @@ API_ENV_VARS = [
     "ANTHROPIC_DEFAULT_HAIKU_MODEL",
 ]
 
-# Feature creation tools for expand session
+# Feature MCP tools needed for expand session
 EXPAND_FEATURE_TOOLS = [
     "mcp__features__feature_create",
     "mcp__features__feature_create_bulk",
@@ -153,14 +153,17 @@ class ExpandChatSession:
             return
 
         # Create temporary security settings file (unique per session to avoid conflicts)
+        # Note: permission_mode="bypassPermissions" is safe here because:
+        # 1. Only Read/Glob file tools are allowed (no Write/Edit)
+        # 2. MCP tools are restricted to feature creation only
+        # 3. No Bash access - cannot execute arbitrary commands
         security_settings = {
             "sandbox": {"enabled": True},
             "permissions": {
-                "defaultMode": "acceptEdits",
+                "defaultMode": "bypassPermissions",
                 "allow": [
                     "Read(./**)",
                     "Glob(./**)",
-                    *EXPAND_FEATURE_TOOLS,
                 ],
             },
         }
@@ -180,7 +183,7 @@ class ExpandChatSession:
         # This allows using alternative APIs (e.g., GLM via z.ai) that may not support Claude model names
         model = os.getenv("ANTHROPIC_DEFAULT_OPUS_MODEL", "claude-opus-4-5-20251101")
 
-        # Build MCP servers config for feature management
+        # Build MCP servers config for feature creation
         mcp_servers = {
             "features": {
                 "command": sys.executable,
@@ -205,7 +208,7 @@ class ExpandChatSession:
                         *EXPAND_FEATURE_TOOLS,
                     ],
                     mcp_servers=mcp_servers,
-                    permission_mode="acceptEdits",
+                    permission_mode="bypassPermissions",
                     max_turns=100,
                     cwd=str(self.project_dir.resolve()),
                     settings=str(settings_file.resolve()),
