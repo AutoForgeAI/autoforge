@@ -168,11 +168,11 @@ Steps:
 ```
 Steps:
 1. Run: grep -r "globalThis\." --include="*.ts" --include="*.tsx" --include="*.js" src/
-2. Run: grep -r "dev-store\|devStore\|DevStore\|mock-db\|mockDb" --include="*.ts" --include="*.tsx" src/
-3. Run: grep -r "mockData\|testData\|fakeData\|sampleData\|dummyData" --include="*.ts" --include="*.tsx" src/
-4. Run: grep -r "TODO.*real\|TODO.*database\|TODO.*API\|STUB\|MOCK" --include="*.ts" --include="*.tsx" src/
-5. Run: grep -r "isDevelopment\|isDev\|process\.env\.NODE_ENV.*development" --include="*.ts" --include="*.tsx" src/
-6. Run: grep -r "new Map()\|new Set()" --include="*.ts" --include="*.tsx" src/lib/ src/store/ src/data/ 2>/dev/null
+2. Run: grep -r "dev-store\|devStore\|DevStore\|mock-db\|mockDb" --include="*.ts" --include="*.tsx" --include="*.js" src/
+3. Run: grep -r "mockData\|testData\|fakeData\|sampleData\|dummyData" --include="*.ts" --include="*.tsx" --include="*.js" src/
+4. Run: grep -r "TODO.*real\|TODO.*database\|TODO.*API\|STUB\|MOCK" --include="*.ts" --include="*.tsx" --include="*.js" src/
+5. Run: grep -r "isDevelopment\|isDev\|process\.env\.NODE_ENV.*development" --include="*.ts" --include="*.tsx" --include="*.js" src/
+6. Run: grep -r "new Map\(\)\|new Set\(\)" --include="*.ts" --include="*.tsx" --include="*.js" src/lib/ src/store/ src/data/ 2>/dev/null
 7. Run: grep -E "json-server|miragejs|msw" package.json
 8. ALL grep commands must return empty (exit code 1)
 9. If any returns results → investigate and fix before passing

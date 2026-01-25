@@ -182,19 +182,19 @@ Use browser automation tools:
 ```bash
 # 1. In-memory storage patterns (CRITICAL - catches dev-store)
 grep -r "globalThis\." --include="*.ts" --include="*.tsx" --include="*.js" src/
-grep -r "dev-store\|devStore\|DevStore\|mock-db\|mockDb" --include="*.ts" --include="*.tsx" src/
+grep -r "dev-store\|devStore\|DevStore\|mock-db\|mockDb" --include="*.ts" --include="*.tsx" --include="*.js" src/
 
 # 2. Mock data variables
-grep -r "mockData\|fakeData\|sampleData\|dummyData\|testData" --include="*.ts" --include="*.tsx" src/
+grep -r "mockData\|fakeData\|sampleData\|dummyData\|testData" --include="*.ts" --include="*.tsx" --include="*.js" src/
 
 # 3. TODO/incomplete markers
-grep -r "TODO.*real\|TODO.*database\|TODO.*API\|STUB\|MOCK" --include="*.ts" --include="*.tsx" src/
+grep -r "TODO.*real\|TODO.*database\|TODO.*API\|STUB\|MOCK" --include="*.ts" --include="*.tsx" --include="*.js" src/
 
 # 4. Development-only conditionals
-grep -r "isDevelopment\|isDev\|process\.env\.NODE_ENV.*development" --include="*.ts" --include="*.tsx" src/
+grep -r "isDevelopment\|isDev\|process\.env\.NODE_ENV.*development" --include="*.ts" --include="*.tsx" --include="*.js" src/
 
 # 5. In-memory collections as data stores (check lib/store/data directories)
-grep -r "new Map()\|new Set()" --include="*.ts" --include="*.tsx" src/lib/ src/store/ src/data/ 2>/dev/null
+grep -r "new Map\(\)\|new Set\(\)" --include="*.ts" --include="*.tsx" --include="*.js" src/lib/ src/store/ src/data/ 2>/dev/null
 ```
 
 **Rule:** If ANY grep returns results in production code → investigate → FIX before marking passing.
