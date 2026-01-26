@@ -401,6 +401,10 @@ class ParallelOrchestrator:
         if passing_count == 0:
             return
 
+        # Don't spawn testing agents if all features are already complete
+        if self.get_all_complete():
+            return
+
         # Spawn testing agents one at a time, re-checking limits each time
         # This avoids TOCTOU race by holding lock during the decision
         while True:

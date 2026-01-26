@@ -129,7 +129,7 @@ async def get_devserver_status(project_name: str) -> DevServerStatus:
         pid=manager.pid,
         url=manager.detected_url,
         command=manager._command,
-        started_at=manager.started_at,
+        started_at=manager.started_at.isoformat() if manager.started_at else None,
     )
 
 

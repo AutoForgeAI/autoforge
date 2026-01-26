@@ -15,14 +15,17 @@ from contextlib import contextmanager
 from pathlib import Path
 
 from security import (
+    DEFAULT_PKILL_PROCESSES,
     bash_security_hook,
     extract_commands,
     get_effective_commands,
+    get_effective_pkill_processes,
     load_org_config,
     load_project_commands,
     matches_pattern,
     validate_chmod_command,
     validate_init_script,
+    validate_pkill_command,
     validate_project_command,
 )
 
@@ -670,6 +673,240 @@ blocked_commands:
     return passed, failed
 
 
+def test_pkill_extensibility():
+    """Test that pkill processes can be extended via config."""
+    print("\nTesting pkill process extensibility:\n")
+    passed = 0
+    failed = 0
+
+    # Test 1: Default processes work without config
+    allowed, reason = validate_pkill_command("pkill node")
+    if allowed:
+        print("  PASS: Default process 'node' allowed")
+        passed += 1
+    else:
+        print(f"  FAIL: Default process 'node' should be allowed: {reason}")
+        failed += 1
+
+    # Test 2: Non-default process blocked without config
+    allowed, reason = validate_pkill_command("pkill python")
+    if not allowed:
+        print("  PASS: Non-default process 'python' blocked without config")
+        passed += 1
+    else:
+        print("  FAIL: Non-default process 'python' should be blocked without config")
+        failed += 1
+
+    # Test 3: Extra processes allowed when passed
+    allowed, reason = validate_pkill_command("pkill python", extra_processes={"python"})
+    if allowed:
+        print("  PASS: Extra process 'python' allowed when configured")
+        passed += 1
+    else:
+        print(f"  FAIL: Extra process 'python' should be allowed when configured: {reason}")
+        failed += 1
+
+    # Test 4: Default processes still work with extra processes
+    allowed, reason = validate_pkill_command("pkill npm", extra_processes={"python"})
+    if allowed:
+        print("  PASS: Default process 'npm' still works with extra processes")
+        passed += 1
+    else:
+        print(f"  FAIL: Default process should still work: {reason}")
+        failed += 1
+
+    # Test 5: Test get_effective_pkill_processes with org config
+    with tempfile.TemporaryDirectory() as tmphome:
+        with tempfile.TemporaryDirectory() as tmpproject:
+            with temporary_home(tmphome):
+                org_dir = Path(tmphome) / ".autocoder"
+                org_dir.mkdir()
+                org_config_path = org_dir / "config.yaml"
+
+                # Create org config with extra pkill processes
+                org_config_path.write_text("""version: 1
+pkill_processes:
+  - python
+  - uvicorn
+""")
+
+                project_dir = Path(tmpproject)
+                processes = get_effective_pkill_processes(project_dir)
+
+                # Should include defaults + org processes
+                if "node" in processes and "python" in processes and "uvicorn" in processes:
+                    print("  PASS: Org pkill_processes merged with defaults")
+                    passed += 1
+                else:
+                    print(f"  FAIL: Expected node, python, uvicorn in {processes}")
+                    failed += 1
+
+    # Test 6: Test get_effective_pkill_processes with project config
+    with tempfile.TemporaryDirectory() as tmphome:
+        with tempfile.TemporaryDirectory() as tmpproject:
+            with temporary_home(tmphome):
+                project_dir = Path(tmpproject)
+                project_autocoder = project_dir / ".autocoder"
+                project_autocoder.mkdir()
+                project_config = project_autocoder / "allowed_commands.yaml"
+
+                # Create project config with extra pkill processes
+                project_config.write_text("""version: 1
+commands: []
+pkill_processes:
+  - gunicorn
+  - flask
+""")
+
+                processes = get_effective_pkill_processes(project_dir)
+
+                # Should include defaults + project processes
+                if "node" in processes and "gunicorn" in processes and "flask" in processes:
+                    print("  PASS: Project pkill_processes merged with defaults")
+                    passed += 1
+                else:
+                    print(f"  FAIL: Expected node, gunicorn, flask in {processes}")
+                    failed += 1
+
+    # Test 7: Integration test - pkill python blocked by default
+    with tempfile.TemporaryDirectory() as tmphome:
+        with tempfile.TemporaryDirectory() as tmpproject:
+            with temporary_home(tmphome):
+                project_dir = Path(tmpproject)
+                input_data = {"tool_name": "Bash", "tool_input": {"command": "pkill python"}}
+                context = {"project_dir": str(project_dir)}
+                result = asyncio.run(bash_security_hook(input_data, context=context))
+
+                if result.get("decision") == "block":
+                    print("  PASS: pkill python blocked without config")
+                    passed += 1
+                else:
+                    print("  FAIL: pkill python should be blocked without config")
+                    failed += 1
+
+    # Test 8: Integration test - pkill python allowed with org config
+    with tempfile.TemporaryDirectory() as tmphome:
+        with tempfile.TemporaryDirectory() as tmpproject:
+            with temporary_home(tmphome):
+                org_dir = Path(tmphome) / ".autocoder"
+                org_dir.mkdir()
+                org_config_path = org_dir / "config.yaml"
+
+                org_config_path.write_text("""version: 1
+pkill_processes:
+  - python
+""")
+
+                project_dir = Path(tmpproject)
+                input_data = {"tool_name": "Bash", "tool_input": {"command": "pkill python"}}
+                context = {"project_dir": str(project_dir)}
+                result = asyncio.run(bash_security_hook(input_data, context=context))
+
+                if result.get("decision") != "block":
+                    print("  PASS: pkill python allowed with org config")
+                    passed += 1
+                else:
+                    print(f"  FAIL: pkill python should be allowed with org config: {result}")
+                    failed += 1
+
+    # Test 9: Regex metacharacters should be rejected in pkill_processes
+    with tempfile.TemporaryDirectory() as tmphome:
+        with tempfile.TemporaryDirectory() as tmpproject:
+            with temporary_home(tmphome):
+                org_dir = Path(tmphome) / ".autocoder"
+                org_dir.mkdir()
+                org_config_path = org_dir / "config.yaml"
+
+                # Try to register a regex pattern (should be rejected)
+                org_config_path.write_text("""version: 1
+pkill_processes:
+  - ".*"
+""")
+
+                config = load_org_config()
+                if config is None:
+                    print("  PASS: Regex pattern '.*' rejected in pkill_processes")
+                    passed += 1
+                else:
+                    print("  FAIL: Regex pattern '.*' should be rejected")
+                    failed += 1
+
+    # Test 10: Valid process names with dots/underscores/hyphens should be accepted
+    with tempfile.TemporaryDirectory() as tmphome:
+        with tempfile.TemporaryDirectory() as tmpproject:
+            with temporary_home(tmphome):
+                org_dir = Path(tmphome) / ".autocoder"
+                org_dir.mkdir()
+                org_config_path = org_dir / "config.yaml"
+
+                # Valid names with special chars
+                org_config_path.write_text("""version: 1
+pkill_processes:
+  - my-app
+  - app_server
+  - node.js
+""")
+
+                config = load_org_config()
+                if config is not None and config.get("pkill_processes") == ["my-app", "app_server", "node.js"]:
+                    print("  PASS: Valid process names with dots/underscores/hyphens accepted")
+                    passed += 1
+                else:
+                    print(f"  FAIL: Valid process names should be accepted: {config}")
+                    failed += 1
+
+    # Test 11: Names with spaces should be rejected
+    with tempfile.TemporaryDirectory() as tmphome:
+        with tempfile.TemporaryDirectory() as tmpproject:
+            with temporary_home(tmphome):
+                org_dir = Path(tmphome) / ".autocoder"
+                org_dir.mkdir()
+                org_config_path = org_dir / "config.yaml"
+
+                org_config_path.write_text("""version: 1
+pkill_processes:
+  - "my app"
+""")
+
+                config = load_org_config()
+                if config is None:
+                    print("  PASS: Process name with space rejected")
+                    passed += 1
+                else:
+                    print("  FAIL: Process name with space should be rejected")
+                    failed += 1
+
+    # Test 12: Multiple patterns - all must be allowed (BSD behavior)
+    # On BSD, "pkill node sshd" would kill both, so we must validate all patterns
+    allowed, reason = validate_pkill_command("pkill node npm")
+    if allowed:
+        print("  PASS: Multiple allowed patterns accepted")
+        passed += 1
+    else:
+        print(f"  FAIL: Multiple allowed patterns should be accepted: {reason}")
+        failed += 1
+
+    # Test 13: Multiple patterns - block if any is disallowed
+    allowed, reason = validate_pkill_command("pkill node sshd")
+    if not allowed:
+        print("  PASS: Multiple patterns blocked when one is disallowed")
+        passed += 1
+    else:
+        print("  FAIL: Should block when any pattern is disallowed")
+        failed += 1
+
+    # Test 14: Multiple patterns - only first allowed, second disallowed
+    allowed, reason = validate_pkill_command("pkill npm python")
+    if not allowed:
+        print("  PASS: Multiple patterns blocked (first allowed, second not)")
+        passed += 1
+    else:
+        print("  FAIL: Should block when second pattern is disallowed")
+        failed += 1
+
+    return passed, failed
+
+
 def main():
     print("=" * 70)
     print("  SECURITY HOOK TESTS")
@@ -732,6 +969,11 @@ def main():
     org_block_passed, org_block_failed = test_org_blocklist_enforcement()
     passed += org_block_passed
     failed += org_block_failed
+
+    # Test pkill process extensibility
+    pkill_passed, pkill_failed = test_pkill_extensibility()
+    passed += pkill_passed
+    failed += pkill_failed
 
     # Commands that SHOULD be blocked
     print("\nCommands that should be BLOCKED:\n")
