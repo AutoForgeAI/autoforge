@@ -39,6 +39,59 @@ from prompts import (
 # Configuration
 AUTO_CONTINUE_DELAY_SECONDS = 3
 
+# Rate limit detection patterns (used in both exception messages and response text)
+RATE_LIMIT_PATTERNS = [
+    "limit reached",
+    "rate limit",
+    "rate_limit",
+    "too many requests",
+    "quota exceeded",
+    "please wait",
+    "try again later",
+    "429",
+    "overloaded",
+]
+
+
+def parse_retry_after(error_message: str) -> Optional[int]:
+    """
+    Extract retry-after seconds from various error message formats.
+
+    Returns seconds to wait, or None if not parseable.
+    """
+    # Common patterns:
+    # "retry after 60 seconds"
+    # "Retry-After: 120"
+    # "try again in 5 seconds"
+    # "30 seconds remaining"
+
+    patterns = [
+        r"retry.?after[:\s]+(\d+)\s*(?:seconds?)?",
+        r"try again in\s+(\d+)\s*(?:seconds?|s\b)",
+        r"(\d+)\s*seconds?\s*(?:remaining|left|until)",
+    ]
+
+    for pattern in patterns:
+        match = re.search(pattern, error_message, re.IGNORECASE)
+        if match:
+            return int(match.group(1))
+
+    return None
+
+
+def is_rate_limit_error(error_message: str) -> bool:
+    """
+    Detect if an error message indicates a rate limit.
+
+    Args:
+        error_message: The error message to check
+
+    Returns:
+        True if the error appears to be rate-limit related
+    """
+    error_lower = error_message.lower()
+    return any(pattern in error_lower for pattern in RATE_LIMIT_PATTERNS)
+
 
 async def run_agent_session(
     client: ClaudeSDKClient,
@@ -197,6 +250,8 @@ async def run_autonomous_agent(
 
     # Main loop
     iteration = 0
+    rate_limit_retries = 0  # Track consecutive rate limit errors for exponential backoff
+    error_retries = 0  # Track consecutive non-rate-limit errors
 
     while True:
         iteration += 1
@@ -265,11 +320,17 @@ async def run_autonomous_agent(
 
         # Handle status
         if status == "continue":
+            # Reset retry counters on success
+            rate_limit_retries = 0
+            error_retries = 0
+
             delay_seconds = AUTO_CONTINUE_DELAY_SECONDS
             target_time_str = None
 
-            if "limit reached" in response.lower():
-                print("Claude Agent SDK indicated limit reached.")
+            # Check for rate limit indicators in response text
+            response_lower = response.lower()
+            if any(pattern in response_lower for pattern in RATE_LIMIT_PATTERNS):
+                print("Claude Agent SDK indicated rate limit reached.")
 
                 # Try to parse reset time from response
                 match = re.search(
@@ -342,11 +403,24 @@ async def run_autonomous_agent(
 
             await asyncio.sleep(delay_seconds)
 
+        elif status == "rate_limit":
+            # Smart rate limit handling with exponential backoff
+            if response != "unknown":
+                delay_seconds = int(response)
+                print(f"\nRate limit hit. Waiting {delay_seconds} seconds before retry...")
+            else:
+                # Use exponential backoff when retry-after unknown
+                delay_seconds = min(60 * (2 ** rate_limit_retries), 3600)  # Max 1 hour
+                rate_limit_retries += 1
+                print(f"\nRate limit hit. Backoff wait: {delay_seconds} seconds (attempt #{rate_limit_retries})...")
+
+            await asyncio.sleep(delay_seconds)
+
         elif status == "error":
             logger.warning("Session encountered an error, will retry")
             print("\nSession encountered an error")
-            print("Will retry with a fresh session...")
-            await asyncio.sleep(AUTO_CONTINUE_DELAY_SECONDS)
+            print(f"Will retry in {delay_seconds}s (attempt #{error_retries})...")
+            await asyncio.sleep(delay_seconds)
 
         # Small delay between sessions
         if max_iterations is None or iteration < max_iterations:
