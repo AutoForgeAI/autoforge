@@ -169,8 +169,11 @@ Steps:
 Steps:
 1. Create unique test data via API (e.g., POST /api/items with name "RESTART_TEST_12345")
 2. Verify data appears in API response (GET /api/items)
-3. STOP the server completely: pkill -f "node" && sleep 5
-4. Verify server is stopped: pgrep -f "node" returns nothing
+3. STOP the server completely (kill by port to avoid killing unrelated Node processes):
+   - Unix/macOS: lsof -ti :$PORT | xargs kill -9 2>/dev/null || true && sleep 5
+   - Windows: FOR /F "tokens=5" %a IN ('netstat -aon ^| find ":$PORT"') DO taskkill /F /PID %a 2>nul
+   - Note: Replace $PORT with actual port (e.g., 3000)
+4. Verify server is stopped: lsof -ti :$PORT returns nothing (or netstat on Windows)
 5. RESTART the server: ./init.sh & sleep 15
 6. Query API again: GET /api/items
 7. Verify "RESTART_TEST_12345" still exists
