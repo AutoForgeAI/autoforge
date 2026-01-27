@@ -7,6 +7,7 @@ Loads settings from environment variables and .env files.
 """
 
 from typing import Optional
+from urllib.parse import urlparse
 
 from pydantic import Field
 from pydantic_settings import BaseSettings, SettingsConfigDict
@@ -119,11 +120,10 @@ class AutocoderConfig(BaseSettings):
     @property
     def is_using_ollama(self) -> bool:
         """Check if using Ollama local models."""
-        return (
-            self.anthropic_base_url is not None and
-            "localhost" in self.anthropic_base_url and
-            self.anthropic_auth_token == "ollama"
-        )
+        if not self.anthropic_base_url or self.anthropic_auth_token != "ollama":
+            return False
+        host = urlparse(self.anthropic_base_url).hostname or ""
+        return host in {"localhost", "127.0.0.1", "::1"}
 
 
 # Global config instance (lazy loaded)
