@@ -3,12 +3,14 @@ name: PR Check
 on:
   pull_request:
     branches: [main]
+  push:
+    branches: [main]
 
 permissions:
   contents: read
 
 concurrency:
-  group: pr-check-${{ github.event.pull_request.head.repo.full_name }}-${{ github.event.pull_request.number }}
+  group: pr-check-${{ github.event.pull_request?.head.repo.full_name || github.repository }}-${{ github.event.pull_request?.number || github.run_number }}
   cancel-in-progress: true
 
 jobs:
@@ -69,3 +71,5 @@ jobs:
         run: npm run lint
       - name: Type check & Build
         run: npm run build
+      - name: UI smoke tests
+        run: npm run test:smoke

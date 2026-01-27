@@ -1,6 +1,6 @@
-import { useEffect, useState } from 'react'
-import { GitBranch, Loader2 } from 'lucide-react'
-import { useCloneProjectRepository } from '../hooks/useProjects'
+import { useEffect, useState, type FormEvent } from "react";
+import { GitBranch, Loader2 } from "lucide-react";
+import { useCloneProjectRepository } from "../hooks/useProjects";
 import {
   Dialog,
   DialogContent,
@@ -8,71 +8,82 @@ import {
   DialogFooter,
   DialogHeader,
   DialogTitle,
-} from '@/components/ui/dialog'
-import { Button } from '@/components/ui/button'
-import { Input } from '@/components/ui/input'
-import { Label } from '@/components/ui/label'
-import { Alert, AlertDescription } from '@/components/ui/alert'
+} from "@/components/ui/dialog";
+import { Button } from "@/components/ui/button";
+import { Input } from "@/components/ui/input";
+import { Label } from "@/components/ui/label";
+import { Alert, AlertDescription } from "@/components/ui/alert";
 
 interface CloneRepoModalProps {
-  isOpen: boolean
-  onClose: () => void
-  projectName: string | null
+  isOpen: boolean;
+  onClose: () => void;
+  projectName: string | null;
 }
 
 export function CloneRepoModal({ isOpen, onClose, projectName }: CloneRepoModalProps) {
-  const cloneRepo = useCloneProjectRepository(projectName)
-  const [repoUrl, setRepoUrl] = useState('')
-  const [targetDir, setTargetDir] = useState('')
-  const [error, setError] = useState<string | null>(null)
-  const [successMessage, setSuccessMessage] = useState<string | null>(null)
+  const cloneRepo = useCloneProjectRepository(projectName);
+  const [repoUrl, setRepoUrl] = useState("");
+  const [targetDir, setTargetDir] = useState("");
+  const [error, setError] = useState<string | null>(null);
+  const [successMessage, setSuccessMessage] = useState<string | null>(null);
 
   useEffect(() => {
     if (!isOpen) {
-      setRepoUrl('')
-      setTargetDir('')
-      setError(null)
-      setSuccessMessage(null)
+      setRepoUrl("");
+      setTargetDir("");
+      setError(null);
+      setSuccessMessage(null);
     }
-  }, [isOpen])
+  }, [isOpen]);
 
-  if (!isOpen) return null
-
-  const handleClose = () => {
-    if (cloneRepo.isPending) return
-    onClose()
+  if (!isOpen) {
+    return null;
   }
 
-  const handleSubmit = async (e: React.FormEvent) => {
-    e.preventDefault()
-    setError(null)
-    setSuccessMessage(null)
+  const handleClose = () => {
+    if (cloneRepo.isPending) {
+      return;
+    }
+    onClose();
+  };
+
+  const handleSubmit = async (e: FormEvent<HTMLFormElement>) => {
+    e.preventDefault();
+    setError(null);
+    setSuccessMessage(null);
 
     if (!projectName) {
-      setError('Select a project first')
-      return
+      setError("Select a project first");
+      return;
     }
 
-    const trimmedUrl = repoUrl.trim()
+    const trimmedUrl = repoUrl.trim();
     if (!trimmedUrl) {
-      setError('Repository URL is required')
-      return
+      setError("Repository URL is required");
+      return;
     }
 
     try {
       const result = await cloneRepo.mutateAsync({
         repoUrl: trimmedUrl,
         targetDir: targetDir.trim() || undefined,
-      })
-      setSuccessMessage(result.message)
+      });
+      setSuccessMessage(result.message);
     } catch (err) {
-      const message = err instanceof Error ? err.message : 'Failed to clone repository'
-      setError(message)
+      const message = err instanceof Error ? err.message : "Failed to clone repository";
+      setError(message);
     }
-  }
+  };
 
   return (
-    <Dialog open={isOpen} onOpenChange={(open) => !open && handleClose()}>
+    <Dialog
+      open={isOpen}
+      onOpenChange={(open) => {
+        if (!open) {
+          handleClose();
+        }
+      }}
+    >
       <DialogContent className="sm:max-w-[520px]">
         <DialogHeader>
           <DialogTitle className="flex items-center gap-2">
@@ -80,7 +91,8 @@ export function CloneRepoModal({ isOpen, onClose, projectName }: CloneRepoModalP
             Clone Repository
           </DialogTitle>
           <DialogDescription>
-            Clone a git repository into the selected project{projectName ? `: ${projectName}` : ''}.
+            Clone a git repository into the selected project
+            {projectName ? `: ${projectName}` : ""}.
           </DialogDescription>
         </DialogHeader>
 
@@ -91,7 +103,7 @@ export function CloneRepoModal({ isOpen, onClose, projectName }: CloneRepoModalP
               id="repo-url"
               placeholder="https://github.com/owner/repo.git"
               value={repoUrl}
-              onChange={(e) => setRepoUrl(e.target.value)}
+              onChange={(event) => setRepoUrl(event.target.value)}
               disabled={cloneRepo.isPending}
               autoFocus
             />
@@ -103,7 +115,7 @@ export function CloneRepoModal({ isOpen, onClose, projectName }: CloneRepoModalP
               id="target-dir"
               placeholder="repo-name"
               value={targetDir}
-              onChange={(e) => setTargetDir(e.target.value)}
+              onChange={(event) => setTargetDir(event.target.value)}
               disabled={cloneRepo.isPending}
             />
             <p className="text-xs text-muted-foreground">
@@ -134,12 +146,12 @@ export function CloneRepoModal({ isOpen, onClose, projectName }: CloneRepoModalP
                   Cloning...
                 </span>
               ) : (
-                'Clone'
+                "Clone"
               )}
             </Button>
           </DialogFooter>
         </form>
       </DialogContent>
     </Dialog>
-  )
+  );
 }
