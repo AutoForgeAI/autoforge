@@ -74,6 +74,9 @@ FEATURE_MCP_TOOLS = [
     "mcp__features__feature_create",
     "mcp__features__feature_create_bulk",
     "mcp__features__feature_get_stats",
+    "mcp__features__feature_get_next",
+    "mcp__features__feature_add_dependency",
+    "mcp__features__feature_remove_dependency",
 ]
 
 
