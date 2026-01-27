@@ -54,11 +54,11 @@ Guidelines
 - [x] Traefik + DuckDNS + Let’s Encrypt one-click deploy script
 - [ ] Blue/green toggle via Traefik services
 - [ ] Backups for `~/.autocoder` volume
-- [ ] RUNBOOK.md for common ops
+- [x] RUNBOOK.md for common ops
 
 ## Phase 8 — Documentation & Onboarding
 - [ ] “Run locally in 5 minutes” doc/script
-- [ ] Config matrix for all env vars (Claude, Gemini, DuckDNS, Traefik, TLS)
+- [x] Config matrix for all env vars (Claude, Gemini, DuckDNS, Traefik, TLS)
 - [ ] Architecture overview diagram
 
 ## Phase 8 — Documentation & Onboarding
