@@ -212,7 +212,7 @@ class ExpandChatSession:
         }
         mcp_config_file = self.project_dir / f".claude_mcp_config.expand.{uuid.uuid4().hex}.json"
         self._mcp_config_file = mcp_config_file
-        with open(mcp_config_file, "w") as f:
+        with open(mcp_config_file, "w", encoding="utf-8") as f:
             json.dump(mcp_config, f, indent=2)
         logger.info(f"Wrote MCP config to {mcp_config_file}")
 
