@@ -208,8 +208,9 @@ class ParallelOrchestrator:
         self._lock = threading.Lock()
         # Coding agents: feature_id -> process
         self.running_coding_agents: dict[int, subprocess.Popen] = {}
-        # Testing agents: feature_id -> process (feature being tested)
-        self.running_testing_agents: dict[int, subprocess.Popen] = {}
+        # Testing agents: agent_id (pid) -> (feature_id, process)
+        # Using pid as key allows multiple agents to test the same feature
+        self.running_testing_agents: dict[int, tuple[int, subprocess.Popen] | None] = {}
         # Legacy alias for backward compatibility
         self.running_agents = self.running_coding_agents
         self.abort_events: dict[int, threading.Event] = {}
@@ -669,12 +670,12 @@ class ParallelOrchestrator:
             logger.error(f"[TESTING] FAILED to spawn testing agent: {e}")
             return False, f"Failed to start testing agent: {e}"
 
-        # Register process with feature ID, replacing placeholder if provided
+        # Register process with pid as key (allows multiple agents for same feature)
         with self._lock:
             if placeholder_key is not None:
                 # Remove placeholder and add real entry
                 self.running_testing_agents.pop(placeholder_key, None)
-            self.running_testing_agents[feature_id] = proc
+            self.running_testing_agents[proc.pid] = (feature_id, proc)
             testing_count = len(self.running_testing_agents)
 
         # Start output reader thread with feature ID (same as coding agents)
@@ -855,14 +856,14 @@ class ParallelOrchestrator:
 
         if agent_type == "testing":
             with self._lock:
-                # Remove from dict by finding the feature_id for this proc
-                # Also clean up any placeholders (negative keys)
+                # Remove from dict by finding the agent_id for this proc
+                # Also clean up any placeholders (None values)
                 keys_to_remove = []
-                for fid, p in list(self.running_testing_agents.items()):
-                    if p is proc:
-                        keys_to_remove.append(fid)
-                    elif p is None:  # Orphaned placeholder
-                        keys_to_remove.append(fid)
+                for agent_id, entry in list(self.running_testing_agents.items()):
+                    if entry is None:  # Orphaned placeholder
+                        keys_to_remove.append(agent_id)
+                    elif entry[1] is proc:  # entry is (feature_id, proc)
+                        keys_to_remove.append(agent_id)
                 for key in keys_to_remove:
                     del self.running_testing_agents[key]
 
@@ -962,7 +963,10 @@ class ParallelOrchestrator:
         with self._lock:
             testing_items = list(self.running_testing_agents.items())
 
-        for feature_id, proc in testing_items:
+        for agent_id, entry in testing_items:
+            if entry is None:  # Skip placeholders
+                continue
+            feature_id, proc = entry
             result = kill_process_tree(proc, timeout=5.0)
             logger.info(
                 f"[STOP] Killed testing agent for feature #{feature_id} (PID {proc.pid}) | status={result.status} "
