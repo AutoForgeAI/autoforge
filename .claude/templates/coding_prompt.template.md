@@ -193,8 +193,8 @@ grep -r "TODO.*real\|TODO.*database\|TODO.*API\|STUB\|MOCK" --include="*.ts" --i
 # 4. Development-only conditionals
 grep -r "isDevelopment\|isDev\|process\.env\.NODE_ENV.*development" --include="*.ts" --include="*.tsx" --include="*.js" src/
 
-# 5. In-memory collections as data stores (check lib/store/data directories)
-grep -r "new Map\(\)\|new Set\(\)" --include="*.ts" --include="*.tsx" --include="*.js" src/lib/ src/store/ src/data/ 2>/dev/null
+# 5. In-memory collections as data stores
+grep -r "new Map\(\)\|new Set\(\)" --include="*.ts" --include="*.tsx" --include="*.js" src/ 2>/dev/null
 ```
 
 **Rule:** If ANY grep returns results in production code → investigate → FIX before marking passing.
@@ -217,14 +217,20 @@ grep -r "new Map\(\)\|new Set\(\)" --include="*.ts" --include="*.tsx" --include=
 
 3. **STOP the server completely:**
    ```bash
-   # Send SIGTERM first, then SIGKILL if needed
-   pkill -f "node" || pkill -f "npm" || pkill -f "next"
+   # Kill by port (safer - only kills the dev server, not VS Code/Claude Code/etc.)
+   # Unix/macOS:
+   lsof -ti :${PORT:-3000} | xargs kill -TERM 2>/dev/null || true
    sleep 3
-   pkill -9 -f "node" 2>/dev/null || true
+   lsof -ti :${PORT:-3000} | xargs kill -9 2>/dev/null || true
    sleep 2
+
+   # Windows alternative (use if lsof not available):
+   # netstat -ano | findstr :${PORT:-3000} | findstr LISTENING
+   # taskkill /F /PID <pid_from_above> 2>nul
+
    # Verify server is stopped
-   if pgrep -f "node" > /dev/null; then
-     echo "ERROR: Server still running!"
+   if lsof -ti :${PORT:-3000} > /dev/null 2>&1; then
+     echo "ERROR: Server still running on port ${PORT:-3000}!"
      exit 1
    fi
    ```
@@ -234,12 +240,15 @@ grep -r "new Map\(\)\|new Set\(\)" --include="*.ts" --include="*.tsx" --include=
    ./init.sh &
    sleep 15  # Allow server to fully start
    # Verify server is responding
-   curl -f http://localhost:3000/api/health || curl -f http://localhost:3000 || echo "WARNING: Health check failed"
+   if ! curl -f http://localhost:${PORT:-3000}/api/health && ! curl -f http://localhost:${PORT:-3000}; then
+     echo "ERROR: Server failed to start after restart"
+     exit 1
+   fi
    ```
 
 5. **Query for test data - it MUST still exist**
    - Via UI: Navigate to data location, verify data appears
-   - Via API: `curl http://localhost:PORT/api/items` - verify data in response
+   - Via API: `curl http://localhost:${PORT:-3000}/api/items` - verify data in response
 
 6. **If data is GONE:** Implementation uses in-memory storage → CRITICAL FAIL
    - Run all grep commands from STEP 5.6 to identify the mock pattern

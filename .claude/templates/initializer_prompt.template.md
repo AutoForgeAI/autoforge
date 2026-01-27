@@ -155,8 +155,11 @@ Steps:
 Steps:
 1. Create unique test data via API (e.g., POST /api/items with name "RESTART_TEST_12345")
 2. Verify data appears in API response (GET /api/items)
-3. STOP the server completely: pkill -f "node" && sleep 5
-4. Verify server is stopped: pgrep -f "node" returns nothing
+3. STOP the server completely (kill by port to avoid killing unrelated Node processes):
+   - Unix/macOS: lsof -ti :$PORT | xargs kill -9 2>/dev/null || true && sleep 5
+   - Windows: FOR /F "tokens=5" %a IN ('netstat -aon ^| find ":$PORT"') DO taskkill /F /PID %a 2>nul
+   - Note: Replace $PORT with actual port (e.g., 3000)
+4. Verify server is stopped: lsof -ti :$PORT returns nothing (or netstat on Windows)
 5. RESTART the server: ./init.sh & sleep 15
 6. Query API again: GET /api/items
 7. Verify "RESTART_TEST_12345" still exists
@@ -172,7 +175,7 @@ Steps:
 3. Run: grep -r "mockData\|testData\|fakeData\|sampleData\|dummyData" --include="*.ts" --include="*.tsx" --include="*.js" src/
 4. Run: grep -r "TODO.*real\|TODO.*database\|TODO.*API\|STUB\|MOCK" --include="*.ts" --include="*.tsx" --include="*.js" src/
 5. Run: grep -r "isDevelopment\|isDev\|process\.env\.NODE_ENV.*development" --include="*.ts" --include="*.tsx" --include="*.js" src/
-6. Run: grep -r "new Map\(\)\|new Set\(\)" --include="*.ts" --include="*.tsx" --include="*.js" src/lib/ src/store/ src/data/ 2>/dev/null
+6. Run: grep -r "new Map\(\)\|new Set\(\)" --include="*.ts" --include="*.tsx" --include="*.js" src/ 2>/dev/null
 7. Run: grep -E "json-server|miragejs|msw" package.json
 8. ALL grep commands must return empty (exit code 1)
 9. If any returns results → investigate and fix before passing
