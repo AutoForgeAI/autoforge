@@ -147,7 +147,7 @@ Create WIDE dependency graphs, not linear chains:
 ### Infrastructure Feature Descriptions
 
 **Feature 0 - Database connection established:**
-```
+```text
 Steps:
 1. Start the development server
 2. Check server logs for database connection message
@@ -156,7 +156,7 @@ Steps:
 ```
 
 **Feature 1 - Database schema applied correctly:**
-```
+```text
 Steps:
 1. Connect to database directly (sqlite3, psql, etc.)
 2. List all tables in the database
@@ -165,7 +165,7 @@ Steps:
 ```
 
 **Feature 2 - Data persists across server restart (CRITICAL):**
-```
+```text
 Steps:
 1. Create unique test data via API (e.g., POST /api/items with name "RESTART_TEST_12345")
 2. Verify data appears in API response (GET /api/items)
@@ -182,7 +182,7 @@ Steps:
 ```
 
 **Feature 3 - No mock data patterns in codebase:**
-```
+```text
 Steps:
 1. Run: grep -r "globalThis\." --include="*.ts" --include="*.tsx" --include="*.js" src/
 2. Run: grep -r "dev-store\|devStore\|DevStore\|mock-db\|mockDb" --include="*.ts" --include="*.tsx" --include="*.js" src/
@@ -196,7 +196,7 @@ Steps:
 ```
 
 **Feature 4 - Backend API queries real database:**
-```
+```text
 Steps:
 1. Start server with verbose logging
 2. Make API call (e.g., GET /api/items)
