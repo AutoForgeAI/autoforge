@@ -8,7 +8,6 @@ from rate_limit_utils.py (shared module).
 import unittest
 
 from rate_limit_utils import (
-    RATE_LIMIT_PATTERNS,
     is_rate_limit_error,
     parse_retry_after,
 )
