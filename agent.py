@@ -35,62 +35,14 @@ from prompts import (
     get_single_feature_prompt,
     get_testing_prompt,
 )
+from rate_limit_utils import (
+    RATE_LIMIT_PATTERNS,
+    is_rate_limit_error,
+    parse_retry_after,
+)
 
 # Configuration
 AUTO_CONTINUE_DELAY_SECONDS = 3
-
-# Rate limit detection patterns (used in both exception messages and response text)
-RATE_LIMIT_PATTERNS = [
-    "limit reached",
-    "rate limit",
-    "rate_limit",
-    "too many requests",
-    "quota exceeded",
-    "please wait",
-    "try again later",
-    "429",
-    "overloaded",
-]
-
-
-def parse_retry_after(error_message: str) -> Optional[int]:
-    """
-    Extract retry-after seconds from various error message formats.
-
-    Returns seconds to wait, or None if not parseable.
-    """
-    # Common patterns:
-    # "retry after 60 seconds"
-    # "Retry-After: 120"
-    # "try again in 5 seconds"
-    # "30 seconds remaining"
-
-    patterns = [
-        r"retry.?after[:\s]+(\d+)\s*(?:seconds?)?",
-        r"try again in\s+(\d+)\s*(?:seconds?|s\b)",
-        r"(\d+)\s*seconds?\s*(?:remaining|left|until)",
-    ]
-
-    for pattern in patterns:
-        match = re.search(pattern, error_message, re.IGNORECASE)
-        if match:
-            return int(match.group(1))
-
-    return None
-
-
-def is_rate_limit_error(error_message: str) -> bool:
-    """
-    Detect if an error message indicates a rate limit.
-
-    Args:
-        error_message: The error message to check
-
-    Returns:
-        True if the error appears to be rate-limit related
-    """
-    error_lower = error_message.lower()
-    return any(pattern in error_lower for pattern in RATE_LIMIT_PATTERNS)
 
 
 async def run_agent_session(
@@ -208,6 +160,28 @@ async def run_autonomous_agent(
 
     # Create project directory
     project_dir.mkdir(parents=True, exist_ok=True)
+
+    # IMPORTANT: Do NOT clear stuck features in parallel mode!
+    # The orchestrator manages feature claiming atomically.
+    # Clearing here causes race conditions where features are marked in_progress
+    # by the orchestrator but immediately cleared by the agent subprocess on startup.
+    #
+    # For single-agent mode or manual runs, clearing is still safe because
+    # there's only one agent at a time and it happens before claiming any features.
+    #
+    # Only clear if we're NOT in a parallel orchestrator context
+    # (detected by checking if this agent is a subprocess spawned by orchestrator)
+    import psutil
+    try:
+        parent_process = psutil.Process().parent()
+        parent_name = parent_process.name() if parent_process else ""
+
+        # Only clear if parent is NOT python (i.e., we're running manually, not from orchestrator)
+        if "python" not in parent_name.lower():
+            clear_stuck_features(project_dir)
+    except Exception:
+        # If parent process check fails, err on the safe side and clear
+        clear_stuck_features(project_dir)
 
     # Determine agent type if not explicitly set
     if agent_type is None:

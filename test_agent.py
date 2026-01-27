@@ -1,56 +1,17 @@
 """
-Unit tests for agent.py rate limit handling functions.
+Unit tests for rate limit handling functions.
 
 Tests the parse_retry_after() and is_rate_limit_error() functions
-added for improved rate limit handling (Issue #41).
+from rate_limit_utils.py (shared module).
 """
 
-import re
 import unittest
-from typing import Optional
 
-# Copy the constants and functions from agent.py for isolated testing
-# (Avoids dependency on claude_agent_sdk which may not be installed)
-
-RATE_LIMIT_PATTERNS = [
-    "limit reached",
-    "rate limit",
-    "rate_limit",
-    "too many requests",
-    "quota exceeded",
-    "please wait",
-    "try again later",
-    "429",
-    "overloaded",
-]
-
-
-def parse_retry_after(error_message: str) -> Optional[int]:
-    """
-    Extract retry-after seconds from various error message formats.
-
-    Returns seconds to wait, or None if not parseable.
-    """
-    patterns = [
-        r"retry.?after[:\s]+(\d+)\s*(?:seconds?)?",
-        r"try again in\s+(\d+)\s*(?:seconds?|s\b)",
-        r"(\d+)\s*seconds?\s*(?:remaining|left|until)",
-    ]
-
-    for pattern in patterns:
-        match = re.search(pattern, error_message, re.IGNORECASE)
-        if match:
-            return int(match.group(1))
-
-    return None
-
-
-def is_rate_limit_error(error_message: str) -> bool:
-    """
-    Detect if an error message indicates a rate limit.
-    """
-    error_lower = error_message.lower()
-    return any(pattern in error_lower for pattern in RATE_LIMIT_PATTERNS)
+from rate_limit_utils import (
+    RATE_LIMIT_PATTERNS,
+    is_rate_limit_error,
+    parse_retry_after,
+)
 
 
 class TestParseRetryAfter(unittest.TestCase):
