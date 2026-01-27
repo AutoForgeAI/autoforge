@@ -12,6 +12,7 @@ import logging
 import os
 import re
 import shutil
+import sys
 import threading
 import uuid
 from datetime import datetime
@@ -152,6 +153,12 @@ class ExpandChatSession:
                 "allow": [
                     "Read(./**)",
                     "Glob(./**)",
+                    # Auto-approve Feature MCP tools
+                    "mcp__features__feature_create_bulk",
+                    "mcp__features__feature_get_stats",
+                    "mcp__features__feature_get_next",
+                    "mcp__features__feature_add_dependency",
+                    "mcp__features__feature_remove_dependency",
                 ],
             },
         }
@@ -171,6 +178,18 @@ class ExpandChatSession:
         # This allows using alternative APIs (e.g., GLM via z.ai) that may not support Claude model names
         model = os.getenv("ANTHROPIC_DEFAULT_OPUS_MODEL", "claude-opus-4-5-20251101")
 
+        # Configure Feature MCP server for tool access
+        mcp_servers = {
+            "features": {
+                "command": sys.executable,
+                "args": ["-m", "mcp_server.feature_mcp"],
+                "env": {
+                    "PROJECT_DIR": str(self.project_dir.resolve()),
+                    "PYTHONPATH": str(Path(__file__).parent.parent.parent.resolve()),
+                },
+            },
+        }
+
         # Create Claude SDK client
         try:
             self.client = ClaudeSDKClient(
@@ -178,9 +197,16 @@ class ExpandChatSession:
                     model=model,
                     cli_path=system_cli,
                     system_prompt=system_prompt,
+                    mcp_servers=mcp_servers,
                     allowed_tools=[
                         "Read",
                         "Glob",
+                        # Feature MCP tools - creation and safe reads only
+                        "mcp__features__feature_create_bulk",
+                        "mcp__features__feature_get_stats",
+                        "mcp__features__feature_get_next",
+                        "mcp__features__feature_add_dependency",
+                        "mcp__features__feature_remove_dependency",
                     ],
                     permission_mode="acceptEdits",
                     max_turns=100,
@@ -294,6 +320,9 @@ class ExpandChatSession:
         # Accumulate full response to detect feature blocks
         full_response = ""
 
+        # Track whether MCP tool succeeded (to skip XML parsing fallback)
+        mcp_tool_succeeded = False
+
         # Stream the response
         async for msg in self.client.receive_response():
             msg_type = type(msg).__name__
@@ -314,53 +343,93 @@ class ExpandChatSession:
                                 "timestamp": datetime.now().isoformat()
                             })
 
-        # Check for feature creation blocks in full response (handle multiple blocks)
-        features_matches = re.findall(
-            r'<features_to_create>\s*(\[[\s\S]*?\])\s*</features_to_create>',
-            full_response
-        )
+                    # Detect successful feature_create_bulk tool calls
+                    elif block_type == "ToolResult":
+                        tool_name = getattr(block, "tool_name", "")
+                        if "feature_create_bulk" in tool_name:
+                            mcp_tool_succeeded = True
+                            logger.info("Detected successful feature_create_bulk MCP tool call")
 
-        if features_matches:
-            # Collect all features from all blocks, deduplicating by name
-            all_features: list[dict] = []
-            seen_names: set[str] = set()
+                            # Extract created features from tool result
+                            tool_content = getattr(block, "content", [])
+                            if tool_content:
+                                for content_block in tool_content:
+                                    if hasattr(content_block, "text"):
+                                        try:
+                                            result_data = json.loads(content_block.text)
+                                            created_features = result_data.get("created_features", [])
 
-            for features_json in features_matches:
-                try:
-                    features_data = json.loads(features_json)
+                                            if created_features:
+                                                # Safely extract valid IDs (filter features that have an "id" key)
+                                                valid_ids = [f["id"] for f in created_features if "id" in f]
 
-                    if features_data and isinstance(features_data, list):
-                        for feature in features_data:
-                            name = feature.get("name", "")
-                            if name and name not in seen_names:
-                                seen_names.add(name)
-                                all_features.append(feature)
-                except json.JSONDecodeError as e:
-                    logger.error(f"Failed to parse features JSON block: {e}")
-                    # Continue processing other blocks
+                                                # Update counters based on features with valid IDs
+                                                self.features_created += len(valid_ids)
+                                                self.created_feature_ids.extend(valid_ids)
 
-            if all_features:
-                try:
-                    # Create all deduplicated features
-                    created = await self._create_features_bulk(all_features)
+                                                yield {
+                                                    "type": "features_created",
+                                                    "count": len(valid_ids),
+                                                    "features": created_features,
+                                                    "source": "mcp"  # Tag source for debugging
+                                                }
 
-                    if created:
-                        self.features_created += len(created)
-                        self.created_feature_ids.extend([f["id"] for f in created])
+                                                logger.info(f"Created {len(valid_ids)} features for {self.project_name} (via MCP)")
+                                        except (json.JSONDecodeError, AttributeError, KeyError) as e:
+                                            logger.warning(f"Failed to parse MCP tool result: {e}")
 
+        # Only parse XML if MCP tool wasn't used (fallback mechanism)
+        if not mcp_tool_succeeded:
+            # Check for feature creation blocks in full response (handle multiple blocks)
+            features_matches = re.findall(
+                r'<features_to_create>\s*(\[[\s\S]*?\])\s*</features_to_create>',
+                full_response
+            )
+
+            if features_matches:
+                # Collect all features from all blocks, deduplicating by name
+                all_features: list[dict] = []
+                seen_names: set[str] = set()
+
+                for features_json in features_matches:
+                    try:
+                        features_data = json.loads(features_json)
+
+                        if features_data and isinstance(features_data, list):
+                            for feature in features_data:
+                                name = feature.get("name", "")
+                                if name and name not in seen_names:
+                                    seen_names.add(name)
+                                    all_features.append(feature)
+                    except json.JSONDecodeError as e:
+                        logger.error(f"Failed to parse features JSON block: {e}")
+                        # Continue processing other blocks
+
+                if all_features:
+                    try:
+                        # Create all deduplicated features
+                        created = await self._create_features_bulk(all_features)
+
+                        if created:
+                            self.features_created += len(created)
+                            self.created_feature_ids.extend([f["id"] for f in created])
+
+                            yield {
+                                "type": "features_created",
+                                "count": len(created),
+                                "features": created,
+                                "source": "xml_parsing"  # Tag source for debugging
+                            }
+
+                            logger.info(f"Created {len(created)} features for {self.project_name} (via XML parsing)")
+                    except Exception:
+                        logger.exception("Failed to create features")
                         yield {
-                            "type": "features_created",
-                            "count": len(created),
-                            "features": created
+                            "type": "error",
+                            "content": "Failed to create features"
                         }
-
-                        logger.info(f"Created {len(created)} features for {self.project_name}")
-                except Exception:
-                    logger.exception("Failed to create features")
-                    yield {
-                        "type": "error",
-                        "content": "Failed to create features"
-                    }
+        else:
+            logger.info(f"Skipping XML parsing for {self.project_name} (MCP tool succeeded)")
 
     async def _create_features_bulk(self, features: list[dict]) -> list[dict]:
         """
