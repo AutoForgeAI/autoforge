@@ -35,6 +35,13 @@ You need one of the following:
 - **Claude Pro/Max Subscription** - Use `claude login` to authenticate (recommended)
 - **Anthropic API Key** - Pay-per-use from https://console.anthropic.com/
 
+### Optional: Gemini API (assistant chat only)
+- `GEMINI_API_KEY` (required)
+- `GEMINI_MODEL` (optional, default `gemini-1.5-flash`)
+- `GEMINI_BASE_URL` (optional, default `https://generativelanguage.googleapis.com/v1beta/openai`)
+
+Notes: Gemini is used for assistant chat when configured; coding agents still run on Claude/Anthropic (tools are not available in Gemini mode).
+
 ---
 
 ## Quick Start

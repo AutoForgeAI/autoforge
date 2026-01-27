@@ -204,7 +204,11 @@ async def setup_status():
 
     # If GLM mode is configured via .env, we have alternative credentials
     glm_configured = bool(os.getenv("ANTHROPIC_BASE_URL") and os.getenv("ANTHROPIC_AUTH_TOKEN"))
-    credentials = has_claude_config or glm_configured
+
+    # Gemini configuration (OpenAI-compatible Gemini API)
+    gemini_configured = bool(os.getenv("GEMINI_API_KEY"))
+
+    credentials = has_claude_config or glm_configured or gemini_configured
 
     # Check for Node.js and npm
     node = shutil.which("node") is not None
@@ -215,6 +219,7 @@ async def setup_status():
         credentials=credentials,
         node=node,
         npm=npm,
+        gemini=gemini_configured,
     )
 
 
