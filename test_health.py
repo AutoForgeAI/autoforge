@@ -1,7 +1,6 @@
 """Lightweight tests for health and readiness endpoints."""
 
 from fastapi.testclient import TestClient
-
 from server.main import app
 
 
