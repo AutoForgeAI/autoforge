@@ -326,7 +326,7 @@ def verify_quality(
         if not type_result["passed"]:
             all_passed = False
 
-    if run_custom:
+    if do_custom:
         custom_result = run_custom_script(
             project_dir,
             custom_script_path,

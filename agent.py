@@ -45,7 +45,6 @@ from rate_limit_utils import (
     is_rate_limit_error,
     parse_retry_after,
 )
-from structured_logging import get_logger
 
 # Configuration
 AUTO_CONTINUE_DELAY_SECONDS = 3
