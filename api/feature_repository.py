@@ -79,100 +79,100 @@ def _commit_with_retry(session: Session, max_retries: int = MAX_COMMIT_RETRIES) 
 
 class FeatureRepository:
     """Repository for Feature CRUD operations.
-    
+
     Provides a centralized interface for all Feature database operations,
     reducing code duplication and ensuring consistent query patterns.
-    
+
     Usage:
         repo = FeatureRepository(session)
         feature = repo.get_by_id(1)
         ready_features = repo.get_ready()
     """
-    
+
     def __init__(self, session: Session):
         """Initialize repository with a database session."""
         self.session = session
-    
+
     # ========================================================================
     # Basic CRUD Operations
     # ========================================================================
-    
+
     def get_by_id(self, feature_id: int) -> Optional[Feature]:
         """Get a feature by its ID.
-        
+
         Args:
             feature_id: The feature ID to look up.
-            
+
         Returns:
             The Feature object or None if not found.
         """
         return self.session.query(Feature).filter(Feature.id == feature_id).first()
-    
+
     def get_all(self) -> list[Feature]:
         """Get all features.
-        
+
         Returns:
             List of all Feature objects.
         """
         return self.session.query(Feature).all()
-    
+
     def get_all_ordered_by_priority(self) -> list[Feature]:
         """Get all features ordered by priority (lowest first).
-        
+
         Returns:
             List of Feature objects ordered by priority.
         """
         return self.session.query(Feature).order_by(Feature.priority).all()
-    
+
     def count(self) -> int:
         """Get total count of features.
-        
+
         Returns:
             Total number of features.
         """
         return self.session.query(Feature).count()
-    
+
     # ========================================================================
     # Status-Based Queries
     # ========================================================================
-    
+
     def get_passing_ids(self) -> set[int]:
         """Get set of IDs for all passing features.
-        
+
         Returns:
             Set of feature IDs that are passing.
         """
         return {
             f.id for f in self.session.query(Feature.id).filter(Feature.passes == True).all()
         }
-    
+
     def get_passing(self) -> list[Feature]:
         """Get all passing features.
-        
+
         Returns:
             List of Feature objects that are passing.
         """
         return self.session.query(Feature).filter(Feature.passes == True).all()
-    
+
     def get_passing_count(self) -> int:
         """Get count of passing features.
-        
+
         Returns:
             Number of passing features.
         """
         return self.session.query(Feature).filter(Feature.passes == True).count()
-    
+
     def get_in_progress(self) -> list[Feature]:
         """Get all features currently in progress.
-        
+
         Returns:
             List of Feature objects that are in progress.
         """
         return self.session.query(Feature).filter(Feature.in_progress == True).all()
-    
+
     def get_pending(self) -> list[Feature]:
         """Get features that are not passing and not in progress.
-        
+
         Returns:
             List of pending Feature objects.
         """
@@ -180,28 +180,28 @@ class FeatureRepository:
             Feature.passes == False,
             Feature.in_progress == False
         ).all()
-    
+
     def get_non_passing(self) -> list[Feature]:
         """Get all features that are not passing.
-        
+
         Returns:
             List of non-passing Feature objects.
         """
         return self.session.query(Feature).filter(Feature.passes == False).all()
-    
+
     def get_max_priority(self) -> Optional[int]:
         """Get the maximum priority value.
-        
+
         Returns:
             Maximum priority value or None if no features exist.
         """
         feature = self.session.query(Feature).order_by(Feature.priority.desc()).first()
         return feature.priority if feature else None
-    
+
     # ========================================================================
     # Status Updates
     # ========================================================================
-    
+
     def mark_in_progress(self, feature_id: int) -> Optional[Feature]:
         """Mark a feature as in progress.
 
@@ -283,48 +283,48 @@ class FeatureRepository:
             _commit_with_retry(self.session)
             self.session.refresh(feature)
         return feature
-    
+
     # ========================================================================
     # Dependency Queries
     # ========================================================================
-    
+
     def get_ready_features(self) -> list[Feature]:
         """Get features that are ready to implement.
-        
+
         A feature is ready if:
         - Not passing
         - Not in progress
         - All dependencies are passing
-        
+
         Returns:
             List of ready Feature objects.
         """
         passing_ids = self.get_passing_ids()
         candidates = self.get_pending()
-        
+
         ready = []
         for f in candidates:
             deps = f.dependencies or []
             if all(dep_id in passing_ids for dep_id in deps):
                 ready.append(f)
-        
+
         return ready
-    
+
     def get_blocked_features(self) -> list[tuple[Feature, list[int]]]:
         """Get features blocked by unmet dependencies.
-        
+
         Returns:
             List of tuples (feature, blocking_ids) where blocking_ids
             are the IDs of features that are blocking this one.
         """
         passing_ids = self.get_passing_ids()
         candidates = self.get_non_passing()
-        
+
         blocked = []
         for f in candidates:
             deps = f.dependencies or []
             blocking = [d for d in deps if d not in passing_ids]
             if blocking:
                 blocked.append((f, blocking))
-        
+
         return blocked

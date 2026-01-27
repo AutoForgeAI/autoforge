@@ -6,7 +6,6 @@ import re
 
 from fastapi import HTTPException
 
-
 # Compiled regex for project name validation (reused across functions)
 PROJECT_NAME_PATTERN = re.compile(r'^[a-zA-Z0-9_-]{1,50}$')
 

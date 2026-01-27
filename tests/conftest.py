@@ -6,7 +6,6 @@ Central pytest configuration and shared fixtures for all tests.
 Includes async fixtures for testing FastAPI endpoints and async functions.
 """
 
-import os
 import sys
 from pathlib import Path
 from typing import AsyncGenerator, Generator

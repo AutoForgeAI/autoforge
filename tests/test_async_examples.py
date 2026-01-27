@@ -6,9 +6,7 @@ Example tests demonstrating pytest-asyncio usage with the Autocoder codebase.
 These tests verify async functions and FastAPI endpoints work correctly.
 """
 
-import pytest
 from pathlib import Path
-
 
 # =============================================================================
 # Basic Async Tests

@@ -5,9 +5,7 @@ Tests for FeatureRepository and AutocoderConfig
 Unit tests for the repository pattern and configuration classes.
 """
 
-import pytest
 from pathlib import Path
-
 
 # =============================================================================
 # FeatureRepository Tests
@@ -320,7 +318,6 @@ class TestAutocoderConfig:
     def test_default_values(self, monkeypatch, tmp_path):
         """Test that default values are loaded correctly."""
         # Change to a directory without .env file
-        import os
         monkeypatch.chdir(tmp_path)
 
         # Clear any env vars that might interfere

@@ -815,7 +815,7 @@ class ParallelOrchestrator:
         if self._engine is not None:
             self._engine.dispose()
             self._engine, self._session_maker = create_database(self.project_dir)
-            logger.debug(f"[DB] Recreated database connection after agent completion")
+            logger.debug("[DB] Recreated database connection after agent completion")
 
         session = self.get_session()
         try:
