@@ -80,6 +80,7 @@ from api.dependency_resolver import are_dependencies_satisfied, compute_scheduli
 from api.logging_config import log_section, setup_orchestrator_logging
 from progress import has_features
 from server.utils.process_utils import kill_process_tree
+from structured_logging import get_logger
 
 # Root directory of autocoder (where this script and autonomous_agent_demo.py live)
 AUTOCODER_ROOT = Path(__file__).parent.resolve()
@@ -264,6 +265,16 @@ class ParallelOrchestrator:
 
         # Database session for this orchestrator
         self._engine, self._session_maker = create_database(project_dir)
+
+        # Structured logger for persistent logs (saved to {project_dir}/.autocoder/logs.db)
+        # Uses console_output=False since orchestrator already has its own print statements
+        self._logger = get_logger(project_dir, agent_id="orchestrator", console_output=False)
+        self._logger.info(
+            "Orchestrator initialized",
+            max_concurrency=self.max_concurrency,
+            yolo_mode=yolo_mode,
+            testing_agent_ratio=testing_agent_ratio,
+        )
 
     def get_session(self):
         """Get a new database session."""
@@ -638,6 +649,7 @@ class ParallelOrchestrator:
             proc = subprocess.Popen(cmd, **popen_kwargs)
         except Exception as e:
             # Reset in_progress on failure
+            self._logger.error("Spawn coding agent failed", feature_id=feature_id, error=str(e)[:200])
             session = self.get_session()
             try:
                 feature = session.query(Feature).filter(Feature.id == feature_id).first()
@@ -663,6 +675,7 @@ class ParallelOrchestrator:
             self.on_status(feature_id, "running")
 
         print(f"Started coding agent for feature #{feature_id}", flush=True)
+        self._logger.info("Spawned coding agent", feature_id=feature_id, pid=proc.pid)
         return True, f"Started feature {feature_id}"
 
     def _spawn_testing_agent(self, placeholder_key: int | None = None) -> tuple[bool, str]:

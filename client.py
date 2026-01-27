@@ -17,6 +17,7 @@ from claude_agent_sdk.types import HookContext, HookInput, HookMatcher, SyncHook
 from dotenv import load_dotenv
 
 from security import bash_security_hook
+from structured_logging import get_logger
 
 # Module logger
 logger = logging.getLogger(__name__)
@@ -290,6 +291,9 @@ def create_client(
     Note: Authentication is handled by start.bat/start.sh before this runs.
     The Claude SDK auto-detects credentials from the Claude CLI configuration
     """
+    # Initialize logger for client configuration events
+    logger = get_logger(project_dir, agent_id="client", console_output=False)
+
     # Build allowed tools list based on mode
     # In YOLO mode, exclude Playwright tools for faster prototyping
     allowed_tools = [*BUILTIN_TOOLS, *FEATURE_MCP_TOOLS]
@@ -346,6 +350,7 @@ def create_client(
     with open(settings_file, "w") as f:
         json.dump(security_settings, f, indent=2)
 
+    logger.info("Settings file written", file_path=str(settings_file))
     print(f"Created security settings at {settings_file}")
     print("   - Sandbox enabled (OS-level bash isolation)")
     print(f"   - Filesystem restricted to: {project_dir.resolve()}")
@@ -477,6 +482,16 @@ def create_client(
         #     }
         # }
         return SyncHookJSONOutput()
+
+    # Log client creation
+    logger.info(
+        "Client created",
+        model=model,
+        yolo_mode=yolo_mode,
+        agent_id=agent_id,
+        is_alternative_api=is_alternative_api,
+        max_turns=1000,
+    )
 
     return ClaudeSDKClient(
         options=ClaudeAgentOptions(
