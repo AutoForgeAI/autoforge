@@ -6,7 +6,6 @@ API endpoints for managing agent schedules.
 Provides CRUD operations for time-based schedule configuration.
 """
 
-import re
 import sys
 from contextlib import contextmanager
 from datetime import datetime, timedelta, timezone
@@ -26,6 +25,7 @@ from ..schemas import (
     ScheduleResponse,
     ScheduleUpdate,
 )
+from ..utils.validation import validate_project_name
 
 
 def _get_project_path(project_name: str) -> Path:
@@ -42,16 +42,6 @@ router = APIRouter(
     prefix="/api/projects/{project_name}/schedules",
     tags=["schedules"]
 )
-
-
-def validate_project_name(name: str) -> str:
-    """Validate and sanitize project name to prevent path traversal."""
-    if not re.match(r'^[a-zA-Z0-9_-]{1,50}$', name):
-        raise HTTPException(
-            status_code=400,
-            detail="Invalid project name"
-        )
-    return name
 
 
 @contextmanager
