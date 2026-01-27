@@ -37,17 +37,14 @@ export function NewProjectModal({
   onStepChange,
 }: NewProjectModalProps) {
   const [step, setStep] = useState<Step>('choose')
-  const [_projectType, setProjectType] = useState<ProjectType | null>(null)
+  const [, setProjectType] = useState<ProjectType | null>(null)
   const [projectName, setProjectName] = useState('')
   const [projectPath, setProjectPath] = useState<string | null>(null)
-  const [_specMethod, setSpecMethod] = useState<SpecMethod | null>(null)
+  const [, setSpecMethod] = useState<SpecMethod | null>(null)
   const [error, setError] = useState<string | null>(null)
   const [initializerStatus, setInitializerStatus] = useState<InitializerStatus>('idle')
   const [initializerError, setInitializerError] = useState<string | null>(null)
   const [yoloModeSelected, setYoloModeSelected] = useState(false)
-
-  // Suppress unused variable warning - specMethod may be used in future
-  void _specMethod
 
   const createProject = useCreateProject()
 

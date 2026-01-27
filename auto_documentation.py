@@ -309,8 +309,13 @@ class DocumentationGenerator:
         """Extract API endpoints from source files."""
         endpoints = []
 
-        # Check for Express routes
-        for route_file in self.project_dir.glob("**/routes/**/*.{js,ts}"):
+        # Check for Express routes (JS and TS files)
+        from itertools import chain
+        js_ts_routes = chain(
+            self.project_dir.glob("**/routes/**/*.js"),
+            self.project_dir.glob("**/routes/**/*.ts"),
+        )
+        for route_file in js_ts_routes:
             try:
                 content = route_file.read_text()
                 # Match router.get/post/put/delete
