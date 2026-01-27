@@ -206,7 +206,7 @@ FEATURE_MCP_TOOLS = [
     "mcp__features__feature_create_bulk",
     "mcp__features__feature_create",
     "mcp__features__feature_clear_in_progress",
-    "mcp__features__feature_release_testing",  # Release testing claim
+    "mcp__features__feature_verify_quality",  # Run quality checks (lint, type-check)
     # Dependency management
     "mcp__features__feature_add_dependency",
     "mcp__features__feature_remove_dependency",

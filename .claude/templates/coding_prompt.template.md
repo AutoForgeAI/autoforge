@@ -407,6 +407,20 @@ Use Playwright MCP tools (`browser_*`) for UI verification. Key tools: `navigate
 
 Test like a human user with mouse and keyboard. Use `browser_console_messages` to detect errors. Don't bypass UI with JavaScript evaluation.
 
+### Browser File Upload Pattern
+
+When uploading files via browser automation:
+1. First click the file input element to open the file chooser dialog
+2. Wait for the modal dialog to appear (use `browser_wait_for` if needed)
+3. Then call `browser_file_upload` with the file path
+
+**WRONG:** Call `browser_file_upload` immediately without opening the dialog first
+**RIGHT:** Click file input → wait for dialog → call `browser_file_upload`
+
+### Unavailable Browser Tools
+
+- `browser_run_code` - DO NOT USE. This tool causes the Playwright MCP server to crash. Use `browser_evaluate` instead for executing JavaScript in the browser context.
+
 ---
 
 ## FEATURE TOOL USAGE RULES (CRITICAL - DO NOT VIOLATE)
