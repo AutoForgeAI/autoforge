@@ -2,12 +2,13 @@
  * Chat Message Component
  *
  * Displays a single message in the spec creation chat.
- * Supports user, assistant, and system messages with neobrutalism styling.
+ * Supports user, assistant, and system messages with clean styling.
  */
 
 import { memo } from 'react'
 import { Bot, User, Info } from 'lucide-react'
 import type { ChatMessage as ChatMessageType } from '../lib/types'
+import { Card } from '@/components/ui/card'
 
 interface ChatMessageProps {
   message: ChatMessageType
@@ -25,37 +26,34 @@ export const ChatMessage = memo(function ChatMessage({ message }: ChatMessagePro
     minute: '2-digit',
   })
 
-  // Role-specific styling using CSS variables for theme consistency
+  // Role-specific styling
   const roleConfig = {
     user: {
       icon: User,
-      bgColor: 'bg-[var(--color-neo-pending)]',
-      textColor: 'text-[var(--color-neo-text-on-bright)]',
-      borderColor: 'border-[var(--color-neo-border)]',
+      bgColor: 'bg-primary',
+      textColor: 'text-primary-foreground',
       align: 'justify-end',
       bubbleAlign: 'items-end',
-      iconBg: 'bg-[var(--color-neo-pending)]',
-      shadow: 'var(--shadow-neo-md)',
+      iconBg: 'bg-primary',
+      iconColor: 'text-primary-foreground',
     },
     assistant: {
       icon: Bot,
-      bgColor: 'bg-[var(--color-neo-card)]',
-      textColor: 'text-[var(--color-neo-text)]',
-      borderColor: 'border-[var(--color-neo-border)]',
+      bgColor: 'bg-muted',
+      textColor: 'text-foreground',
       align: 'justify-start',
       bubbleAlign: 'items-start',
-      iconBg: 'bg-[var(--color-neo-progress)]',
-      shadow: 'var(--shadow-neo-md)',
+      iconBg: 'bg-secondary',
+      iconColor: 'text-secondary-foreground',
     },
     system: {
       icon: Info,
-      bgColor: 'bg-[var(--color-neo-done)]',
-      textColor: 'text-[var(--color-neo-text-on-bright)]',
-      borderColor: 'border-[var(--color-neo-border)]',
+      bgColor: 'bg-green-100 dark:bg-green-900/30',
+      textColor: 'text-green-900 dark:text-green-100',
       align: 'justify-center',
       bubbleAlign: 'items-center',
-      iconBg: 'bg-[var(--color-neo-done)]',
-      shadow: 'var(--shadow-neo-sm)',
+      iconBg: 'bg-green-500',
+      iconColor: 'text-white',
     },
   }
 
@@ -66,15 +64,7 @@ export const ChatMessage = memo(function ChatMessage({ message }: ChatMessagePro
   if (role === 'system') {
     return (
       <div className={`flex ${config.align} px-4 py-2`}>
-        <div
-          className={`
-            ${config.bgColor}
-            border-2 ${config.borderColor}
-            px-4 py-2
-            text-sm font-mono text-[var(--color-neo-text-on-bright)]
-          `}
-          style={{ boxShadow: 'var(--shadow-neo-sm)' }}
-        >
+        <div className={`${config.bgColor} border border-border rounded-lg px-4 py-2 text-sm font-mono ${config.textColor}`}>
           <span className="flex items-center gap-2">
             <Icon size={14} />
             {content}
@@ -90,28 +80,12 @@ export const ChatMessage = memo(function ChatMessage({ message }: ChatMessagePro
         {/* Message bubble */}
         <div className="flex items-start gap-2">
           {role === 'assistant' && (
-            <div
-              className={`
-                ${config.iconBg}
-                border-2 border-[var(--color-neo-border)]
-                p-1.5
-                flex-shrink-0
-              `}
-              style={{ boxShadow: 'var(--shadow-neo-sm)' }}
-            >
-              <Icon size={16} className="text-[var(--color-neo-text-on-bright)]" />
+            <div className={`${config.iconBg} p-1.5 rounded flex-shrink-0`}>
+              <Icon size={16} className={config.iconColor} />
             </div>
           )}
 
-          <div
-            className={`
-              ${config.bgColor}
-              border-3 ${config.borderColor}
-              px-4 py-3
-              ${isStreaming ? 'animate-pulse-neo' : ''}
-            `}
-            style={{ boxShadow: config.shadow }}
-          >
+          <Card className={`${config.bgColor} px-4 py-3 border ${isStreaming ? 'animate-pulse' : ''}`}>
             {/* Parse content for basic markdown-like formatting */}
             {content && (
               <div className={`whitespace-pre-wrap text-sm leading-relaxed ${config.textColor}`}>
@@ -152,19 +126,15 @@ export const ChatMessage = memo(function ChatMessage({ message }: ChatMessagePro
             {attachments && attachments.length > 0 && (
               <div className={`flex flex-wrap gap-2 ${content ? 'mt-3' : ''}`}>
                 {attachments.map((attachment) => (
-                  <div
-                    key={attachment.id}
-                    className="border-2 border-[var(--color-neo-border)] p-1 bg-[var(--color-neo-card)]"
-                    style={{ boxShadow: 'var(--shadow-neo-sm)' }}
-                  >
+                  <div key={attachment.id} className="border border-border rounded p-1 bg-card">
                     <img
                       src={attachment.previewUrl}
                       alt={attachment.filename}
-                      className="max-w-48 max-h-48 object-contain cursor-pointer hover:opacity-90 transition-opacity"
+                      className="max-w-48 max-h-48 object-contain cursor-pointer hover:opacity-90 transition-opacity rounded"
                       onClick={() => window.open(attachment.previewUrl, '_blank')}
                       title={`${attachment.filename} (click to enlarge)`}
                     />
-                    <span className="text-xs text-[var(--color-neo-text-secondary)] block mt-1 text-center">
+                    <span className="text-xs text-muted-foreground block mt-1 text-center">
                       {attachment.filename}
                     </span>
                   </div>
@@ -174,27 +144,19 @@ export const ChatMessage = memo(function ChatMessage({ message }: ChatMessagePro
 
             {/* Streaming indicator */}
             {isStreaming && (
-              <span className="inline-block w-2 h-4 bg-[var(--color-neo-accent)] ml-1 animate-pulse" />
+              <span className="inline-block w-2 h-4 bg-primary ml-1 animate-pulse rounded" />
             )}
-          </div>
+          </Card>
 
           {role === 'user' && (
-            <div
-              className={`
-                ${config.iconBg}
-                border-2 border-[var(--color-neo-border)]
-                p-1.5
-                flex-shrink-0
-              `}
-              style={{ boxShadow: 'var(--shadow-neo-sm)' }}
-            >
-              <Icon size={16} className="text-[var(--color-neo-text-on-bright)]" />
+            <div className={`${config.iconBg} p-1.5 rounded flex-shrink-0`}>
+              <Icon size={16} className={config.iconColor} />
             </div>
           )}
         </div>
 
         {/* Timestamp */}
-        <span className="text-xs text-[var(--color-neo-text-secondary)] font-mono px-2">
+        <span className="text-xs text-muted-foreground font-mono px-2">
           {timeString}
         </span>
       </div>

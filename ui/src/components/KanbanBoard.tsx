@@ -1,5 +1,6 @@
 import { KanbanColumn } from './KanbanColumn'
 import type { Feature, FeatureListResponse, ActiveAgent } from '../lib/types'
+import { Card, CardContent } from '@/components/ui/card'
 
 interface KanbanBoardProps {
   features: FeatureListResponse | undefined
@@ -7,8 +8,8 @@ interface KanbanBoardProps {
   onAddFeature?: () => void
   onExpandProject?: () => void
   activeAgents?: ActiveAgent[]
-  onCreateSpec?: () => void  // Callback to start spec creation
-  hasSpec?: boolean          // Whether the project has a spec
+  onCreateSpec?: () => void
+  hasSpec?: boolean
 }
 
 export function KanbanBoard({ features, onFeatureClick, onAddFeature, onExpandProject, activeAgents = [], onCreateSpec, hasSpec = true }: KanbanBoardProps) {
@@ -23,14 +24,16 @@ export function KanbanBoard({ features, onFeatureClick, onAddFeature, onExpandPr
     return (
       <div className="grid grid-cols-1 md:grid-cols-3 gap-6">
         {['Pending', 'In Progress', 'Done'].map(title => (
-          <div key={title} className="neo-card p-4">
-            <div className="h-8 bg-[var(--color-neo-bg)] animate-pulse mb-4" />
-            <div className="space-y-3">
-              {[1, 2, 3].map(i => (
-                <div key={i} className="h-24 bg-[var(--color-neo-bg)] animate-pulse" />
-              ))}
-            </div>
-          </div>
+          <Card key={title} className="py-4">
+            <CardContent className="p-4">
+              <div className="h-8 bg-muted animate-pulse rounded mb-4" />
+              <div className="space-y-3">
+                {[1, 2, 3].map(i => (
+                  <div key={i} className="h-24 bg-muted animate-pulse rounded" />
+                ))}
+              </div>
+            </CardContent>
+          </Card>
         ))}
       </div>
     )

@@ -3,17 +3,28 @@ import { X, CheckCircle2, Circle, SkipForward, Trash2, Loader2, AlertCircle, Pen
 import { useSkipFeature, useDeleteFeature, useFeatures } from '../hooks/useProjects'
 import { EditFeatureForm } from './EditFeatureForm'
 import type { Feature } from '../lib/types'
+import {
+  Dialog,
+  DialogContent,
+  DialogHeader,
+  DialogTitle,
+  DialogFooter,
+} from '@/components/ui/dialog'
+import { Button } from '@/components/ui/button'
+import { Badge } from '@/components/ui/badge'
+import { Alert, AlertDescription } from '@/components/ui/alert'
+import { Separator } from '@/components/ui/separator'
 
-// Generate consistent color for category (matches FeatureCard pattern)
+// Generate consistent color for category
 function getCategoryColor(category: string): string {
   const colors = [
-    '#ff006e', // pink (accent)
-    '#00b4d8', // cyan (progress)
-    '#70e000', // green (done)
-    '#ffd60a', // yellow (pending)
-    '#ff5400', // orange (danger)
-    '#8338ec', // purple
-    '#3a86ff', // blue
+    'bg-pink-500',
+    'bg-cyan-500',
+    'bg-green-500',
+    'bg-yellow-500',
+    'bg-orange-500',
+    'bg-purple-500',
+    'bg-blue-500',
   ]
 
   let hash = 0
@@ -90,109 +101,91 @@ export function FeatureModal({ feature, projectName, onClose }: FeatureModalProp
   }
 
   return (
-    <div className="neo-modal-backdrop" onClick={onClose}>
-      <div
-        className="neo-modal w-full max-w-2xl p-0"
-        onClick={(e) => e.stopPropagation()}
-      >
+    <Dialog open={true} onOpenChange={(open) => !open && onClose()}>
+      <DialogContent className="sm:max-w-2xl p-0 gap-0">
         {/* Header */}
-        <div className="flex items-start justify-between p-6 border-b-3 border-[var(--color-neo-border)]">
-          <div>
-            <span
-              className="neo-badge mb-2"
-              style={{ backgroundColor: getCategoryColor(feature.category), color: 'var(--color-neo-text-on-bright)' }}
-            >
+        <DialogHeader className="p-6 pb-4">
+          <div className="flex items-start gap-3">
+            <Badge className={`${getCategoryColor(feature.category)} text-white`}>
               {feature.category}
-            </span>
-            <h2 className="font-display text-2xl font-bold">
-              {feature.name}
-            </h2>
+            </Badge>
           </div>
-          <button
-            onClick={onClose}
-            className="neo-btn neo-btn-ghost p-2"
-          >
-            <X size={24} />
-          </button>
-        </div>
+          <DialogTitle className="text-xl mt-2">{feature.name}</DialogTitle>
+        </DialogHeader>
+
+        <Separator />
 
         {/* Content */}
-        <div className="p-6 space-y-6">
+        <div className="p-6 space-y-6 max-h-[60vh] overflow-y-auto">
           {/* Error Message */}
           {error && (
-            <div className="flex items-center gap-3 p-4 bg-[var(--color-neo-error-bg)] text-[var(--color-neo-error-text)] border-3 border-[var(--color-neo-error-border)]">
-              <AlertCircle size={20} />
-              <span>{error}</span>
-              <button
-                onClick={() => setError(null)}
-                className="ml-auto hover:opacity-70 transition-opacity"
-              >
-                <X size={16} />
-              </button>
-            </div>
+            <Alert variant="destructive">
+              <AlertCircle className="h-4 w-4" />
+              <AlertDescription className="flex items-center justify-between">
+                <span>{error}</span>
+                <Button
+                  variant="ghost"
+                  size="icon-xs"
+                  onClick={() => setError(null)}
+                >
+                  <X size={14} />
+                </Button>
+              </AlertDescription>
+            </Alert>
           )}
 
           {/* Status */}
-          <div className="flex items-center gap-3 p-4 bg-[var(--color-neo-bg)] border-3 border-[var(--color-neo-border)]">
+          <div className="flex items-center gap-3 p-4 bg-muted rounded-lg">
             {feature.passes ? (
               <>
-                <CheckCircle2 size={24} className="text-[var(--color-neo-done)]" />
-                <span className="font-display font-bold text-[var(--color-neo-done)]">
-                  COMPLETE
-                </span>
+                <CheckCircle2 size={24} className="text-primary" />
+                <span className="font-semibold text-primary">COMPLETE</span>
               </>
             ) : (
               <>
-                <Circle size={24} className="text-[var(--color-neo-text-secondary)]" />
-                <span className="font-display font-bold text-[var(--color-neo-text-secondary)]">
-                  PENDING
-                </span>
+                <Circle size={24} className="text-muted-foreground" />
+                <span className="font-semibold text-muted-foreground">PENDING</span>
               </>
             )}
-            <span className="ml-auto font-mono text-sm">
+            <span className="ml-auto font-mono text-sm text-muted-foreground">
               Priority: #{feature.priority}
             </span>
           </div>
 
           {/* Description */}
           <div>
-            <h3 className="font-display font-bold mb-2 uppercase text-sm">
+            <h3 className="font-semibold mb-2 text-sm uppercase tracking-wide text-muted-foreground">
               Description
             </h3>
-            <p className="text-[var(--color-neo-text-secondary)]">
-              {feature.description}
-            </p>
+            <p className="text-foreground">{feature.description}</p>
           </div>
 
           {/* Blocked By Warning */}
           {blockingDeps.length > 0 && (
-            <div className="p-4 bg-[var(--color-neo-warning-bg)] border-3 border-[var(--color-neo-warning-border)]">
-              <h3 className="font-display font-bold mb-2 uppercase text-sm flex items-center gap-2 text-[var(--color-neo-warning-text)]">
-                <AlertTriangle size={16} />
-                Blocked By
-              </h3>
-              <p className="text-sm text-[var(--color-neo-warning-text)] mb-2">
-                This feature cannot start until the following dependencies are complete:
-              </p>
-              <ul className="space-y-1">
-                {blockingDeps.map(dep => (
-                  <li
-                    key={dep.id}
-                    className="flex items-center gap-2 text-sm"
-                  >
-                    <Circle size={14} className="text-[var(--color-neo-warning-text)]" />
-                    <span className="font-mono text-xs text-[var(--color-neo-warning-text)]">#{dep.id}</span>
-                    <span className="text-[var(--color-neo-warning-text)]">{dep.name}</span>
-                  </li>
-                ))}
-              </ul>
-            </div>
+            <Alert variant="destructive" className="border-orange-500 bg-orange-50 dark:bg-orange-950/20">
+              <AlertTriangle className="h-4 w-4 text-orange-600" />
+              <AlertDescription>
+                <h4 className="font-semibold mb-1 text-orange-700 dark:text-orange-400">Blocked By</h4>
+                <p className="text-sm text-orange-600 dark:text-orange-300 mb-2">
+                  This feature cannot start until the following dependencies are complete:
+                </p>
+                <ul className="space-y-1">
+                  {blockingDeps.map(dep => (
+                    <li key={dep.id} className="flex items-center gap-2 text-sm text-orange-600 dark:text-orange-300">
+                      <Circle size={14} />
+                      <span className="font-mono text-xs">#{dep.id}</span>
+                      <span>{dep.name}</span>
+                    </li>
+                  ))}
+                </ul>
+              </AlertDescription>
+            </Alert>
           )}
 
           {/* Dependencies */}
           {dependencies.length > 0 && (
             <div>
-              <h3 className="font-display font-bold mb-2 uppercase text-sm flex items-center gap-2">
+              <h3 className="font-semibold mb-2 text-sm uppercase tracking-wide text-muted-foreground flex items-center gap-2">
                 <Link2 size={16} />
                 Depends On
               </h3>
@@ -200,15 +193,15 @@ export function FeatureModal({ feature, projectName, onClose }: FeatureModalProp
                 {dependencies.map(dep => (
                   <li
                     key={dep.id}
-                    className="flex items-center gap-2 p-2 bg-[var(--color-neo-bg)] border-2 border-[var(--color-neo-border)]"
+                    className="flex items-center gap-2 p-2 bg-muted rounded-md text-sm"
                   >
                     {dep.passes ? (
-                      <CheckCircle2 size={16} className="text-[var(--color-neo-done)]" />
+                      <CheckCircle2 size={16} className="text-primary" />
                     ) : (
-                      <Circle size={16} className="text-[var(--color-neo-text-secondary)]" />
+                      <Circle size={16} className="text-muted-foreground" />
                     )}
-                    <span className="font-mono text-xs text-[var(--color-neo-text-secondary)]">#{dep.id}</span>
-                    <span className={dep.passes ? 'text-[var(--color-neo-done)]' : ''}>{dep.name}</span>
+                    <span className="font-mono text-xs text-muted-foreground">#{dep.id}</span>
+                    <span className={dep.passes ? 'text-primary' : ''}>{dep.name}</span>
                   </li>
                 ))}
               </ul>
@@ -218,14 +211,14 @@ export function FeatureModal({ feature, projectName, onClose }: FeatureModalProp
           {/* Steps */}
           {feature.steps.length > 0 && (
             <div>
-              <h3 className="font-display font-bold mb-2 uppercase text-sm">
+              <h3 className="font-semibold mb-2 text-sm uppercase tracking-wide text-muted-foreground">
                 Test Steps
               </h3>
               <ol className="list-decimal list-inside space-y-2">
                 {feature.steps.map((step, index) => (
                   <li
                     key={index}
-                    className="p-3 bg-[var(--color-neo-bg)] border-3 border-[var(--color-neo-border)]"
+                    className="p-3 bg-muted rounded-md text-sm"
                   >
                     {step}
                   </li>
@@ -237,69 +230,76 @@ export function FeatureModal({ feature, projectName, onClose }: FeatureModalProp
 
         {/* Actions */}
         {!feature.passes && (
-          <div className="p-6 border-t-3 border-[var(--color-neo-border)] bg-[var(--color-neo-bg)]">
-            {showDeleteConfirm ? (
-              <div className="space-y-4">
-                <p className="font-bold text-center">
-                  Are you sure you want to delete this feature?
-                </p>
-                <div className="flex gap-3">
-                  <button
-                    onClick={handleDelete}
-                    disabled={deleteFeature.isPending}
-                    className="neo-btn neo-btn-danger flex-1"
+          <>
+            <Separator />
+            <DialogFooter className="p-4 bg-muted/50">
+              {showDeleteConfirm ? (
+                <div className="w-full space-y-4">
+                  <p className="font-medium text-center">
+                    Are you sure you want to delete this feature?
+                  </p>
+                  <div className="flex gap-3">
+                    <Button
+                      variant="destructive"
+                      onClick={handleDelete}
+                      disabled={deleteFeature.isPending}
+                      className="flex-1"
+                    >
+                      {deleteFeature.isPending ? (
+                        <Loader2 size={18} className="animate-spin" />
+                      ) : (
+                        'Yes, Delete'
+                      )}
+                    </Button>
+                    <Button
+                      variant="outline"
+                      onClick={() => setShowDeleteConfirm(false)}
+                      disabled={deleteFeature.isPending}
+                      className="flex-1"
+                    >
+                      Cancel
+                    </Button>
+                  </div>
+                </div>
+              ) : (
+                <div className="flex gap-3 w-full">
+                  <Button
+                    onClick={() => setShowEdit(true)}
+                    disabled={skipFeature.isPending}
+                    className="flex-1"
                   >
-                    {deleteFeature.isPending ? (
+                    <Pencil size={18} />
+                    Edit
+                  </Button>
+                  <Button
+                    variant="secondary"
+                    onClick={handleSkip}
+                    disabled={skipFeature.isPending}
+                    className="flex-1"
+                  >
+                    {skipFeature.isPending ? (
                       <Loader2 size={18} className="animate-spin" />
                     ) : (
-                      'Yes, Delete'
+                      <>
+                        <SkipForward size={18} />
+                        Skip
+                      </>
                     )}
-                  </button>
-                  <button
-                    onClick={() => setShowDeleteConfirm(false)}
-                    disabled={deleteFeature.isPending}
-                    className="neo-btn neo-btn-ghost flex-1"
+                  </Button>
+                  <Button
+                    variant="destructive"
+                    size="icon"
+                    onClick={() => setShowDeleteConfirm(true)}
+                    disabled={skipFeature.isPending}
                   >
-                    Cancel
-                  </button>
+                    <Trash2 size={18} />
+                  </Button>
                 </div>
-              </div>
-            ) : (
-              <div className="flex gap-3">
-                <button
-                  onClick={() => setShowEdit(true)}
-                  disabled={skipFeature.isPending}
-                  className="neo-btn neo-btn-primary flex-1"
-                >
-                  <Pencil size={18} />
-                  Edit
-                </button>
-                <button
-                  onClick={handleSkip}
-                  disabled={skipFeature.isPending}
-                  className="neo-btn neo-btn-warning flex-1"
-                >
-                  {skipFeature.isPending ? (
-                    <Loader2 size={18} className="animate-spin" />
-                  ) : (
-                    <>
-                      <SkipForward size={18} />
-                      Skip
-                    </>
-                  )}
-                </button>
-                <button
-                  onClick={() => setShowDeleteConfirm(true)}
-                  disabled={skipFeature.isPending}
-                  className="neo-btn neo-btn-danger"
-                >
-                  <Trash2 size={18} />
-                </button>
-              </div>
-            )}
-          </div>
+              )}
+            </DialogFooter>
+          </>
         )}
-      </div>
-    </div>
+      </DialogContent>
+    </Dialog>
   )
 }

@@ -551,9 +551,9 @@ async def skip_feature(project_name: str, feature_id: int):
             if not feature:
                 raise HTTPException(status_code=404, detail=f"Feature {feature_id} not found")
 
-            # Set priority to max + 1000 to push to end
+            # Set priority to max + 1 to push to end (consistent with MCP server)
             max_priority = session.query(Feature).order_by(Feature.priority.desc()).first()
-            feature.priority = (max_priority.priority if max_priority else 0) + 1000
+            feature.priority = (max_priority.priority + 1) if max_priority else 1
 
             session.commit()
 

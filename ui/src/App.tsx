@@ -4,6 +4,7 @@ import { useProjects, useFeatures, useAgentStatus, useSettings } from './hooks/u
 import { useProjectWebSocket } from './hooks/useWebSocket'
 import { useFeatureSound } from './hooks/useFeatureSound'
 import { useCelebration } from './hooks/useCelebration'
+import { useTheme } from './hooks/useTheme'
 import { ProjectSelector } from './components/ProjectSelector'
 import { KanbanBoard } from './components/KanbanBoard'
 import { AgentControl } from './components/AgentControl'
@@ -24,12 +25,15 @@ import { DevServerControl } from './components/DevServerControl'
 import { ViewToggle, type ViewMode } from './components/ViewToggle'
 import { DependencyGraph } from './components/DependencyGraph'
 import { KeyboardShortcutsHelp } from './components/KeyboardShortcutsHelp'
+import { ThemeSelector } from './components/ThemeSelector'
 import { getDependencyGraph } from './lib/api'
 import { Loader2, Settings, Moon, Sun } from 'lucide-react'
 import type { Feature } from './lib/types'
+import { Button } from '@/components/ui/button'
+import { Card, CardContent } from '@/components/ui/card'
+import { Badge } from '@/components/ui/badge'
 
 const STORAGE_KEY = 'autocoder-selected-project'
-const DARK_MODE_KEY = 'autocoder-dark-mode'
 const VIEW_MODE_KEY = 'autocoder-view-mode'
 
 function App() {
@@ -53,13 +57,6 @@ function App() {
   const [showKeyboardHelp, setShowKeyboardHelp] = useState(false)
   const [isSpecCreating, setIsSpecCreating] = useState(false)
   const [showSpecChat, setShowSpecChat] = useState(false)  // For "Create Spec" button in empty kanban
-  const [darkMode, setDarkMode] = useState(() => {
-    try {
-      return localStorage.getItem(DARK_MODE_KEY) === 'true'
-    } catch {
-      return false
-    }
-  })
   const [viewMode, setViewMode] = useState<ViewMode>(() => {
     try {
       const stored = localStorage.getItem(VIEW_MODE_KEY)
@@ -75,6 +72,7 @@ function App() {
   const { data: settings } = useSettings()
   useAgentStatus(selectedProject) // Keep polling for status updates
   const wsState = useProjectWebSocket(selectedProject)
+  const { theme, setTheme, darkMode, toggleDarkMode, themes } = useTheme()
 
   // Get has_spec from the selected project
   const selectedProjectData = projects?.find(p => p.name === selectedProject)
@@ -87,20 +85,6 @@ function App() {
     enabled: !!selectedProject && viewMode === 'graph',
     refetchInterval: 5000, // Refresh every 5 seconds
   })
-
-  // Apply dark mode class to document
-  useEffect(() => {
-    if (darkMode) {
-      document.documentElement.classList.add('dark')
-    } else {
-      document.documentElement.classList.remove('dark')
-    }
-    try {
-      localStorage.setItem(DARK_MODE_KEY, String(darkMode))
-    } catch {
-      // localStorage not available
-    }
-  }, [darkMode])
 
   // Persist view mode to localStorage
   useEffect(() => {
@@ -256,9 +240,9 @@ function App() {
   }
 
   return (
-    <div className="min-h-screen bg-neo-bg">
+    <div className="min-h-screen bg-background">
       {/* Header */}
-      <header className="bg-neo-card text-neo-text border-b-4 border-neo-border">
+      <header className="bg-card text-foreground border-b-2 border-border">
         <div className="max-w-7xl mx-auto px-4 py-4">
           <div className="flex items-center justify-between">
             {/* Logo and Title */}
@@ -289,36 +273,56 @@ function App() {
                     url={wsState.devServerUrl}
                   />
 
-                  <button
+                  <Button
                     onClick={() => setShowSettings(true)}
-                    className="neo-btn text-sm py-2 px-3"
+                    variant="outline"
+                    size="sm"
                     title="Settings (,)"
                     aria-label="Open Settings"
                   >
                     <Settings size={18} />
-                  </button>
+                  </Button>
+
+                  {/* Ollama Mode Indicator */}
+                  {settings?.ollama_mode && (
+                    <div
+                      className="flex items-center gap-1.5 px-2 py-1 bg-card rounded border-2 border-border shadow-sm"
+                      title="Using Ollama local models (configured via .env)"
+                    >
+                      <img src="/ollama.png" alt="Ollama" className="w-5 h-5" />
+                      <span className="text-xs font-bold text-foreground">Ollama</span>
+                    </div>
+                  )}
 
                   {/* GLM Mode Badge */}
                   {settings?.glm_mode && (
-                    <span
-                      className="px-2 py-1 text-xs font-bold bg-[var(--color-neo-glm)] text-white rounded border-2 border-neo-border shadow-neo-sm"
+                    <Badge
+                      className="bg-purple-500 text-white hover:bg-purple-600"
                       title="Using GLM API (configured via .env)"
                     >
                       GLM
-                    </span>
+                    </Badge>
                   )}
                 </>
               )}
 
+              {/* Theme selector */}
+              <ThemeSelector
+                themes={themes}
+                currentTheme={theme}
+                onThemeChange={setTheme}
+              />
+
               {/* Dark mode toggle - always visible */}
-              <button
-                onClick={() => setDarkMode(!darkMode)}
-                className="neo-btn text-sm py-2 px-3"
+              <Button
+                onClick={toggleDarkMode}
+                variant="outline"
+                size="sm"
                 title="Toggle dark mode"
                 aria-label="Toggle dark mode"
               >
                 {darkMode ? <Sun size={18} /> : <Moon size={18} />}
-              </button>
+              </Button>
             </div>
           </div>
         </div>
@@ -330,11 +334,11 @@ function App() {
         style={{ paddingBottom: debugOpen ? debugPanelHeight + 32 : undefined }}
       >
         {!selectedProject ? (
-          <div className="neo-empty-state mt-12">
+          <div className="text-center mt-12">
             <h2 className="font-display text-2xl font-bold mb-2">
               Welcome to AutoCoder
             </h2>
-            <p className="text-neo-text-secondary mb-4">
+            <p className="text-muted-foreground mb-4">
               Select a project from the dropdown above or create a new one to get started.
             </p>
           </div>
@@ -370,15 +374,17 @@ function App() {
              features.in_progress.length === 0 &&
              features.done.length === 0 &&
              wsState.agentStatus === 'running' && (
-              <div className="neo-card p-8 text-center">
-                <Loader2 size={32} className="animate-spin mx-auto mb-4 text-neo-progress" />
-                <h3 className="font-display font-bold text-xl mb-2">
-                  Initializing Features...
-                </h3>
-                <p className="text-neo-text-secondary">
-                  The agent is reading your spec and creating features. This may take a moment.
-                </p>
-              </div>
+              <Card className="p-8 text-center">
+                <CardContent className="p-0">
+                  <Loader2 size={32} className="animate-spin mx-auto mb-4 text-primary" />
+                  <h3 className="font-display font-bold text-xl mb-2">
+                    Initializing Features...
+                  </h3>
+                  <p className="text-muted-foreground">
+                    The agent is reading your spec and creating features. This may take a moment.
+                  </p>
+                </CardContent>
+              </Card>
             )}
 
             {/* View Toggle - only show when there are features */}
@@ -400,7 +406,7 @@ function App() {
                 hasSpec={hasSpec}
               />
             ) : (
-              <div className="neo-card overflow-hidden" style={{ height: '600px' }}>
+              <Card className="overflow-hidden" style={{ height: '600px' }}>
                 {graphData ? (
                   <DependencyGraph
                     graphData={graphData}
@@ -409,10 +415,10 @@ function App() {
                   />
                 ) : (
                   <div className="h-full flex items-center justify-center">
-                    <Loader2 size={32} className="animate-spin text-neo-progress" />
+                    <Loader2 size={32} className="animate-spin text-primary" />
                   </div>
                 )}
-              </div>
+              </Card>
             )}
           </div>
         )}
@@ -450,7 +456,7 @@ function App() {
 
       {/* Spec Creation Chat - for creating spec from empty kanban */}
       {showSpecChat && selectedProject && (
-        <div className="fixed inset-0 z-50 bg-[var(--color-neo-bg)]">
+        <div className="fixed inset-0 z-50 bg-background">
           <SpecCreationChat
             projectName={selectedProject}
             onComplete={() => {
@@ -497,14 +503,10 @@ function App() {
       )}
 
       {/* Settings Modal */}
-      {showSettings && (
-        <SettingsModal onClose={() => setShowSettings(false)} />
-      )}
+      <SettingsModal isOpen={showSettings} onClose={() => setShowSettings(false)} />
 
       {/* Keyboard Shortcuts Help */}
-      {showKeyboardHelp && (
-        <KeyboardShortcutsHelp onClose={() => setShowKeyboardHelp(false)} />
-      )}
+      <KeyboardShortcutsHelp isOpen={showKeyboardHelp} onClose={() => setShowKeyboardHelp(false)} />
 
       {/* Celebration Overlay - shows when a feature is completed by an agent */}
       {wsState.celebration && (

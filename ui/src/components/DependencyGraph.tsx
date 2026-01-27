@@ -18,6 +18,8 @@ import dagre from 'dagre'
 import { CheckCircle2, Circle, Loader2, AlertTriangle, RefreshCw } from 'lucide-react'
 import type { DependencyGraph as DependencyGraphData, GraphNode, ActiveAgent, AgentMascot, AgentState } from '../lib/types'
 import { AgentAvatar } from './AgentAvatar'
+import { Button } from '@/components/ui/button'
+import { Card, CardContent } from '@/components/ui/card'
 import '@xyflow/react/dist/style.css'
 
 // Node dimensions
@@ -69,20 +71,17 @@ class GraphErrorBoundary extends Component<ErrorBoundaryProps, ErrorBoundaryStat
   render() {
     if (this.state.hasError) {
       return (
-        <div className="h-full w-full flex items-center justify-center bg-neo-neutral-100">
+        <div className="h-full w-full flex items-center justify-center bg-muted">
           <div className="text-center p-6">
-            <AlertTriangle size={48} className="mx-auto mb-4 text-neo-warning" />
-            <div className="text-neo-text font-bold mb-2">Graph rendering error</div>
-            <div className="text-sm text-neo-text-secondary mb-4">
+            <AlertTriangle size={48} className="mx-auto mb-4 text-yellow-500" />
+            <div className="text-foreground font-bold mb-2">Graph rendering error</div>
+            <div className="text-sm text-muted-foreground mb-4">
               The dependency graph encountered an issue.
             </div>
-            <button
-              onClick={this.handleReset}
-              className="inline-flex items-center gap-2 px-4 py-2 bg-neo-accent text-white rounded border-2 border-neo-border shadow-neo-sm hover:shadow-neo-md transition-all"
-            >
+            <Button onClick={this.handleReset} className="gap-2">
               <RefreshCw size={16} />
               Reload Graph
-            </button>
+            </Button>
           </div>
         </div>
       )
@@ -95,32 +94,39 @@ class GraphErrorBoundary extends Component<ErrorBoundaryProps, ErrorBoundaryStat
 // Custom node component
 function FeatureNode({ data }: { data: GraphNode & { onClick?: () => void; agent?: NodeAgentInfo } }) {
   const statusColors = {
-    pending: 'bg-neo-pending border-neo-border',
-    in_progress: 'bg-neo-progress border-neo-border',
-    done: 'bg-neo-done border-neo-border',
-    blocked: 'bg-neo-danger/20 border-neo-danger',
+    pending: 'bg-yellow-100 border-yellow-300 dark:bg-yellow-900/30 dark:border-yellow-700',
+    in_progress: 'bg-cyan-100 border-cyan-300 dark:bg-cyan-900/30 dark:border-cyan-700',
+    done: 'bg-green-100 border-green-300 dark:bg-green-900/30 dark:border-green-700',
+    blocked: 'bg-red-50 border-red-300 dark:bg-red-900/20 dark:border-red-700',
+  }
+
+  const textColors = {
+    pending: 'text-yellow-900 dark:text-yellow-100',
+    in_progress: 'text-cyan-900 dark:text-cyan-100',
+    done: 'text-green-900 dark:text-green-100',
+    blocked: 'text-red-900 dark:text-red-100',
   }
 
   const StatusIcon = () => {
     switch (data.status) {
       case 'done':
-        return <CheckCircle2 size={16} className="text-neo-text-on-bright" />
+        return <CheckCircle2 size={16} className={textColors[data.status]} />
       case 'in_progress':
-        return <Loader2 size={16} className="text-neo-text-on-bright animate-spin" />
+        return <Loader2 size={16} className={`${textColors[data.status]} animate-spin`} />
       case 'blocked':
-        return <AlertTriangle size={16} className="text-neo-danger" />
+        return <AlertTriangle size={16} className="text-destructive" />
       default:
-        return <Circle size={16} className="text-neo-text-on-bright" />
+        return <Circle size={16} className={textColors[data.status]} />
     }
   }
 
   return (
     <>
-      <Handle type="target" position={Position.Left} className="!bg-neo-border !w-2 !h-2" />
+      <Handle type="target" position={Position.Left} className="!bg-border !w-2 !h-2" />
       <div
         className={`
           px-4 py-3 rounded-lg border-2 cursor-pointer
-          transition-all hover:shadow-neo-md relative
+          transition-all hover:shadow-md relative
           ${statusColors[data.status]}
         `}
         onClick={data.onClick}
@@ -129,31 +135,31 @@ function FeatureNode({ data }: { data: GraphNode & { onClick?: () => void; agent
         {/* Agent avatar badge - positioned at top right */}
         {data.agent && (
           <div className="absolute -top-3 -right-3 z-10">
-            <div className="rounded-full border-2 border-neo-border bg-white shadow-neo-sm">
+            <div className="rounded-full border-2 border-border bg-background shadow-sm">
               <AgentAvatar name={data.agent.name} state={data.agent.state} size="sm" />
             </div>
           </div>
         )}
         <div className="flex items-center gap-2 mb-1">
           <StatusIcon />
-          <span className="text-xs font-mono text-neo-text-on-bright/70">
+          <span className={`text-xs font-mono ${textColors[data.status]} opacity-70`}>
             #{data.priority}
           </span>
           {/* Show agent name inline if present */}
           {data.agent && (
-            <span className="text-xs font-bold text-neo-text-on-bright ml-auto">
+            <span className={`text-xs font-bold ${textColors[data.status]} ml-auto`}>
               {data.agent.name}
             </span>
           )}
         </div>
-        <div className="font-bold text-sm text-neo-text-on-bright truncate" title={data.name}>
+        <div className={`font-bold text-sm ${textColors[data.status]} truncate`} title={data.name}>
           {data.name}
         </div>
-        <div className="text-xs text-neo-text-on-bright/70 truncate" title={data.category}>
+        <div className={`text-xs ${textColors[data.status]} opacity-70 truncate`} title={data.category}>
           {data.category}
         </div>
       </div>
-      <Handle type="source" position={Position.Right} className="!bg-neo-border !w-2 !h-2" />
+      <Handle type="source" position={Position.Right} className="!bg-border !w-2 !h-2" />
     </>
   )
 }
@@ -249,10 +255,10 @@ function DependencyGraphInner({ graphData, onNodeClick, activeAgents = [] }: Dep
       target: String(edge.target),
       type: 'smoothstep',
       animated: false,
-      style: { stroke: 'var(--color-neo-border)', strokeWidth: 2 },
+      style: { stroke: '#a1a1aa', strokeWidth: 2 },
       markerEnd: {
         type: MarkerType.ArrowClosed,
-        color: 'var(--color-neo-border)',
+        color: '#a1a1aa',
       },
     }))
 
@@ -308,22 +314,22 @@ function DependencyGraphInner({ graphData, onNodeClick, activeAgents = [] }: Dep
     const status = (node.data as unknown as GraphNode).status
     switch (status) {
       case 'done':
-        return 'var(--color-neo-done)'
+        return '#22c55e' // green-500
       case 'in_progress':
-        return 'var(--color-neo-progress)'
+        return '#06b6d4' // cyan-500
       case 'blocked':
-        return 'var(--color-neo-danger)'
+        return '#ef4444' // red-500
       default:
-        return 'var(--color-neo-pending)'
+        return '#eab308' // yellow-500
     }
   }, [])
 
   if (graphData.nodes.length === 0) {
     return (
-      <div className="h-full w-full flex items-center justify-center bg-neo-neutral-100">
+      <div className="h-full w-full flex items-center justify-center bg-muted">
         <div className="text-center">
-          <div className="text-neo-text-secondary mb-2">No features to display</div>
-          <div className="text-sm text-neo-text-muted">
+          <div className="text-muted-foreground mb-2">No features to display</div>
+          <div className="text-sm text-muted-foreground/70">
             Create features to see the dependency graph
           </div>
         </div>
@@ -332,57 +338,49 @@ function DependencyGraphInner({ graphData, onNodeClick, activeAgents = [] }: Dep
   }
 
   return (
-    <div className="h-full w-full relative bg-neo-neutral-50">
+    <div className="h-full w-full relative bg-background">
       {/* Layout toggle */}
       <div className="absolute top-4 left-4 z-10 flex gap-2">
-        <button
+        <Button
+          variant={direction === 'LR' ? 'default' : 'outline'}
+          size="sm"
           onClick={() => onLayout('LR')}
-          className={`
-            px-3 py-1.5 text-sm font-medium rounded border-2 border-neo-border transition-all
-            ${direction === 'LR'
-              ? 'bg-neo-accent text-white shadow-neo-sm'
-              : 'bg-white text-neo-text hover:bg-neo-neutral-100'
-            }
-          `}
         >
           Horizontal
-        </button>
-        <button
+        </Button>
+        <Button
+          variant={direction === 'TB' ? 'default' : 'outline'}
+          size="sm"
           onClick={() => onLayout('TB')}
-          className={`
-            px-3 py-1.5 text-sm font-medium rounded border-2 border-neo-border transition-all
-            ${direction === 'TB'
-              ? 'bg-neo-accent text-white shadow-neo-sm'
-              : 'bg-white text-neo-text hover:bg-neo-neutral-100'
-            }
-          `}
         >
           Vertical
-        </button>
+        </Button>
       </div>
 
       {/* Legend */}
-      <div className="absolute top-4 right-4 z-10 bg-white border-2 border-neo-border rounded-lg p-3 shadow-neo-sm">
-        <div className="text-xs font-bold mb-2">Status</div>
-        <div className="space-y-1.5">
-          <div className="flex items-center gap-2 text-xs">
-            <div className="w-3 h-3 rounded bg-neo-pending border border-neo-border" />
-            <span>Pending</span>
+      <Card className="absolute top-4 right-4 z-10">
+        <CardContent className="p-3">
+          <div className="text-xs font-bold mb-2">Status</div>
+          <div className="space-y-1.5">
+            <div className="flex items-center gap-2 text-xs">
+              <div className="w-3 h-3 rounded bg-yellow-400 border border-yellow-500" />
+              <span>Pending</span>
+            </div>
+            <div className="flex items-center gap-2 text-xs">
+              <div className="w-3 h-3 rounded bg-cyan-400 border border-cyan-500" />
+              <span>In Progress</span>
+            </div>
+            <div className="flex items-center gap-2 text-xs">
+              <div className="w-3 h-3 rounded bg-green-400 border border-green-500" />
+              <span>Done</span>
+            </div>
+            <div className="flex items-center gap-2 text-xs">
+              <div className="w-3 h-3 rounded bg-red-100 border border-red-400" />
+              <span>Blocked</span>
+            </div>
           </div>
-          <div className="flex items-center gap-2 text-xs">
-            <div className="w-3 h-3 rounded bg-neo-progress border border-neo-border" />
-            <span>In Progress</span>
-          </div>
-          <div className="flex items-center gap-2 text-xs">
-            <div className="w-3 h-3 rounded bg-neo-done border border-neo-border" />
-            <span>Done</span>
-          </div>
-          <div className="flex items-center gap-2 text-xs">
-            <div className="w-3 h-3 rounded bg-neo-danger/20 border border-neo-danger" />
-            <span>Blocked</span>
-          </div>
-        </div>
-      </div>
+        </CardContent>
+      </Card>
 
       <ReactFlow
         nodes={nodes}
@@ -397,14 +395,14 @@ function DependencyGraphInner({ graphData, onNodeClick, activeAgents = [] }: Dep
         minZoom={0.1}
         maxZoom={2}
       >
-        <Background color="var(--color-neo-neutral-300)" gap={20} size={1} />
+        <Background color="#d4d4d8" gap={20} size={1} />
         <Controls
-          className="!bg-white !border-2 !border-neo-border !rounded-lg !shadow-neo-sm"
+          className="!bg-card !border !border-border !rounded-lg !shadow-sm"
           showInteractive={false}
         />
         <MiniMap
           nodeColor={nodeColor}
-          className="!bg-white !border-2 !border-neo-border !rounded-lg !shadow-neo-sm"
+          className="!bg-card !border !border-border !rounded-lg !shadow-sm"
           maskColor="rgba(0, 0, 0, 0.1)"
         />
       </ReactFlow>

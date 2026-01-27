@@ -8,6 +8,8 @@
 import { useState, useRef, useEffect, useCallback } from 'react'
 import { Plus, X } from 'lucide-react'
 import type { TerminalInfo } from '@/lib/types'
+import { Button } from '@/components/ui/button'
+import { Input } from '@/components/ui/input'
 
 interface TerminalTabsProps {
   terminals: TerminalInfo[]
@@ -154,18 +156,18 @@ export function TerminalTabs({
   )
 
   return (
-    <div className="flex items-center gap-1 px-2 py-1 bg-[#2a2a2a] border-b-2 border-black overflow-x-auto">
+    <div className="flex items-center gap-1 px-2 py-1 bg-zinc-900 border-b border-border overflow-x-auto">
       {/* Terminal tabs */}
       {terminals.map((terminal) => (
         <div
           key={terminal.id}
           className={`
-            group flex items-center gap-1 px-3 py-1 border-2 border-black cursor-pointer
+            group flex items-center gap-1 px-3 py-1 rounded cursor-pointer
             transition-colors duration-100 select-none min-w-0
             ${
               activeTerminalId === terminal.id
-                ? 'bg-neo-progress text-black'
-                : 'bg-[#3a3a3a] text-white hover:bg-[var(--color-neo-hover-subtle)]'
+                ? 'bg-primary text-primary-foreground'
+                : 'bg-zinc-800 text-zinc-300 hover:bg-zinc-700'
             }
           `}
           onClick={() => onSelect(terminal.id)}
@@ -173,14 +175,14 @@ export function TerminalTabs({
           onContextMenu={(e) => handleContextMenu(e, terminal.id)}
         >
           {editingId === terminal.id ? (
-            <input
+            <Input
               ref={inputRef}
               type="text"
               value={editValue}
               onChange={(e) => setEditValue(e.target.value)}
               onBlur={submitEdit}
               onKeyDown={handleKeyDown}
-              className="bg-neo-card text-neo-text px-1 py-0 text-sm font-mono border-2 border-black w-24 outline-none"
+              className="h-6 px-1 py-0 text-sm font-mono w-24"
               onClick={(e) => e.stopPropagation()}
             />
           ) : (
@@ -210,31 +212,33 @@ export function TerminalTabs({
       ))}
 
       {/* Add new terminal button */}
-      <button
+      <Button
+        variant="ghost"
+        size="icon"
         onClick={onCreate}
-        className="flex items-center justify-center w-8 h-8 border-2 border-black bg-[#3a3a3a] text-white hover:bg-[var(--color-neo-hover-subtle)] transition-colors"
+        className="h-8 w-8 bg-zinc-800 text-zinc-300 hover:bg-zinc-700"
         title="New terminal"
       >
         <Plus className="w-4 h-4" />
-      </button>
+      </Button>
 
       {/* Context menu */}
       {contextMenu.visible && (
         <div
           ref={contextMenuRef}
-          className="fixed z-50 bg-neo-card border-2 border-[var(--color-neo-border)] py-1 min-w-[120px]"
-          style={{ left: contextMenu.x, top: contextMenu.y, boxShadow: 'var(--shadow-neo-md)' }}
+          className="fixed z-50 bg-popover border border-border rounded-md py-1 min-w-[120px] shadow-md"
+          style={{ left: contextMenu.x, top: contextMenu.y }}
         >
           <button
             onClick={handleContextMenuRename}
-            className="w-full px-3 py-1 text-left text-sm font-mono hover:bg-neo-progress hover:text-black transition-colors"
+            className="w-full px-3 py-1.5 text-left text-sm font-mono hover:bg-accent transition-colors"
           >
             Rename
           </button>
           {terminals.length > 1 && (
             <button
               onClick={handleContextMenuClose}
-              className="w-full px-3 py-1 text-left text-sm font-mono hover:bg-neo-danger hover:text-white transition-colors"
+              className="w-full px-3 py-1.5 text-left text-sm font-mono text-destructive hover:bg-destructive hover:text-destructive-foreground transition-colors"
             >
               Close
             </button>

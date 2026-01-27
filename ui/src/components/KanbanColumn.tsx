@@ -1,26 +1,29 @@
 import { FeatureCard } from './FeatureCard'
 import { Plus, Sparkles, Wand2 } from 'lucide-react'
 import type { Feature, ActiveAgent } from '../lib/types'
+import { Card, CardContent, CardHeader, CardTitle } from '@/components/ui/card'
+import { Button } from '@/components/ui/button'
+import { Badge } from '@/components/ui/badge'
 
 interface KanbanColumnProps {
   title: string
   count: number
   features: Feature[]
-  allFeatures?: Feature[]  // For dependency status calculation
-  activeAgents?: ActiveAgent[]  // Active agents for showing which agent is working on a feature
+  allFeatures?: Feature[]
+  activeAgents?: ActiveAgent[]
   color: 'pending' | 'progress' | 'done'
   onFeatureClick: (feature: Feature) => void
   onAddFeature?: () => void
   onExpandProject?: () => void
   showExpandButton?: boolean
-  onCreateSpec?: () => void  // Callback to start spec creation
-  showCreateSpec?: boolean   // Show "Create Spec" button when project has no spec
+  onCreateSpec?: () => void
+  showCreateSpec?: boolean
 }
 
 const colorMap = {
-  pending: 'var(--color-neo-pending)',
-  progress: 'var(--color-neo-progress)',
-  done: 'var(--color-neo-done)',
+  pending: 'border-t-4 border-t-muted',
+  progress: 'border-t-4 border-t-primary',
+  done: 'border-t-4 border-t-primary',
 }
 
 export function KanbanColumn({
@@ -41,83 +44,78 @@ export function KanbanColumn({
   const agentByFeatureId = new Map(
     activeAgents.map(agent => [agent.featureId, agent])
   )
-  return (
-    <div
-      className="neo-card overflow-hidden"
-      style={{ borderColor: colorMap[color] }}
-    >
-      {/* Header */}
-      <div
-        className="px-4 py-3 border-b-3 border-[var(--color-neo-border)]"
-        style={{ backgroundColor: colorMap[color] }}
-      >
-        <div className="flex items-center justify-between">
-          <h2 className="font-display text-lg font-bold uppercase flex items-center gap-2 text-[var(--color-neo-text-on-bright)]">
-            {title}
-            <span className="neo-badge bg-[var(--color-neo-card)] text-[var(--color-neo-text)]">{count}</span>
-          </h2>
-          {(onAddFeature || onExpandProject) && (
-            <div className="flex items-center gap-2">
-              {onAddFeature && (
-                <button
-                  onClick={onAddFeature}
-                  className="neo-btn neo-btn-primary text-sm py-1.5 px-2"
-                  title="Add new feature (N)"
-                >
-                  <Plus size={16} />
-                </button>
-              )}
-              {onExpandProject && showExpandButton && (
-                <button
-                  onClick={onExpandProject}
-                  className="neo-btn bg-[var(--color-neo-progress)] text-[var(--color-neo-text-on-bright)] text-sm py-1.5 px-2"
-                  title="Expand project with AI (E)"
-                >
-                  <Sparkles size={16} />
-                </button>
-              )}
-            </div>
-          )}
-        </div>
-      </div>
 
-      {/* Cards */}
-      <div className="p-4 space-y-3 max-h-[600px] overflow-y-auto bg-[var(--color-neo-bg)]">
-        {features.length === 0 ? (
-          <div className="text-center py-8 text-[var(--color-neo-text-secondary)]">
-            {showCreateSpec && onCreateSpec ? (
-              <div className="space-y-4">
-                <p>No spec created yet</p>
-                <button
-                  onClick={onCreateSpec}
-                  className="neo-btn neo-btn-primary inline-flex items-center gap-2"
-                >
-                  <Wand2 size={18} />
-                  Create Spec with AI
-                </button>
-              </div>
-            ) : (
-              'No features'
+  return (
+    <Card className={`overflow-hidden ${colorMap[color]} py-0`}>
+      {/* Header */}
+      <CardHeader className="px-4 py-3 border-b flex-row items-center justify-between space-y-0">
+        <CardTitle className="text-lg font-semibold flex items-center gap-2">
+          {title}
+          <Badge variant="secondary">{count}</Badge>
+        </CardTitle>
+        {(onAddFeature || onExpandProject) && (
+          <div className="flex items-center gap-2">
+            {onAddFeature && (
+              <Button
+                onClick={onAddFeature}
+                size="icon-sm"
+                title="Add new feature (N)"
+              >
+                <Plus size={16} />
+              </Button>
+            )}
+            {onExpandProject && showExpandButton && (
+              <Button
+                onClick={onExpandProject}
+                size="icon-sm"
+                variant="secondary"
+                title="Expand project with AI (E)"
+              >
+                <Sparkles size={16} />
+              </Button>
             )}
           </div>
-        ) : (
-          features.map((feature, index) => (
-            <div
-              key={feature.id}
-              className="animate-slide-in"
-              style={{ animationDelay: `${index * 50}ms` }}
-            >
-              <FeatureCard
-                feature={feature}
-                onClick={() => onFeatureClick(feature)}
-                isInProgress={color === 'progress'}
-                allFeatures={allFeatures}
-                activeAgent={agentByFeatureId.get(feature.id)}
-              />
-            </div>
-          ))
         )}
-      </div>
-    </div>
+      </CardHeader>
+
+      {/* Cards */}
+      <CardContent className="p-0">
+        <div className="h-[600px] overflow-y-auto">
+          <div className="p-4 space-y-3">
+            {features.length === 0 ? (
+              <div className="text-center py-8 text-muted-foreground">
+                {showCreateSpec && onCreateSpec ? (
+                  <div className="space-y-4">
+                    <p>No spec created yet</p>
+                    <Button onClick={onCreateSpec}>
+                      <Wand2 size={18} />
+                      Create Spec with AI
+                    </Button>
+                  </div>
+                ) : (
+                  'No features'
+                )}
+              </div>
+            ) : (
+              features.map((feature, index) => (
+                <div
+                  key={feature.id}
+                  className="animate-slide-in"
+                  style={{ animationDelay: `${index * 50}ms` }}
+                >
+                  <FeatureCard
+                    feature={feature}
+                    onClick={() => onFeatureClick(feature)}
+                    isInProgress={color === 'progress'}
+                    allFeatures={allFeatures}
+                    activeAgent={agentByFeatureId.get(feature.id)}
+                  />
+                </div>
+              ))
+            )}
+          </div>
+        </div>
+      </CardContent>
+    </Card>
   )
 }

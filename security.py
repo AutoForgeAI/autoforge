@@ -7,11 +7,16 @@ Uses an allowlist approach - only explicitly permitted commands can run.
 """
 
 import os
+import re
 import shlex
 from pathlib import Path
 from typing import Optional
 
 import yaml
+
+# Regex pattern for valid pkill process names (no regex metacharacters allowed)
+# Matches alphanumeric names with dots, underscores, and hyphens
+VALID_PROCESS_NAME_PATTERN = re.compile(r"^[A-Za-z0-9._-]+$")
 
 # Allowed commands for development tasks
 # Minimal set needed for the autonomous coding demo
@@ -219,23 +224,37 @@ def extract_commands(command_string: str) -> list[str]:
     return commands
 
 
-def validate_pkill_command(command_string: str) -> tuple[bool, str]:
+# Default pkill process names (hardcoded baseline, always available)
+DEFAULT_PKILL_PROCESSES = {
+    "node",
+    "npm",
+    "npx",
+    "vite",
+    "next",
+}
+
+
+def validate_pkill_command(
+    command_string: str,
+    extra_processes: Optional[set[str]] = None
+) -> tuple[bool, str]:
     """
     Validate pkill commands - only allow killing dev-related processes.
 
     Uses shlex to parse the command, avoiding regex bypass vulnerabilities.
 
+    Args:
+        command_string: The pkill command to validate
+        extra_processes: Optional set of additional process names to allow
+                        (from org/project config pkill_processes)
+
     Returns:
         Tuple of (is_allowed, reason_if_blocked)
     """
-    # Allowed process names for pkill
-    allowed_process_names = {
-        "node",
-        "npm",
-        "npx",
-        "vite",
-        "next",
-    }
+    # Merge default processes with any extra configured processes
+    allowed_process_names = DEFAULT_PKILL_PROCESSES.copy()
+    if extra_processes:
+        allowed_process_names |= extra_processes
 
     try:
         tokens = shlex.split(command_string)
@@ -254,17 +273,19 @@ def validate_pkill_command(command_string: str) -> tuple[bool, str]:
     if not args:
         return False, "pkill requires a process name"
 
-    # The target is typically the last non-flag argument
-    target = args[-1]
+    # Validate every non-flag argument (pkill accepts multiple patterns on BSD)
+    # This defensively ensures no disallowed process can be targeted
+    targets = []
+    for arg in args:
+        # For -f flag (full command line match), take the first word as process name
+        # e.g., "pkill -f 'node server.js'" -> target is "node server.js", process is "node"
+        t = arg.split()[0] if " " in arg else arg
+        targets.append(t)
 
-    # For -f flag (full command line match), extract the first word as process name
-    # e.g., "pkill -f 'node server.js'" -> target is "node server.js", process is "node"
-    if " " in target:
-        target = target.split()[0]
-
-    if target in allowed_process_names:
+    disallowed = [t for t in targets if t not in allowed_process_names]
+    if not disallowed:
         return True, ""
-    return False, f"pkill only allowed for dev processes: {allowed_process_names}"
+    return False, f"pkill only allowed for processes: {sorted(allowed_process_names)}"
 
 
 def validate_chmod_command(command_string: str) -> tuple[bool, str]:
@@ -455,6 +476,23 @@ def load_org_config() -> Optional[dict]:
                 if not isinstance(cmd, str):
                     return None
 
+        # Validate pkill_processes if present
+        if "pkill_processes" in config:
+            processes = config["pkill_processes"]
+            if not isinstance(processes, list):
+                return None
+            # Normalize and validate each process name against safe pattern
+            normalized = []
+            for proc in processes:
+                if not isinstance(proc, str):
+                    return None
+                proc = proc.strip()
+                # Block empty strings and regex metacharacters
+                if not proc or not VALID_PROCESS_NAME_PATTERN.fullmatch(proc):
+                    return None
+                normalized.append(proc)
+            config["pkill_processes"] = normalized
+
         return config
 
     except (yaml.YAMLError, IOError, OSError):
@@ -507,6 +545,23 @@ def load_project_commands(project_dir: Path) -> Optional[dict]:
             # Validate name is a string
             if not isinstance(cmd["name"], str):
                 return None
+
+        # Validate pkill_processes if present
+        if "pkill_processes" in config:
+            processes = config["pkill_processes"]
+            if not isinstance(processes, list):
+                return None
+            # Normalize and validate each process name against safe pattern
+            normalized = []
+            for proc in processes:
+                if not isinstance(proc, str):
+                    return None
+                proc = proc.strip()
+                # Block empty strings and regex metacharacters
+                if not proc or not VALID_PROCESS_NAME_PATTERN.fullmatch(proc):
+                    return None
+                normalized.append(proc)
+            config["pkill_processes"] = normalized
 
         return config
 
@@ -628,6 +683,42 @@ def get_project_allowed_commands(project_dir: Optional[Path]) -> set[str]:
     return allowed
 
 
+def get_effective_pkill_processes(project_dir: Optional[Path]) -> set[str]:
+    """
+    Get effective pkill process names after hierarchy resolution.
+
+    Merges processes from:
+    1. DEFAULT_PKILL_PROCESSES (hardcoded baseline)
+    2. Org config pkill_processes
+    3. Project config pkill_processes
+
+    Args:
+        project_dir: Path to the project directory, or None
+
+    Returns:
+        Set of allowed process names for pkill
+    """
+    # Start with default processes
+    processes = DEFAULT_PKILL_PROCESSES.copy()
+
+    # Add org-level pkill_processes
+    org_config = load_org_config()
+    if org_config:
+        org_processes = org_config.get("pkill_processes", [])
+        if isinstance(org_processes, list):
+            processes |= {p for p in org_processes if isinstance(p, str) and p.strip()}
+
+    # Add project-level pkill_processes
+    if project_dir:
+        project_config = load_project_commands(project_dir)
+        if project_config:
+            proj_processes = project_config.get("pkill_processes", [])
+            if isinstance(proj_processes, list):
+                processes |= {p for p in proj_processes if isinstance(p, str) and p.strip()}
+
+    return processes
+
+
 def is_command_allowed(command: str, allowed_commands: set[str]) -> bool:
     """
     Check if a command is allowed (supports patterns).
@@ -692,6 +783,9 @@ async def bash_security_hook(input_data, tool_use_id=None, context=None):
     # Get effective commands using hierarchy resolution
     allowed_commands, blocked_commands = get_effective_commands(project_dir)
 
+    # Get effective pkill processes (includes org/project config)
+    pkill_processes = get_effective_pkill_processes(project_dir)
+
     # Split into segments for per-command validation
     segments = split_command_segments(command)
 
@@ -725,7 +819,9 @@ async def bash_security_hook(input_data, tool_use_id=None, context=None):
                 cmd_segment = command  # Fallback to full command
 
             if cmd == "pkill":
-                allowed, reason = validate_pkill_command(cmd_segment)
+                # Pass configured extra processes (beyond defaults)
+                extra_procs = pkill_processes - DEFAULT_PKILL_PROCESSES
+                allowed, reason = validate_pkill_command(cmd_segment, extra_procs if extra_procs else None)
                 if not allowed:
                     return {"decision": "block", "reason": reason}
             elif cmd == "chmod":

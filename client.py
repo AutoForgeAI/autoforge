@@ -21,9 +21,14 @@ from security import bash_security_hook
 load_dotenv()
 
 # Default Playwright headless mode - can be overridden via PLAYWRIGHT_HEADLESS env var
-# When True, browser runs invisibly in background
-# When False, browser window is visible (default - useful for monitoring agent progress)
-DEFAULT_PLAYWRIGHT_HEADLESS = False
+# When True, browser runs invisibly in background (default - saves CPU)
+# When False, browser window is visible (useful for monitoring agent progress)
+DEFAULT_PLAYWRIGHT_HEADLESS = True
+
+# Default browser for Playwright - can be overridden via PLAYWRIGHT_BROWSER env var
+# Options: chrome, firefox, webkit, msedge
+# Firefox is recommended for lower CPU usage
+DEFAULT_PLAYWRIGHT_BROWSER = "firefox"
 
 # Environment variables to pass through to Claude CLI for API configuration
 # These allow using alternative API endpoints (e.g., GLM via z.ai) without
@@ -42,12 +47,37 @@ def get_playwright_headless() -> bool:
     """
     Get the Playwright headless mode setting.
 
-    Reads from PLAYWRIGHT_HEADLESS environment variable, defaults to False.
+    Reads from PLAYWRIGHT_HEADLESS environment variable, defaults to True.
     Returns True for headless mode (invisible browser), False for visible browser.
     """
-    value = os.getenv("PLAYWRIGHT_HEADLESS", "false").lower()
-    # Accept various truthy/falsy values
-    return value in ("true", "1", "yes", "on")
+    value = os.getenv("PLAYWRIGHT_HEADLESS", str(DEFAULT_PLAYWRIGHT_HEADLESS).lower()).strip().lower()
+    truthy = {"true", "1", "yes", "on"}
+    falsy = {"false", "0", "no", "off"}
+    if value not in truthy | falsy:
+        print(f"   - Warning: Invalid PLAYWRIGHT_HEADLESS='{value}', defaulting to {DEFAULT_PLAYWRIGHT_HEADLESS}")
+        return DEFAULT_PLAYWRIGHT_HEADLESS
+    return value in truthy
+
+
+# Valid browsers supported by Playwright MCP
+VALID_PLAYWRIGHT_BROWSERS = {"chrome", "firefox", "webkit", "msedge"}
+
+
+def get_playwright_browser() -> str:
+    """
+    Get the browser to use for Playwright.
+
+    Reads from PLAYWRIGHT_BROWSER environment variable, defaults to firefox.
+    Options: chrome, firefox, webkit, msedge
+    Firefox is recommended for lower CPU usage.
+    """
+    value = os.getenv("PLAYWRIGHT_BROWSER", DEFAULT_PLAYWRIGHT_BROWSER).strip().lower()
+    if value not in VALID_PLAYWRIGHT_BROWSERS:
+        print(f"   - Warning: Invalid PLAYWRIGHT_BROWSER='{value}', "
+              f"valid options: {', '.join(sorted(VALID_PLAYWRIGHT_BROWSERS))}. "
+              f"Defaulting to {DEFAULT_PLAYWRIGHT_BROWSER}")
+        return DEFAULT_PLAYWRIGHT_BROWSER
+    return value
 
 
 # Feature MCP tools for feature/test management
@@ -228,10 +258,16 @@ def create_client(
     }
     if not yolo_mode:
         # Include Playwright MCP server for browser automation (standard mode only)
-        # Headless mode is configurable via PLAYWRIGHT_HEADLESS environment variable
-        playwright_args = ["@playwright/mcp@latest", "--viewport-size", "1280x720"]
+        # Browser and headless mode configurable via environment variables
+        browser = get_playwright_browser()
+        playwright_args = [
+            "@playwright/mcp@latest",
+            "--viewport-size", "1280x720",
+            "--browser", browser,
+        ]
         if get_playwright_headless():
             playwright_args.append("--headless")
+        print(f"   - Browser: {browser} (headless={get_playwright_headless()})")
 
         # Browser isolation for parallel execution
         # Each agent gets its own isolated browser context to prevent tab conflicts
@@ -257,9 +293,16 @@ def create_client(
         if value:
             sdk_env[var] = value
 
+    # Detect alternative API mode (Ollama or GLM)
+    base_url = sdk_env.get("ANTHROPIC_BASE_URL", "")
+    is_alternative_api = bool(base_url)
+    is_ollama = "localhost:11434" in base_url or "127.0.0.1:11434" in base_url
+
     if sdk_env:
         print(f"   - API overrides: {', '.join(sdk_env.keys())}")
-        if "ANTHROPIC_BASE_URL" in sdk_env:
+        if is_ollama:
+            print("   - Ollama Mode: Using local models")
+        elif "ANTHROPIC_BASE_URL" in sdk_env:
             print(f"   - GLM Mode: Using {sdk_env['ANTHROPIC_BASE_URL']}")
 
     # Create a wrapper for bash_security_hook that passes project_dir via context
@@ -336,7 +379,8 @@ def create_client(
             # Enable extended context beta for better handling of long sessions.
             # This provides up to 1M tokens of context with automatic compaction.
             # See: https://docs.anthropic.com/en/api/beta-headers
-            betas=["context-1m-2025-08-07"],
+            # Disabled for alternative APIs (Ollama, GLM) as they don't support Claude-specific betas.
+            betas=[] if is_alternative_api else ["context-1m-2025-08-07"],
             # Note on context management:
             # The Claude Agent SDK handles context management automatically through the
             # underlying Claude Code CLI. When context approaches limits, the CLI
