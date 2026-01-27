@@ -59,6 +59,10 @@ def get_playwright_headless() -> bool:
     return value in truthy
 
 
+# Valid browsers supported by Playwright MCP
+VALID_PLAYWRIGHT_BROWSERS = {"chrome", "firefox", "webkit", "msedge"}
+
+
 def get_playwright_browser() -> str:
     """
     Get the browser to use for Playwright.
@@ -67,7 +71,13 @@ def get_playwright_browser() -> str:
     Options: chrome, firefox, webkit, msedge
     Firefox is recommended for lower CPU usage.
     """
-    return os.getenv("PLAYWRIGHT_BROWSER", DEFAULT_PLAYWRIGHT_BROWSER).lower()
+    value = os.getenv("PLAYWRIGHT_BROWSER", DEFAULT_PLAYWRIGHT_BROWSER).strip().lower()
+    if value not in VALID_PLAYWRIGHT_BROWSERS:
+        print(f"   - Warning: Invalid PLAYWRIGHT_BROWSER='{value}', "
+              f"valid options: {', '.join(sorted(VALID_PLAYWRIGHT_BROWSERS))}. "
+              f"Defaulting to {DEFAULT_PLAYWRIGHT_BROWSER}")
+        return DEFAULT_PLAYWRIGHT_BROWSER
+    return value
 
 
 # Feature MCP tools for feature/test management

@@ -1,6 +1,7 @@
 import { Activity } from 'lucide-react'
 import { AgentAvatar } from './AgentAvatar'
 import type { AgentMascot } from '../lib/types'
+import { Card, CardContent } from '@/components/ui/card'
 
 interface ActivityItem {
   agentName: string
@@ -38,8 +39,8 @@ export function ActivityFeed({ activities, maxItems = 5, showHeader = true }: Ac
     <div>
       {showHeader && (
         <div className="flex items-center gap-2 mb-2">
-          <Activity size={14} className="text-neo-text-secondary" />
-          <span className="text-xs font-bold text-neo-text-secondary uppercase tracking-wide">
+          <Activity size={14} className="text-muted-foreground" />
+          <span className="text-xs font-semibold text-muted-foreground uppercase tracking-wide">
             Recent Activity
           </span>
         </div>
@@ -47,34 +48,36 @@ export function ActivityFeed({ activities, maxItems = 5, showHeader = true }: Ac
 
       <div className="space-y-2">
         {displayedActivities.map((activity) => (
-          <div
+          <Card
             key={`${activity.featureId}-${activity.timestamp}-${activity.thought.slice(0, 20)}`}
-            className="flex items-start gap-2 py-1.5 px-2 rounded bg-[var(--color-neo-bg)] border border-neo-border/20"
+            className="py-1.5"
           >
-            <AgentAvatar
-              name={activity.agentName as AgentMascot}
-              state="working"
-              size="sm"
-            />
-            <div className="flex-1 min-w-0">
-              <div className="flex items-center gap-2">
-                <span className="text-xs font-bold" style={{
-                  color: getMascotColor(activity.agentName as AgentMascot)
-                }}>
-                  {activity.agentName}
-                </span>
-                <span className="text-[10px] text-neo-text-muted">
-                  #{activity.featureId}
-                </span>
-                <span className="text-[10px] text-neo-text-muted ml-auto">
-                  {formatTimestamp(activity.timestamp)}
-                </span>
+            <CardContent className="p-2 flex items-start gap-2">
+              <AgentAvatar
+                name={activity.agentName as AgentMascot}
+                state="working"
+                size="sm"
+              />
+              <div className="flex-1 min-w-0">
+                <div className="flex items-center gap-2">
+                  <span className="text-xs font-semibold" style={{
+                    color: getMascotColor(activity.agentName as AgentMascot)
+                  }}>
+                    {activity.agentName}
+                  </span>
+                  <span className="text-[10px] text-muted-foreground">
+                    #{activity.featureId}
+                  </span>
+                  <span className="text-[10px] text-muted-foreground ml-auto">
+                    {formatTimestamp(activity.timestamp)}
+                  </span>
+                </div>
+                <p className="text-xs text-muted-foreground truncate" title={activity.thought}>
+                  {activity.thought}
+                </p>
               </div>
-              <p className="text-xs text-neo-text-secondary truncate" title={activity.thought}>
-                {activity.thought}
-              </p>
-            </div>
-          </div>
+            </CardContent>
+          </Card>
         ))}
       </div>
     </div>

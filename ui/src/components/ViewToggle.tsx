@@ -1,4 +1,5 @@
 import { LayoutGrid, GitBranch } from 'lucide-react'
+import { Button } from '@/components/ui/button'
 
 export type ViewMode = 'kanban' | 'graph'
 
@@ -12,35 +13,25 @@ interface ViewToggleProps {
  */
 export function ViewToggle({ viewMode, onViewModeChange }: ViewToggleProps) {
   return (
-    <div className="inline-flex rounded-lg border-2 border-neo-border p-1 bg-white shadow-neo-sm">
-      <button
+    <div className="inline-flex rounded-lg border p-1 bg-background">
+      <Button
+        variant={viewMode === 'kanban' ? 'default' : 'ghost'}
+        size="sm"
         onClick={() => onViewModeChange('kanban')}
-        className={`
-          flex items-center gap-1.5 px-3 py-1.5 rounded-md font-medium text-sm transition-all
-          ${viewMode === 'kanban'
-            ? 'bg-neo-accent text-white shadow-neo-sm'
-            : 'text-neo-text hover:bg-neo-neutral-100'
-          }
-        `}
         title="Kanban View"
       >
         <LayoutGrid size={16} />
-        <span>Kanban</span>
-      </button>
-      <button
+        Kanban
+      </Button>
+      <Button
+        variant={viewMode === 'graph' ? 'default' : 'ghost'}
+        size="sm"
         onClick={() => onViewModeChange('graph')}
-        className={`
-          flex items-center gap-1.5 px-3 py-1.5 rounded-md font-medium text-sm transition-all
-          ${viewMode === 'graph'
-            ? 'bg-neo-accent text-white shadow-neo-sm'
-            : 'text-neo-text hover:bg-neo-neutral-100'
-          }
-        `}
         title="Dependency Graph View"
       >
         <GitBranch size={16} />
-        <span>Graph</span>
-      </button>
+        Graph
+      </Button>
     </div>
   )
 }

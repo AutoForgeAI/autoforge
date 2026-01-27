@@ -2,6 +2,7 @@ import { Globe, Square, Loader2, ExternalLink, AlertTriangle } from 'lucide-reac
 import { useMutation, useQueryClient } from '@tanstack/react-query'
 import type { DevServerStatus } from '../lib/types'
 import { startDevServer, stopDevServer } from '../lib/api'
+import { Button } from '@/components/ui/button'
 
 // Re-export DevServerStatus from lib/types for consumers that import from here
 export type { DevServerStatus }
@@ -86,14 +87,11 @@ export function DevServerControl({ projectName, status, url }: DevServerControlP
   return (
     <div className="flex items-center gap-2">
       {isStopped ? (
-        <button
+        <Button
           onClick={handleStart}
           disabled={isLoading}
-          className="neo-btn text-sm py-2 px-3"
-          style={isCrashed ? {
-            backgroundColor: 'var(--color-neo-danger)',
-            color: 'var(--color-neo-text-on-bright)',
-          } : undefined}
+          variant={isCrashed ? "destructive" : "outline"}
+          size="sm"
           title={isCrashed ? "Dev Server Crashed - Click to Restart" : "Start Dev Server"}
           aria-label={isCrashed ? "Restart Dev Server (crashed)" : "Start Dev Server"}
         >
@@ -104,16 +102,13 @@ export function DevServerControl({ projectName, status, url }: DevServerControlP
           ) : (
             <Globe size={18} />
           )}
-        </button>
+        </Button>
       ) : (
-        <button
+        <Button
           onClick={handleStop}
           disabled={isLoading}
-          className="neo-btn text-sm py-2 px-3"
-          style={{
-            backgroundColor: 'var(--color-neo-progress)',
-            color: 'var(--color-neo-text-on-bright)',
-          }}
+          size="sm"
+          className="bg-primary text-primary-foreground hover:bg-primary/90"
           title="Stop Dev Server"
           aria-label="Stop Dev Server"
         >
@@ -122,31 +117,31 @@ export function DevServerControl({ projectName, status, url }: DevServerControlP
           ) : (
             <Square size={18} />
           )}
-        </button>
+        </Button>
       )}
 
       {/* Show URL as clickable link when server is running */}
       {isRunning && url && (
-        <a
-          href={url}
-          target="_blank"
-          rel="noopener noreferrer"
-          className="neo-btn text-sm py-2 px-3 gap-1"
-          style={{
-            backgroundColor: 'var(--color-neo-progress)',
-            color: 'var(--color-neo-text-on-bright)',
-            textDecoration: 'none',
-          }}
-          title={`Open ${url} in new tab`}
+        <Button
+          asChild
+          size="sm"
+          className="bg-primary text-primary-foreground hover:bg-primary/90 gap-1"
         >
-          <span className="font-mono text-xs">{url}</span>
-          <ExternalLink size={14} />
-        </a>
+          <a
+            href={url}
+            target="_blank"
+            rel="noopener noreferrer"
+            title={`Open ${url} in new tab`}
+          >
+            <span className="font-mono text-xs">{url}</span>
+            <ExternalLink size={14} />
+          </a>
+        </Button>
       )}
 
       {/* Error display */}
       {(startDevServerMutation.error || stopDevServerMutation.error) && (
-        <span className="text-xs font-mono text-[var(--color-neo-danger)] ml-2">
+        <span className="text-xs font-mono text-destructive ml-2">
           {String((startDevServerMutation.error || stopDevServerMutation.error)?.message || 'Operation failed')}
         </span>
       )}

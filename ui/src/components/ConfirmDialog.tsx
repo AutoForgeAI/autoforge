@@ -1,12 +1,21 @@
 /**
  * ConfirmDialog Component
  *
- * A reusable confirmation dialog following the neobrutalism design system.
+ * A reusable confirmation dialog using ShadCN Dialog components.
  * Used to confirm destructive actions like deleting projects.
  */
 
 import type { ReactNode } from 'react'
-import { AlertTriangle, X } from 'lucide-react'
+import { AlertTriangle } from 'lucide-react'
+import {
+  Dialog,
+  DialogContent,
+  DialogDescription,
+  DialogFooter,
+  DialogHeader,
+  DialogTitle,
+} from '@/components/ui/dialog'
+import { Button } from '@/components/ui/button'
 
 interface ConfirmDialogProps {
   isOpen: boolean
@@ -31,74 +40,39 @@ export function ConfirmDialog({
   onConfirm,
   onCancel,
 }: ConfirmDialogProps) {
-  if (!isOpen) return null
-
-  const variantColors = {
-    danger: {
-      icon: 'var(--color-neo-danger)',
-      button: 'neo-btn-danger',
-    },
-    warning: {
-      icon: 'var(--color-neo-pending)',
-      button: 'neo-btn-warning',
-    },
-  }
-
-  const colors = variantColors[variant]
-
   return (
-    <div className="neo-modal-backdrop" onClick={onCancel}>
-      <div
-        className="neo-modal w-full max-w-md"
-        onClick={(e) => e.stopPropagation()}
-      >
-        {/* Header */}
-        <div className="flex items-center justify-between p-4 border-b-3 border-[var(--color-neo-border)]">
+    <Dialog open={isOpen} onOpenChange={(open) => !open && onCancel()}>
+      <DialogContent className="sm:max-w-md">
+        <DialogHeader>
           <div className="flex items-center gap-3">
             <div
-              className="p-2 border-2 border-[var(--color-neo-border)]"
-              style={{ boxShadow: 'var(--shadow-neo-sm)', backgroundColor: colors.icon }}
+              className={`p-2 rounded-lg ${
+                variant === 'danger'
+                  ? 'bg-destructive/10 text-destructive'
+                  : 'bg-primary/10 text-primary'
+              }`}
             >
-              <AlertTriangle size={20} className="text-[var(--color-neo-text-on-bright)]" />
+              <AlertTriangle size={20} />
             </div>
-            <h2 className="font-display font-bold text-lg text-[var(--color-neo-text)]">
-              {title}
-            </h2>
+            <DialogTitle>{title}</DialogTitle>
           </div>
-          <button
-            onClick={onCancel}
-            className="neo-btn neo-btn-ghost p-2"
+        </DialogHeader>
+        <DialogDescription asChild>
+          <div className="text-muted-foreground">{message}</div>
+        </DialogDescription>
+        <DialogFooter className="gap-2 sm:gap-0">
+          <Button variant="outline" onClick={onCancel} disabled={isLoading}>
+            {cancelLabel}
+          </Button>
+          <Button
+            variant={variant === 'danger' ? 'destructive' : 'default'}
+            onClick={onConfirm}
             disabled={isLoading}
           >
-            <X size={20} />
-          </button>
-        </div>
-
-        {/* Content */}
-        <div className="p-6">
-          <div className="text-[var(--color-neo-text-secondary)] mb-6">
-            {message}
-          </div>
-
-          {/* Actions */}
-          <div className="flex justify-end gap-3">
-            <button
-              onClick={onCancel}
-              className="neo-btn"
-              disabled={isLoading}
-            >
-              {cancelLabel}
-            </button>
-            <button
-              onClick={onConfirm}
-              className={`neo-btn ${colors.button}`}
-              disabled={isLoading}
-            >
-              {isLoading ? 'Deleting...' : confirmLabel}
-            </button>
-          </div>
-        </div>
-      </div>
-    </div>
+            {isLoading ? 'Deleting...' : confirmLabel}
+          </Button>
+        </DialogFooter>
+      </DialogContent>
+    </Dialog>
   )
 }

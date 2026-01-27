@@ -15,7 +15,6 @@ from contextlib import contextmanager
 from pathlib import Path
 
 from security import (
-    DEFAULT_PKILL_PROCESSES,
     bash_security_hook,
     extract_commands,
     get_effective_commands,

@@ -606,7 +606,7 @@ export function AgentAvatar({ name, state, size = 'md', showName = false }: Agen
         <SvgComponent colors={colors} size={svgSize} />
       </div>
       {showName && (
-        <span className={`${font} font-bold text-neo-text`} style={{ color: colors.primary }}>
+        <span className={`${font} font-bold text-foreground`} style={{ color: colors.primary }}>
           {name}
         </span>
       )}

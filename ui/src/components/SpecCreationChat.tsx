@@ -12,6 +12,10 @@ import { ChatMessage } from './ChatMessage'
 import { QuestionOptions } from './QuestionOptions'
 import { TypingIndicator } from './TypingIndicator'
 import type { ImageAttachment } from '../lib/types'
+import { Button } from '@/components/ui/button'
+import { Textarea } from '@/components/ui/textarea'
+import { Card, CardContent } from '@/components/ui/card'
+import { Alert, AlertDescription } from '@/components/ui/alert'
 
 // Image upload validation constants
 const MAX_FILE_SIZE = 5 * 1024 * 1024 // 5 MB
@@ -193,28 +197,28 @@ export function SpecCreationChat({
     switch (connectionStatus) {
       case 'connected':
         return (
-          <span className="flex items-center gap-1 text-xs text-[var(--color-neo-done)]">
+          <span className="flex items-center gap-1 text-xs text-green-500">
             <Wifi size={12} />
             Connected
           </span>
         )
       case 'connecting':
         return (
-          <span className="flex items-center gap-1 text-xs text-[var(--color-neo-pending)]">
+          <span className="flex items-center gap-1 text-xs text-yellow-500">
             <Wifi size={12} className="animate-pulse" />
             Connecting...
           </span>
         )
       case 'error':
         return (
-          <span className="flex items-center gap-1 text-xs text-[var(--color-neo-danger)]">
+          <span className="flex items-center gap-1 text-xs text-destructive">
             <WifiOff size={12} />
             Error
           </span>
         )
       default:
         return (
-          <span className="flex items-center gap-1 text-xs text-[var(--color-neo-text-secondary)]">
+          <span className="flex items-center gap-1 text-xs text-muted-foreground">
             <WifiOff size={12} />
             Disconnected
           </span>
@@ -223,11 +227,11 @@ export function SpecCreationChat({
   }
 
   return (
-    <div className="flex flex-col h-full bg-[var(--color-neo-bg)]">
+    <div className="flex flex-col h-full bg-background">
       {/* Header */}
-      <div className="flex items-center justify-between p-4 border-b-3 border-[var(--color-neo-border)] bg-[var(--color-neo-card)]">
+      <div className="flex items-center justify-between p-4 border-b-2 border-border bg-card">
         <div className="flex items-center gap-3">
-          <h2 className="font-display font-bold text-lg text-[var(--color-neo-text)]">
+          <h2 className="font-display font-bold text-lg text-foreground">
             Create Spec: {projectName}
           </h2>
           <ConnectionIndicator />
@@ -235,14 +239,14 @@ export function SpecCreationChat({
 
         <div className="flex items-center gap-2">
           {isComplete && (
-            <span className="flex items-center gap-1 text-sm text-[var(--color-neo-done)] font-bold">
+            <span className="flex items-center gap-1 text-sm text-green-500 font-bold">
               <CheckCircle2 size={16} />
               Complete
             </span>
           )}
 
           {/* Load Sample Prompt */}
-          <button
+          <Button
             onClick={() => {
               setInput(SAMPLE_PROMPT)
               // Also resize the textarea to fit content
@@ -251,68 +255,76 @@ export function SpecCreationChat({
                 inputRef.current.style.height = `${Math.min(inputRef.current.scrollHeight, 200)}px`
               }
             }}
-            className="neo-btn neo-btn-ghost text-sm py-2"
+            variant="ghost"
+            size="sm"
             title="Load sample prompt (Simple Todo app)"
           >
             <FileText size={16} />
             Load Sample
-          </button>
+          </Button>
 
           {/* Exit to Project - always visible escape hatch */}
-          <button
+          <Button
             onClick={onExitToProject}
-            className="neo-btn neo-btn-ghost text-sm py-2"
+            variant="ghost"
+            size="sm"
             title="Exit chat and go to project (you can start the agent manually)"
           >
             <ExternalLink size={16} />
             Exit to Project
-          </button>
+          </Button>
 
-          <button
+          <Button
             onClick={onCancel}
-            className="neo-btn neo-btn-ghost p-2"
+            variant="ghost"
+            size="icon"
             title="Cancel"
           >
             <X size={20} />
-          </button>
+          </Button>
         </div>
       </div>
 
       {/* Error banner */}
       {error && (
-        <div className="flex items-center gap-2 p-3 bg-[var(--color-neo-error-bg)] text-[var(--color-neo-error-text)] border-b-3 border-[var(--color-neo-error-border)]">
+        <Alert variant="destructive" className="rounded-none border-x-0 border-t-0">
           <AlertCircle size={16} />
-          <span className="flex-1 text-sm">{error}</span>
-          <button
+          <AlertDescription className="flex-1">{error}</AlertDescription>
+          <Button
             onClick={() => setError(null)}
-            className="p-1 hover:opacity-70 transition-opacity rounded"
+            variant="ghost"
+            size="icon"
+            className="h-6 w-6"
           >
             <X size={14} />
-          </button>
-        </div>
+          </Button>
+        </Alert>
       )}
 
       {/* Messages area */}
       <div className="flex-1 overflow-y-auto py-4">
         {messages.length === 0 && !isLoading && (
           <div className="flex flex-col items-center justify-center h-full text-center p-8">
-            <div className="neo-card p-6 max-w-md">
-              <h3 className="font-display font-bold text-lg mb-2">
-                Starting Spec Creation
-              </h3>
-              <p className="text-sm text-[var(--color-neo-text-secondary)]">
-                Connecting to Claude to help you create your app specification...
-              </p>
-              {connectionStatus === 'error' && (
-                <button
-                  onClick={start}
-                  className="neo-btn neo-btn-primary mt-4 text-sm"
-                >
-                  <RotateCcw size={14} />
-                  Retry Connection
-                </button>
-              )}
-            </div>
+            <Card className="p-6 max-w-md">
+              <CardContent className="p-0">
+                <h3 className="font-display font-bold text-lg mb-2">
+                  Starting Spec Creation
+                </h3>
+                <p className="text-sm text-muted-foreground">
+                  Connecting to Claude to help you create your app specification...
+                </p>
+                {connectionStatus === 'error' && (
+                  <Button
+                    onClick={start}
+                    className="mt-4"
+                    size="sm"
+                  >
+                    <RotateCcw size={14} />
+                    Retry Connection
+                  </Button>
+                )}
+              </CardContent>
+            </Card>
           </div>
         )}
 
@@ -339,7 +351,7 @@ export function SpecCreationChat({
       {/* Input area */}
       {!isComplete && (
         <div
-          className="p-4 border-t-3 border-[var(--color-neo-border)] bg-[var(--color-neo-card)]"
+          className="p-4 border-t-2 border-border bg-card"
           onDrop={handleDrop}
           onDragOver={handleDragOver}
         >
@@ -349,22 +361,21 @@ export function SpecCreationChat({
               {pendingAttachments.map((attachment) => (
                 <div
                   key={attachment.id}
-                  className="relative group border-2 border-[var(--color-neo-border)] p-1 bg-[var(--color-neo-card)]"
-                  style={{ boxShadow: 'var(--shadow-neo-sm)' }}
+                  className="relative group border-2 border-border p-1 bg-card rounded shadow-sm"
                 >
                   <img
                     src={attachment.previewUrl}
                     alt={attachment.filename}
-                    className="w-16 h-16 object-cover"
+                    className="w-16 h-16 object-cover rounded"
                   />
                   <button
                     onClick={() => handleRemoveAttachment(attachment.id)}
-                    className="absolute -top-2 -right-2 bg-[var(--color-neo-danger)] text-[var(--color-neo-text-on-bright)] rounded-full p-0.5 border-2 border-[var(--color-neo-border)] hover:scale-110 transition-transform"
+                    className="absolute -top-2 -right-2 bg-destructive text-destructive-foreground rounded-full p-0.5 border-2 border-border hover:scale-110 transition-transform"
                     title="Remove attachment"
                   >
                     <X size={12} />
                   </button>
-                  <span className="text-xs truncate block max-w-16 mt-1 text-center">
+                  <span className="text-xs truncate block max-w-16 mt-1 text-center text-muted-foreground">
                     {attachment.filename.length > 10
                       ? `${attachment.filename.substring(0, 7)}...`
                       : attachment.filename}
@@ -386,16 +397,17 @@ export function SpecCreationChat({
             />
 
             {/* Attach button */}
-            <button
+            <Button
               onClick={() => fileInputRef.current?.click()}
               disabled={connectionStatus !== 'connected'}
-              className="neo-btn neo-btn-ghost p-3"
+              variant="ghost"
+              size="icon"
               title="Attach image (JPEG, PNG - max 5MB)"
             >
               <Paperclip size={18} />
-            </button>
+            </Button>
 
-            <textarea
+            <Textarea
               ref={inputRef}
               value={input}
               onChange={(e) => {
@@ -412,25 +424,25 @@ export function SpecCreationChat({
                     ? 'Add a message with your image(s)...'
                     : 'Type your response... (or /exit to go to project)'
               }
-              className="neo-input flex-1 resize-none min-h-[46px] max-h-[200px] overflow-y-auto"
+              className="flex-1 resize-none min-h-[46px] max-h-[200px] overflow-y-auto"
               disabled={(isLoading && !currentQuestions) || connectionStatus !== 'connected'}
               rows={1}
             />
-            <button
+            <Button
               onClick={handleSendMessage}
               disabled={
                 (!input.trim() && pendingAttachments.length === 0) ||
                 (isLoading && !currentQuestions) ||
                 connectionStatus !== 'connected'
               }
-              className="neo-btn neo-btn-primary px-6"
+              className="px-6"
             >
               <Send size={18} />
-            </button>
+            </Button>
           </div>
 
           {/* Help text */}
-          <p className="text-xs text-[var(--color-neo-text-secondary)] mt-2">
+          <p className="text-xs text-muted-foreground mt-2">
             Press Enter to send, Shift+Enter for new line. Drag & drop or click <Paperclip size={12} className="inline" /> to attach images (JPEG/PNG, max 5MB).
           </p>
         </div>
@@ -438,64 +450,63 @@ export function SpecCreationChat({
 
       {/* Completion footer */}
       {isComplete && (
-        <div className={`p-4 border-t-3 border-[var(--color-neo-border)] ${
-          initializerStatus === 'error' ? 'bg-[var(--color-neo-danger)]' : 'bg-[var(--color-neo-done)]'
+        <div className={`p-4 border-t-2 border-border ${
+          initializerStatus === 'error' ? 'bg-destructive' : 'bg-green-500'
         }`}>
           <div className="flex items-center justify-between">
             <div className="flex items-center gap-2">
               {initializerStatus === 'starting' ? (
                 <>
-                  <Loader2 size={20} className="animate-spin text-[var(--color-neo-text-on-bright)]" />
-                  <span className="font-bold text-[var(--color-neo-text-on-bright)]">
+                  <Loader2 size={20} className="animate-spin text-white" />
+                  <span className="font-bold text-white">
                     Starting agent{yoloEnabled ? ' (YOLO mode)' : ''}...
                   </span>
                 </>
               ) : initializerStatus === 'error' ? (
                 <>
-                  <AlertCircle size={20} className="text-[var(--color-neo-text-on-bright)]" />
-                  <span className="font-bold text-[var(--color-neo-text-on-bright)]">
+                  <AlertCircle size={20} className="text-white" />
+                  <span className="font-bold text-white">
                     {initializerError || 'Failed to start agent'}
                   </span>
                 </>
               ) : (
                 <>
-                  <CheckCircle2 size={20} className="text-[var(--color-neo-text-on-bright)]" />
-                  <span className="font-bold text-[var(--color-neo-text-on-bright)]">Specification created successfully!</span>
+                  <CheckCircle2 size={20} className="text-white" />
+                  <span className="font-bold text-white">Specification created successfully!</span>
                 </>
               )}
             </div>
             <div className="flex items-center gap-2">
               {initializerStatus === 'error' && onRetryInitializer && (
-                <button
+                <Button
                   onClick={onRetryInitializer}
-                  className="neo-btn bg-[var(--color-neo-card)]"
+                  variant="secondary"
                 >
                   <RotateCcw size={14} />
                   Retry
-                </button>
+                </Button>
               )}
               {initializerStatus === 'idle' && (
                 <>
                   {/* YOLO Mode Toggle */}
-                  <button
+                  <Button
                     onClick={() => setYoloEnabled(!yoloEnabled)}
-                    className={`neo-btn text-sm py-2 px-3 ${
-                      yoloEnabled ? 'neo-btn-warning' : 'bg-[var(--color-neo-card)]'
-                    }`}
+                    variant={yoloEnabled ? "default" : "secondary"}
+                    size="sm"
+                    className={yoloEnabled ? 'bg-yellow-500 hover:bg-yellow-600 text-yellow-900' : ''}
                     title="YOLO Mode: Skip testing for rapid prototyping"
                   >
-                    <Zap size={16} className={yoloEnabled ? 'text-yellow-900' : ''} />
-                    <span className={yoloEnabled ? 'text-yellow-900 font-bold' : ''}>
+                    <Zap size={16} />
+                    <span className={yoloEnabled ? 'font-bold' : ''}>
                       YOLO
                     </span>
-                  </button>
-                  <button
+                  </Button>
+                  <Button
                     onClick={() => onComplete('', yoloEnabled)}
-                    className="neo-btn neo-btn-primary"
                   >
                     Continue to Project
                     <ArrowRight size={16} />
-                  </button>
+                  </Button>
                 </>
               )}
             </div>

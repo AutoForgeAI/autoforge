@@ -8,8 +8,7 @@ This document tracks all customizations made to AutoCoder that deviate from the 
 
 1. [UI Theme Customization](#1-ui-theme-customization)
 2. [Playwright Browser Configuration](#2-playwright-browser-configuration)
-3. [SQLite Robust Connection Handling](#3-sqlite-robust-connection-handling)
-4. [Update Checklist](#update-checklist)
+3. [Update Checklist](#update-checklist)
 
 ---
 
@@ -175,95 +174,7 @@ playwright_args = [
 
 ---
 
-## 3. SQLite Robust Connection Handling
-
-### Overview
-
-Added robust SQLite connection handling to prevent database corruption from concurrent access (MCP server, FastAPI server, progress tracking).
-
-**Features Added:**
-- WAL mode for better concurrency
-- Busy timeout (30 seconds)
-- Retry logic with exponential backoff
-- Database health check endpoint
-
-### Modified Files
-
-#### `api/database.py`
-
-**New functions added:**
-
-```python
-def get_robust_connection(db_path: str) -> sqlite3.Connection:
-    """
-    Create a SQLite connection with robust settings:
-    - WAL mode for concurrent access
-    - 30 second busy timeout
-    - Foreign keys enabled
-    """
-
-@contextmanager
-def robust_db_connection(db_path: str):
-    """Context manager for robust database connections."""
-
-def execute_with_retry(conn, sql, params=None, max_retries=3):
-    """Execute SQL with exponential backoff retry for transient errors."""
-
-def check_database_health(db_path: str) -> dict:
-    """
-    Check database integrity and return health status.
-    Returns: {healthy: bool, message: str, details: dict}
-    """
-```
-
----
-
-#### `progress.py`
-
-**Changed from raw sqlite3 to robust connections:**
-
-```python
-# BEFORE:
-conn = sqlite3.connect(db_path)
-
-# AFTER:
-from api.database import robust_db_connection, execute_with_retry
-
-with robust_db_connection(db_path) as conn:
-    execute_with_retry(conn, sql, params)
-```
-
----
-
-#### `server/routers/projects.py`
-
-**New endpoint added:**
-
-```python
-@router.get("/{project_name}/db-health")
-async def get_database_health(project_name: str) -> DatabaseHealth:
-    """
-    Check the health of the project's features database.
-    Useful for diagnosing corruption issues.
-    """
-```
-
----
-
-#### `server/schemas.py`
-
-**New schema added:**
-
-```python
-class DatabaseHealth(BaseModel):
-    healthy: bool
-    message: str
-    details: dict = {}
-```
-
----
-
-## Update Checklist
+## 3. Update Checklist
 
 When updating AutoCoder from upstream, verify these items:
 
@@ -276,13 +187,8 @@ When updating AutoCoder from upstream, verify these items:
 ### Backend Changes
 - [ ] `client.py` - Playwright browser/headless defaults preserved
 - [ ] `.env.example` - Documentation updates preserved
-- [ ] `api/database.py` - Robust connection functions preserved
-- [ ] `progress.py` - Uses robust_db_connection
-- [ ] `server/routers/projects.py` - db-health endpoint preserved
-- [ ] `server/schemas.py` - DatabaseHealth schema preserved
 
 ### General
-- [ ] Test database operations under concurrent load
 - [ ] Verify Playwright uses Firefox by default
 - [ ] Check that browser runs headless by default
 
@@ -299,8 +205,7 @@ cd ui && npm run build
 
 ### Backend Only
 ```bash
-git checkout client.py .env.example api/database.py progress.py
-git checkout server/routers/projects.py server/schemas.py
+git checkout client.py .env.example
 ```
 
 ---
@@ -311,18 +216,13 @@ git checkout server/routers/projects.py server/schemas.py
 |------|------|-------------------|
 | `ui/src/styles/custom-theme.css` | UI | Twitter-style theme |
 | `ui/src/components/KanbanColumn.tsx` | UI | Themeable kanban columns |
+| `ui/src/main.tsx` | UI | Imports custom theme |
 | `client.py` | Backend | Firefox + headless defaults |
 | `.env.example` | Config | Updated documentation |
-| `api/database.py` | Backend | Robust SQLite connections |
-| `progress.py` | Backend | Uses robust connections |
-| `server/routers/projects.py` | Backend | db-health endpoint |
-| `server/schemas.py` | Backend | DatabaseHealth schema |
 
 ---
 
 ## Last Updated
 
 **Date:** January 2026
-**Commits:**
-- `1910b96` - SQLite robust connection handling
-- `e014b04` - Custom theme override system
+**PR:** #93 - Twitter-style UI theme with custom theme override system

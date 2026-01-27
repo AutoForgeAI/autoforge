@@ -1,5 +1,6 @@
 import { AlertTriangle, GitBranch, Check } from 'lucide-react'
 import type { Feature } from '../lib/types'
+import { Badge } from '@/components/ui/badge'
 
 interface DependencyBadgeProps {
   feature: Feature
@@ -38,14 +39,13 @@ export function DependencyBadge({ feature, allFeatures = [], compact = false }: 
   if (compact) {
     // Compact view for card displays
     return (
-      <div
-        className={`
-          inline-flex items-center gap-1 text-xs px-2 py-0.5 rounded-full font-mono
-          ${isBlocked
-            ? 'bg-neo-danger/20 text-neo-danger'
-            : 'bg-neo-neutral-200 text-neo-text-secondary'
-          }
-        `}
+      <Badge
+        variant="outline"
+        className={`gap-1 font-mono text-xs ${
+          isBlocked
+            ? 'bg-destructive/10 text-destructive border-destructive/30'
+            : 'bg-muted text-muted-foreground'
+        }`}
         title={isBlocked
           ? `Blocked by ${blockingCount} ${blockingCount === 1 ? 'dependency' : 'dependencies'}`
           : `${satisfiedCount}/${dependencies.length} dependencies satisfied`
@@ -62,7 +62,7 @@ export function DependencyBadge({ feature, allFeatures = [], compact = false }: 
             <span>{satisfiedCount}/{dependencies.length}</span>
           </>
         )}
-      </div>
+      </Badge>
     )
   }
 
@@ -70,15 +70,15 @@ export function DependencyBadge({ feature, allFeatures = [], compact = false }: 
   return (
     <div className="flex items-center gap-2">
       {isBlocked ? (
-        <div className="flex items-center gap-1.5 text-sm text-neo-danger">
+        <div className="flex items-center gap-1.5 text-sm text-destructive">
           <AlertTriangle size={14} />
           <span className="font-medium">
             Blocked by {blockingCount} {blockingCount === 1 ? 'dependency' : 'dependencies'}
           </span>
         </div>
       ) : (
-        <div className="flex items-center gap-1.5 text-sm text-neo-text-secondary">
-          <Check size={14} className="text-neo-done" />
+        <div className="flex items-center gap-1.5 text-sm text-muted-foreground">
+          <Check size={14} className="text-primary" />
           <span>
             All {dependencies.length} {dependencies.length === 1 ? 'dependency' : 'dependencies'} satisfied
           </span>
@@ -102,7 +102,7 @@ export function DependencyIndicator({ feature }: { feature: Feature }) {
   if (isBlocked) {
     return (
       <span
-        className="inline-flex items-center justify-center w-5 h-5 rounded-full bg-neo-danger/20 text-neo-danger"
+        className="inline-flex items-center justify-center w-5 h-5 rounded-full bg-destructive/10 text-destructive"
         title={`Blocked by ${feature.blocking_dependencies?.length || 0} dependencies`}
       >
         <AlertTriangle size={12} />
@@ -112,7 +112,7 @@ export function DependencyIndicator({ feature }: { feature: Feature }) {
 
   return (
     <span
-      className="inline-flex items-center justify-center w-5 h-5 rounded-full bg-neo-neutral-200 text-neo-text-secondary"
+      className="inline-flex items-center justify-center w-5 h-5 rounded-full bg-muted text-muted-foreground"
       title={`${dependencies.length} dependencies (all satisfied)`}
     >
       <GitBranch size={12} />

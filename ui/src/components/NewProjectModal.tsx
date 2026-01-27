@@ -10,11 +10,25 @@
  */
 
 import { useState } from 'react'
-import { X, Bot, FileEdit, ArrowRight, ArrowLeft, Loader2, CheckCircle2, Folder } from 'lucide-react'
+import { Bot, FileEdit, ArrowRight, ArrowLeft, Loader2, CheckCircle2, Folder } from 'lucide-react'
 import { useCreateProject } from '../hooks/useProjects'
 import { SpecCreationChat } from './SpecCreationChat'
 import { FolderBrowser } from './FolderBrowser'
 import { startAgent } from '../lib/api'
+import {
+  Dialog,
+  DialogContent,
+  DialogHeader,
+  DialogTitle,
+  DialogDescription,
+  DialogFooter,
+} from '@/components/ui/dialog'
+import { Button } from '@/components/ui/button'
+import { Input } from '@/components/ui/input'
+import { Label } from '@/components/ui/label'
+import { Alert, AlertDescription } from '@/components/ui/alert'
+import { Badge } from '@/components/ui/badge'
+import { Card, CardContent } from '@/components/ui/card'
 
 type InitializerStatus = 'idle' | 'starting' | 'error'
 
@@ -75,7 +89,7 @@ export function NewProjectModal({
   }
 
   const handleFolderSelect = (path: string) => {
-    setProjectPath(path)  // Use selected path directly - no subfolder creation
+    setProjectPath(path)
     changeStep('method')
   }
 
@@ -189,7 +203,7 @@ export function NewProjectModal({
   // Full-screen chat view
   if (step === 'chat') {
     return (
-      <div className="fixed inset-0 z-50 bg-[var(--color-neo-bg)]">
+      <div className="fixed inset-0 z-50 bg-background">
         <SpecCreationChat
           projectName={projectName.trim()}
           onComplete={handleSpecComplete}
@@ -206,31 +220,20 @@ export function NewProjectModal({
   // Folder step uses larger modal
   if (step === 'folder') {
     return (
-      <div className="neo-modal-backdrop" onClick={handleClose}>
-        <div
-          className="neo-modal w-full max-w-3xl max-h-[85vh] flex flex-col"
-          onClick={(e) => e.stopPropagation()}
-        >
+      <Dialog open={true} onOpenChange={(open) => !open && handleClose()}>
+        <DialogContent className="sm:max-w-3xl max-h-[85vh] flex flex-col p-0">
           {/* Header */}
-          <div className="flex items-center justify-between p-4 border-b-3 border-[var(--color-neo-border)]">
+          <DialogHeader className="p-6 pb-4 border-b">
             <div className="flex items-center gap-3">
-              <Folder size={24} className="text-[var(--color-neo-progress)]" />
+              <Folder size={24} className="text-primary" />
               <div>
-                <h2 className="font-display font-bold text-xl text-[var(--color-neo-text)]">
-                  Select Project Location
-                </h2>
-                <p className="text-sm text-[var(--color-neo-text-secondary)]">
-                  Select the folder to use for project <span className="font-bold font-mono">{projectName}</span>. Create a new folder or choose an existing one.
-                </p>
+                <DialogTitle>Select Project Location</DialogTitle>
+                <DialogDescription>
+                  Select the folder to use for project <span className="font-semibold font-mono">{projectName}</span>. Create a new folder or choose an existing one.
+                </DialogDescription>
               </div>
             </div>
-            <button
-              onClick={handleClose}
-              className="neo-btn neo-btn-ghost p-2"
-            >
-              <X size={20} />
-            </button>
-          </div>
+          </DialogHeader>
 
           {/* Folder Browser */}
           <div className="flex-1 overflow-hidden">
@@ -239,193 +242,151 @@ export function NewProjectModal({
               onCancel={handleFolderCancel}
             />
           </div>
-        </div>
-      </div>
+        </DialogContent>
+      </Dialog>
     )
   }
 
   return (
-    <div className="neo-modal-backdrop" onClick={handleClose}>
-      <div
-        className="neo-modal w-full max-w-lg"
-        onClick={(e) => e.stopPropagation()}
-      >
-        {/* Header */}
-        <div className="flex items-center justify-between p-4 border-b-3 border-[var(--color-neo-border)]">
-          <h2 className="font-display font-bold text-xl text-[var(--color-neo-text)]">
+    <Dialog open={true} onOpenChange={(open) => !open && handleClose()}>
+      <DialogContent className="sm:max-w-lg">
+        <DialogHeader>
+          <DialogTitle>
             {step === 'name' && 'Create New Project'}
             {step === 'method' && 'Choose Setup Method'}
             {step === 'complete' && 'Project Created!'}
-          </h2>
-          <button
-            onClick={handleClose}
-            className="neo-btn neo-btn-ghost p-2"
-          >
-            <X size={20} />
-          </button>
-        </div>
+          </DialogTitle>
+        </DialogHeader>
 
-        {/* Content */}
-        <div className="p-6">
-          {/* Step 1: Project Name */}
-          {step === 'name' && (
-            <form onSubmit={handleNameSubmit}>
-              <div className="mb-6">
-                <label className="block font-bold mb-2 text-[var(--color-neo-text)]">
-                  Project Name
-                </label>
-                <input
-                  type="text"
-                  value={projectName}
-                  onChange={(e) => setProjectName(e.target.value)}
-                  placeholder="my-awesome-app"
-                  className="neo-input"
-                  pattern="^[a-zA-Z0-9_-]+$"
-                  autoFocus
-                />
-                <p className="text-sm text-[var(--color-neo-text-secondary)] mt-2">
-                  Use letters, numbers, hyphens, and underscores only.
-                </p>
-              </div>
-
-              {error && (
-                <div className="mb-4 p-3 bg-[var(--color-neo-error-bg)] text-[var(--color-neo-error-text)] text-sm border-3 border-[var(--color-neo-error-border)]">
-                  {error}
-                </div>
-              )}
-
-              <div className="flex justify-end">
-                <button
-                  type="submit"
-                  className="neo-btn neo-btn-primary"
-                  disabled={!projectName.trim()}
-                >
-                  Next
-                  <ArrowRight size={16} />
-                </button>
-              </div>
-            </form>
-          )}
-
-          {/* Step 2: Spec Method */}
-          {step === 'method' && (
-            <div>
-              <p className="text-[var(--color-neo-text-secondary)] mb-6">
-                How would you like to define your project?
+        {/* Step 1: Project Name */}
+        {step === 'name' && (
+          <form onSubmit={handleNameSubmit} className="space-y-4">
+            <div className="space-y-2">
+              <Label htmlFor="project-name">Project Name</Label>
+              <Input
+                id="project-name"
+                type="text"
+                value={projectName}
+                onChange={(e) => setProjectName(e.target.value)}
+                placeholder="my-awesome-app"
+                pattern="^[a-zA-Z0-9_-]+$"
+                autoFocus
+              />
+              <p className="text-sm text-muted-foreground">
+                Use letters, numbers, hyphens, and underscores only.
               </p>
+            </div>
 
-              <div className="space-y-4">
-                {/* Claude option */}
-                <button
-                  onClick={() => handleMethodSelect('claude')}
-                  disabled={createProject.isPending}
-                  className="
-                    w-full text-left p-4
-                    hover:translate-x-[-2px] hover:translate-y-[-2px]
-                    transition-all duration-150
-                    disabled:opacity-50 disabled:cursor-not-allowed
-                    neo-card
-                  "
-                >
+            {error && (
+              <Alert variant="destructive">
+                <AlertDescription>{error}</AlertDescription>
+              </Alert>
+            )}
+
+            <DialogFooter>
+              <Button type="submit" disabled={!projectName.trim()}>
+                Next
+                <ArrowRight size={16} />
+              </Button>
+            </DialogFooter>
+          </form>
+        )}
+
+        {/* Step 2: Spec Method */}
+        {step === 'method' && (
+          <div className="space-y-4">
+            <DialogDescription>
+              How would you like to define your project?
+            </DialogDescription>
+
+            <div className="space-y-3">
+              {/* Claude option */}
+              <Card
+                className="cursor-pointer hover:border-primary transition-colors"
+                onClick={() => !createProject.isPending && handleMethodSelect('claude')}
+              >
+                <CardContent className="p-4">
                   <div className="flex items-start gap-4">
-                    <div
-                      className="p-2 bg-[var(--color-neo-progress)] border-2 border-[var(--color-neo-border)]"
-                      style={{ boxShadow: 'var(--shadow-neo-sm)' }}
-                    >
-                      <Bot size={24} className="text-[var(--color-neo-text-on-bright)]" />
+                    <div className="p-2 bg-primary/10 rounded-lg">
+                      <Bot size={24} className="text-primary" />
                     </div>
                     <div className="flex-1">
                       <div className="flex items-center gap-2">
-                        <span className="font-bold text-lg text-[var(--color-neo-text)]">Create with Claude</span>
-                        <span className="neo-badge bg-[var(--color-neo-done)] text-[var(--color-neo-text-on-bright)] text-xs">
-                          Recommended
-                        </span>
+                        <span className="font-semibold">Create with Claude</span>
+                        <Badge>Recommended</Badge>
                       </div>
-                      <p className="text-sm text-[var(--color-neo-text-secondary)] mt-1">
+                      <p className="text-sm text-muted-foreground mt-1">
                         Interactive conversation to define features and generate your app specification automatically.
                       </p>
                     </div>
                   </div>
-                </button>
+                </CardContent>
+              </Card>
 
-                {/* Manual option */}
-                <button
-                  onClick={() => handleMethodSelect('manual')}
-                  disabled={createProject.isPending}
-                  className="
-                    w-full text-left p-4
-                    hover:translate-x-[-2px] hover:translate-y-[-2px]
-                    transition-all duration-150
-                    disabled:opacity-50 disabled:cursor-not-allowed
-                    neo-card
-                  "
-                >
+              {/* Manual option */}
+              <Card
+                className="cursor-pointer hover:border-primary transition-colors"
+                onClick={() => !createProject.isPending && handleMethodSelect('manual')}
+              >
+                <CardContent className="p-4">
                   <div className="flex items-start gap-4">
-                    <div
-                      className="p-2 bg-[var(--color-neo-pending)] border-2 border-[var(--color-neo-border)]"
-                      style={{ boxShadow: 'var(--shadow-neo-sm)' }}
-                    >
-                      <FileEdit size={24} className="text-[var(--color-neo-text-on-bright)]" />
+                    <div className="p-2 bg-secondary rounded-lg">
+                      <FileEdit size={24} className="text-secondary-foreground" />
                     </div>
                     <div className="flex-1">
-                      <span className="font-bold text-lg text-[var(--color-neo-text)]">Edit Templates Manually</span>
-                      <p className="text-sm text-[var(--color-neo-text-secondary)] mt-1">
+                      <span className="font-semibold">Edit Templates Manually</span>
+                      <p className="text-sm text-muted-foreground mt-1">
                         Edit the template files directly. Best for developers who want full control.
                       </p>
                     </div>
                   </div>
-                </button>
-              </div>
-
-              {error && (
-                <div className="mt-4 p-3 bg-[var(--color-neo-error-bg)] text-[var(--color-neo-error-text)] text-sm border-3 border-[var(--color-neo-error-border)]">
-                  {error}
-                </div>
-              )}
-
-              {createProject.isPending && (
-                <div className="mt-4 flex items-center justify-center gap-2 text-[var(--color-neo-text-secondary)]">
-                  <Loader2 size={16} className="animate-spin" />
-                  <span>Creating project...</span>
-                </div>
-              )}
-
-              <div className="flex justify-start mt-6">
-                <button
-                  onClick={handleBack}
-                  className="neo-btn neo-btn-ghost"
-                  disabled={createProject.isPending}
-                >
-                  <ArrowLeft size={16} />
-                  Back
-                </button>
-              </div>
+                </CardContent>
+              </Card>
             </div>
-          )}
 
-          {/* Step 3: Complete */}
-          {step === 'complete' && (
-            <div className="text-center py-8">
-              <div
-                className="inline-flex items-center justify-center w-16 h-16 bg-[var(--color-neo-done)] border-3 border-[var(--color-neo-border)] mb-4"
-                style={{ boxShadow: 'var(--shadow-neo-md)' }}
-              >
-                <CheckCircle2 size={32} className="text-[var(--color-neo-text-on-bright)]" />
-              </div>
-              <h3 className="font-display font-bold text-xl mb-2">
-                {projectName}
-              </h3>
-              <p className="text-[var(--color-neo-text-secondary)]">
-                Your project has been created successfully!
-              </p>
-              <div className="mt-4 flex items-center justify-center gap-2">
+            {error && (
+              <Alert variant="destructive">
+                <AlertDescription>{error}</AlertDescription>
+              </Alert>
+            )}
+
+            {createProject.isPending && (
+              <div className="flex items-center justify-center gap-2 text-muted-foreground">
                 <Loader2 size={16} className="animate-spin" />
-                <span className="text-sm">Redirecting...</span>
+                <span>Creating project...</span>
               </div>
+            )}
+
+            <DialogFooter className="sm:justify-start">
+              <Button
+                variant="ghost"
+                onClick={handleBack}
+                disabled={createProject.isPending}
+              >
+                <ArrowLeft size={16} />
+                Back
+              </Button>
+            </DialogFooter>
+          </div>
+        )}
+
+        {/* Step 3: Complete */}
+        {step === 'complete' && (
+          <div className="text-center py-8">
+            <div className="inline-flex items-center justify-center w-16 h-16 bg-primary/10 rounded-full mb-4">
+              <CheckCircle2 size={32} className="text-primary" />
             </div>
-          )}
-        </div>
-      </div>
-    </div>
+            <h3 className="font-semibold text-xl mb-2">{projectName}</h3>
+            <p className="text-muted-foreground">
+              Your project has been created successfully!
+            </p>
+            <div className="mt-4 flex items-center justify-center gap-2">
+              <Loader2 size={16} className="animate-spin" />
+              <span className="text-sm text-muted-foreground">Redirecting...</span>
+            </div>
+          </div>
+        )}
+      </DialogContent>
+    </Dialog>
   )
 }

@@ -9,6 +9,8 @@ import { useNextScheduledRun } from '../hooks/useSchedules'
 import { formatNextRun, formatEndTime } from '../lib/timeUtils'
 import { ScheduleModal } from './ScheduleModal'
 import type { AgentStatus } from '../lib/types'
+import { Button } from '@/components/ui/button'
+import { Badge } from '@/components/ui/badge'
 
 interface AgentControlProps {
   projectName: string
@@ -30,18 +32,17 @@ export function AgentControl({ projectName, status }: AgentControlProps) {
 
   const isLoading = startAgent.isPending || stopAgent.isPending
   const isRunning = status === 'running' || status === 'paused'
-  const isLoadingStatus = status === 'loading'  // Status unknown, waiting for WebSocket
+  const isLoadingStatus = status === 'loading'
   const isParallel = concurrency > 1
 
   const handleStart = () => startAgent.mutate({
     yoloMode,
     parallelMode: isParallel,
-    maxConcurrency: concurrency,  // Always pass concurrency (1-5)
+    maxConcurrency: concurrency,
     testingAgentRatio: settings?.testing_agent_ratio,
   })
   const handleStop = () => stopAgent.mutate()
 
-  // Simplified: either show Start (when stopped/crashed), Stop (when running/paused), or loading spinner
   const isStopped = status === 'stopped' || status === 'crashed'
 
   return (
@@ -50,7 +51,7 @@ export function AgentControl({ projectName, status }: AgentControlProps) {
         {/* Concurrency slider - visible when stopped */}
         {isStopped && (
           <div className="flex items-center gap-2">
-            <GitBranch size={16} className={isParallel ? 'text-[var(--color-neo-primary)]' : 'text-gray-400'} />
+            <GitBranch size={16} className={isParallel ? 'text-primary' : 'text-muted-foreground'} />
             <input
               type="range"
               min={1}
@@ -58,11 +59,11 @@ export function AgentControl({ projectName, status }: AgentControlProps) {
               value={concurrency}
               onChange={(e) => setConcurrency(Number(e.target.value))}
               disabled={isLoading}
-              className="w-16 h-2 accent-[var(--color-neo-primary)] cursor-pointer"
+              className="w-16 h-2 accent-primary cursor-pointer"
               title={`${concurrency} concurrent agent${concurrency > 1 ? 's' : ''}`}
               aria-label="Set number of concurrent agents"
             />
-            <span className="text-xs font-bold min-w-[1.5rem] text-center">
+            <span className="text-xs font-semibold min-w-[1.5rem] text-center">
               {concurrency}x
             </span>
           </div>
@@ -70,80 +71,71 @@ export function AgentControl({ projectName, status }: AgentControlProps) {
 
         {/* Show concurrency indicator when running with multiple agents */}
         {isRunning && isParallel && (
-          <div className="flex items-center gap-1 text-xs text-[var(--color-neo-primary)] font-bold">
+          <Badge variant="secondary" className="gap-1">
             <GitBranch size={14} />
-            <span>{concurrency}x</span>
-          </div>
+            {concurrency}x
+          </Badge>
         )}
 
         {/* Schedule status display */}
         {nextRun?.is_currently_running && nextRun.next_end && (
-          <div className="flex items-center gap-2 text-sm text-[var(--color-neo-done)] font-bold">
-            <Clock size={16} className="flex-shrink-0" />
-            <span>Running until {formatEndTime(nextRun.next_end)}</span>
-          </div>
+          <Badge variant="default" className="gap-1">
+            <Clock size={14} />
+            Running until {formatEndTime(nextRun.next_end)}
+          </Badge>
         )}
 
         {!nextRun?.is_currently_running && nextRun?.next_start && (
-          <div className="flex items-center gap-2 text-sm text-gray-900 dark:text-white font-bold">
-            <Clock size={16} className="flex-shrink-0" />
-            <span>Next: {formatNextRun(nextRun.next_start)}</span>
-          </div>
+          <Badge variant="secondary" className="gap-1">
+            <Clock size={14} />
+            Next: {formatNextRun(nextRun.next_start)}
+          </Badge>
         )}
 
         {/* Start/Stop button */}
         {isLoadingStatus ? (
-          <button
-            disabled
-            className="neo-btn text-sm py-2 px-3 opacity-50 cursor-not-allowed"
-            title="Loading agent status..."
-            aria-label="Loading agent status"
-          >
+          <Button disabled variant="outline" size="sm">
             <Loader2 size={18} className="animate-spin" />
-          </button>
+          </Button>
         ) : isStopped ? (
-          <button
+          <Button
             onClick={handleStart}
             disabled={isLoading}
-            className={`neo-btn text-sm py-2 px-3 ${
-              yoloMode ? 'neo-btn-yolo' : 'neo-btn-success'
-            }`}
+            variant={yoloMode ? 'secondary' : 'default'}
+            size="sm"
             title={yoloMode ? 'Start Agent (YOLO Mode)' : 'Start Agent'}
-            aria-label={yoloMode ? 'Start Agent in YOLO Mode' : 'Start Agent'}
           >
             {isLoading ? (
               <Loader2 size={18} className="animate-spin" />
             ) : (
               <Play size={18} />
             )}
-          </button>
+          </Button>
         ) : (
-          <button
+          <Button
             onClick={handleStop}
             disabled={isLoading}
-            className={`neo-btn text-sm py-2 px-3 ${
-              yoloMode ? 'neo-btn-yolo' : 'neo-btn-danger'
-            }`}
+            variant="destructive"
+            size="sm"
             title={yoloMode ? 'Stop Agent (YOLO Mode)' : 'Stop Agent'}
-            aria-label={yoloMode ? 'Stop Agent in YOLO Mode' : 'Stop Agent'}
           >
             {isLoading ? (
               <Loader2 size={18} className="animate-spin" />
             ) : (
               <Square size={18} />
             )}
-          </button>
+          </Button>
         )}
 
         {/* Clock button to open schedule modal */}
-        <button
+        <Button
+          variant="outline"
+          size="sm"
           onClick={() => setShowScheduleModal(true)}
-          className="neo-btn text-sm py-2 px-3"
           title="Manage schedules"
-          aria-label="Manage agent schedules"
         >
           <Clock size={18} />
-        </button>
+        </Button>
       </div>
 
       {/* Schedule Modal */}
