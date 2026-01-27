@@ -8,10 +8,10 @@ Guidelines
 ## Phase 0 — Baseline
 - [x] PR Check workflow exists (`pr-check.yml`)
 - [ ] Branch protection requires “PR Check” (GitHub setting)
-- [ ] Pre-commit / git guard to block `.env` and secrets
+- [x] Pre-commit / git guard to block `.env` and secrets
 - [x] `/health` endpoint
 - [x] `/readiness` endpoint
-- [ ] UI smoke test in CI (landing page)
+- [x] UI smoke test in CI (landing page)
 
 ## Phase 1 — Reliability & Observability
 - [ ] JSON/structured logging with request IDs (FastAPI + uvicorn)

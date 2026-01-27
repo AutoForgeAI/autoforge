@@ -37,6 +37,8 @@ jobs:
         run: npm run lint
       - name: Type check & Build
         run: npm run build
+      - name: UI smoke tests
+        run: npm run test:smoke
 
   docker-image:
     needs: [python, ui]
