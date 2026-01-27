@@ -40,6 +40,7 @@ API_ENV_VARS = [
     "ANTHROPIC_DEFAULT_SONNET_MODEL",  # Model override for Sonnet
     "ANTHROPIC_DEFAULT_OPUS_MODEL",    # Model override for Opus
     "ANTHROPIC_DEFAULT_HAIKU_MODEL",   # Model override for Haiku
+    "CLAUDE_CODE_MAX_OUTPUT_TOKENS",   # Max output tokens (default 32000, GLM 4.7 supports 131072)
 ]
 
 # Extra read paths for cross-project file access (read-only)
@@ -399,6 +400,10 @@ def create_client(
         value = os.getenv(var)
         if value:
             sdk_env[var] = value
+
+    # Set default max output tokens for GLM 4.7 compatibility if not already set
+    if "CLAUDE_CODE_MAX_OUTPUT_TOKENS" not in sdk_env:
+        sdk_env["CLAUDE_CODE_MAX_OUTPUT_TOKENS"] = DEFAULT_MAX_OUTPUT_TOKENS
 
     # Detect alternative API mode (Ollama or GLM)
     base_url = sdk_env.get("ANTHROPIC_BASE_URL", "")
