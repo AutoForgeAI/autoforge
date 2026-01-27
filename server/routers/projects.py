@@ -6,7 +6,6 @@ API endpoints for project management.
 Uses project registry for path lookups instead of fixed generations/ directory.
 """
 
-import re
 import shutil
 import sys
 from pathlib import Path
@@ -22,6 +21,7 @@ from ..schemas import (
     ProjectStats,
     ProjectSummary,
 )
+from ..utils.validation import validate_project_name
 
 # Lazy imports to avoid circular dependencies
 _imports_initialized = False
@@ -74,16 +74,6 @@ def _get_registry_functions():
 
 
 router = APIRouter(prefix="/api/projects", tags=["projects"])
-
-
-def validate_project_name(name: str) -> str:
-    """Validate and sanitize project name to prevent path traversal."""
-    if not re.match(r'^[a-zA-Z0-9_-]{1,50}$', name):
-        raise HTTPException(
-            status_code=400,
-            detail="Invalid project name. Use only letters, numbers, hyphens, and underscores (1-50 chars)."
-        )
-    return name
 
 
 def get_project_stats(project_dir: Path) -> ProjectStats:
