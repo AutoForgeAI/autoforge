@@ -36,8 +36,8 @@ REPO_URL=${REPO_URL:-https://github.com/heidi-dang/autocoder.git}
 read -r -p "Git branch to deploy [main]: " DEPLOY_BRANCH
 DEPLOY_BRANCH=${DEPLOY_BRANCH:-main}
 
-read -r -p "Install path [/opt/autocoder]: " APP_DIR
-APP_DIR=${APP_DIR:-/opt/autocoder}
+read -r -p "Install path [/home/autocoder]: " APP_DIR
+APP_DIR=${APP_DIR:-/home/autocoder}
 
 read -r -p "App internal port (container) [8888]: " APP_PORT
 APP_PORT=${APP_PORT:-8888}

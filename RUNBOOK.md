@@ -12,14 +12,14 @@
 
 ## Rollback
 - Re-run deploy pointing to previous branch/sha: set branch prompt to the earlier ref.
-- Or `git -C /opt/autocoder checkout <sha>` then `docker compose ... up -d --build`.
+- Or `git -C /home/autocoder checkout <sha>` then `docker compose ... up -d --build`.
 
 ## Logs
 - App/Traefik: `docker compose -f docker-compose.yml -f docker-compose.traefik.yml logs -f`.
 - Systemd Docker: `journalctl -u docker`.
 
 ## Certificates
-- Stored at `/opt/autocoder/letsencrypt/acme.json` (0600). Traefik auto-renews via HTTP-01.
+- Stored at `/home/autocoder/letsencrypt/acme.json` (0600). Traefik auto-renews via HTTP-01.
 
 ## DNS (DuckDNS)
 - Cron at `/etc/cron.d/duckdns`. Logs: `/var/log/duckdns.log`.

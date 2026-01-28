@@ -349,7 +349,7 @@ The agent tried to run a command not in the allowlist. This is the security syst
 - PR Check workflow (`.github/workflows/pr-check.yml`) runs Python lint/security tests and UI lint/build on every PR to `main` or `master`.
 - Push CI (`.github/workflows/ci.yml`) runs the same validations on direct pushes to `main` and `master`, then builds and pushes a Docker image to GHCR (`ghcr.io/<owner>/<repo>:latest` and `:sha`).
 - Deploy to VPS (`.github/workflows/deploy.yml`) runs after Push CI succeeds, SSHes into your VPS, prunes old Docker artifacts, pulls the target branch, pulls the GHCR `:sha` image (falls back to `:latest`), restarts with `docker compose up -d`, and leaves any existing `.env` untouched. It finishes with an HTTP smoke check on `http://127.0.0.1:8888/health`.
-- Repo secrets required: `VPS_HOST`, `VPS_USER`, `VPS_SSH_KEY`, `VPS_DEPLOY_PATH` (use an absolute path like `/opt/autocoder`); optional `VPS_BRANCH` (defaults to `master`) and `VPS_PORT` (defaults to `22`). The VPS needs git, Docker + Compose plugin installed, and the repo cloned at `VPS_DEPLOY_PATH` with your `.env` present.
+- Repo secrets required: `VPS_HOST`, `VPS_USER`, `VPS_SSH_KEY`, `VPS_DEPLOY_PATH` (use an absolute path like `/home/autocoder`); optional `VPS_BRANCH` (defaults to `master`) and `VPS_PORT` (defaults to `22`). The VPS needs git, Docker + Compose plugin installed, and the repo cloned at `VPS_DEPLOY_PATH` with your `.env` present.
 - Local Docker run: `docker compose up -d --build` exposes the app on `http://localhost:8888`; data under `~/.autocoder` persists via the `autocoder-data` volume.
 
 ### Branch protection
