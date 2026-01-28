@@ -10,6 +10,7 @@ import re
 import shutil
 import subprocess
 import sys
+from datetime import datetime
 from pathlib import Path
 
 from fastapi import APIRouter, HTTPException
@@ -531,7 +532,7 @@ async def open_project_in_ide(name: str, ide: str):
                 )
         else:
             # Unix-like systems
-            subprocess.Popen([cmd, project_path], start_new_session=True)
+            subprocess.Popen([cmd_path, project_path], start_new_session=True)
     except Exception as e:
         raise HTTPException(
             status_code=500,

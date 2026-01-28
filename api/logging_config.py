@@ -16,7 +16,9 @@ Usage:
 """
 
 import logging
+import os
 import sys
+import threading
 from logging.handlers import RotatingFileHandler
 from pathlib import Path
 from typing import Optional
@@ -37,6 +39,7 @@ DEBUG_FILE_FORMAT = "%(asctime)s [%(levelname)s] %(name)s (%(filename)s:%(lineno
 
 # Track if logging has been configured
 _logging_configured = False
+_logging_lock = threading.Lock()
 
 
 def setup_logging(
@@ -62,53 +65,54 @@ def setup_logging(
     """
     global _logging_configured
 
-    if _logging_configured:
-        return
+    with _logging_lock:
+        if _logging_configured:
+            return
 
-    # Use default log directory if not specified
-    if log_dir is None:
-        log_dir = DEFAULT_LOG_DIR
+        # Use default log directory if not specified
+        if log_dir is None:
+            log_dir = DEFAULT_LOG_DIR
 
-    # Ensure log directory exists
-    log_dir.mkdir(parents=True, exist_ok=True)
-    log_path = log_dir / log_file
+        # Ensure log directory exists
+        log_dir.mkdir(parents=True, exist_ok=True)
+        log_path = log_dir / log_file
 
-    # Get root logger
-    root_logger = logging.getLogger()
-    root_logger.setLevel(root_level)
+        # Get root logger
+        root_logger = logging.getLogger()
+        root_logger.setLevel(root_level)
 
-    # Remove existing handlers to avoid duplicates
-    root_logger.handlers.clear()
+        # Remove existing handlers to avoid duplicates
+        root_logger.handlers.clear()
 
-    # File handler with rotation
-    file_handler = RotatingFileHandler(
-        log_path,
-        maxBytes=MAX_LOG_SIZE,
-        backupCount=BACKUP_COUNT,
-        encoding="utf-8",
-    )
-    file_handler.setLevel(file_level)
-    file_handler.setFormatter(logging.Formatter(DEBUG_FILE_FORMAT))
-    root_logger.addHandler(file_handler)
+        # File handler with rotation
+        file_handler = RotatingFileHandler(
+            log_path,
+            maxBytes=MAX_LOG_SIZE,
+            backupCount=BACKUP_COUNT,
+            encoding="utf-8",
+        )
+        file_handler.setLevel(file_level)
+        file_handler.setFormatter(logging.Formatter(DEBUG_FILE_FORMAT))
+        root_logger.addHandler(file_handler)
 
-    # Console handler
-    console_handler = logging.StreamHandler(sys.stderr)
-    console_handler.setLevel(console_level)
-    console_handler.setFormatter(logging.Formatter(CONSOLE_FORMAT))
-    root_logger.addHandler(console_handler)
+        # Console handler
+        console_handler = logging.StreamHandler(sys.stderr)
+        console_handler.setLevel(console_level)
+        console_handler.setFormatter(logging.Formatter(CONSOLE_FORMAT))
+        root_logger.addHandler(console_handler)
 
-    # Reduce noise from third-party libraries
-    logging.getLogger("httpx").setLevel(logging.WARNING)
-    logging.getLogger("httpcore").setLevel(logging.WARNING)
-    logging.getLogger("urllib3").setLevel(logging.WARNING)
-    logging.getLogger("asyncio").setLevel(logging.WARNING)
-    logging.getLogger("sqlalchemy.engine").setLevel(logging.WARNING)
+        # Reduce noise from third-party libraries
+        logging.getLogger("httpx").setLevel(logging.WARNING)
+        logging.getLogger("httpcore").setLevel(logging.WARNING)
+        logging.getLogger("urllib3").setLevel(logging.WARNING)
+        logging.getLogger("asyncio").setLevel(logging.WARNING)
+        logging.getLogger("sqlalchemy.engine").setLevel(logging.WARNING)
 
-    _logging_configured = True
+        _logging_configured = True
 
-    # Log startup
-    logger = logging.getLogger(__name__)
-    logger.debug(f"Logging initialized. Log file: {log_path}")
+        # Log startup
+        logger = logging.getLogger(__name__)
+        logger.debug(f\"Logging initialized. Log file: {log_path}\")
 
 
 def get_logger(name: str) -> logging.Logger:
@@ -168,7 +172,6 @@ def setup_orchestrator_logging(
     logger.addHandler(handler)
 
     # Log session start
-    import os
     logger.info("=" * 60)
     logger.info(f"Orchestrator Session Started (PID: {os.getpid()})")
     if session_id:

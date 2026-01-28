@@ -175,14 +175,15 @@ If the `feature_create_bulk` tool is unavailable or fails, output features in th
 
 ```xml
 <features_to_create>
-[
-  {
-    "category": "functional",
-    "name": "Feature name",
-    "description": "Description",
-    "steps": ["Step 1", "Step 2"]
-  }
-]
+  <feature>
+    <category>functional</category>
+    <name>Feature name</name>
+    <description>Description</description>
+    <steps>
+      <step>Step 1</step>
+      <step>Step 2</step>
+    </steps>
+  </feature>
 </features_to_create>
 ```
 

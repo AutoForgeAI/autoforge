@@ -55,9 +55,12 @@ export function IDESelectionModal({ isOpen, onClose, onSelect, isLoading }: IDES
           
           <div className="space-y-2">
             <Label className="font-medium">IDE Selection</Label>
-            <div className="space-y-2">
+            <div className="space-y-2" role="radiogroup" aria-label="IDE selection">
               {IDE_OPTIONS.map((ide) => (
                 <button
+                  type="button"
+                  role="radio"
+                  aria-checked={selectedIDE === ide.id}
                   key={ide.id}
                   onClick={() => setSelectedIDE(ide.id)}
                   disabled={isLoading}

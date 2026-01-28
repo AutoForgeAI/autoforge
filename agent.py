@@ -179,12 +179,13 @@ async def run_autonomous_agent(
         # Only clear if parent is NOT python (i.e., we're running manually, not from orchestrator)
         if "python" not in parent_name.lower():
             clear_stuck_features(project_dir)
+        # else: Skip clearing - we're in parallel mode, orchestrator manages features
     except (ImportError, ModuleNotFoundError):
-        # psutil not available - assume single-agent mode and clear
-        clear_stuck_features(project_dir)
-    except Exception:
-        # If parent process check fails, err on the safe side and clear
-        clear_stuck_features(project_dir)
+        # psutil not available - skip clearing to be safe in unknown environment
+        logger.debug("psutil not available, skipping stuck feature clearing")
+    except Exception as e:
+        # If parent process check fails, skip clearing to avoid race conditions
+        logger.debug(f"Parent process check failed ({e}), skipping stuck feature clearing")
 
     # Determine agent type if not explicitly set
     if agent_type is None:

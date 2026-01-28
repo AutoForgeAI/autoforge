@@ -207,8 +207,6 @@ class AgentTracker:
                     'timestamp': datetime.now().isoformat(),
                 }
 
-        # Periodic cleanup of stale agents (every 5 minutes)
-        self._schedule_cleanup()
         return None
 
     async def get_agent_info(self, feature_id: int, agent_type: str = "coding") -> tuple[int | None, str | None]:
@@ -275,7 +273,8 @@ class AgentTracker:
     def _schedule_cleanup(self) -> None:
         """Schedule cleanup if needed (non-blocking)."""
         if self._should_cleanup():
-            asyncio.create_task(self.cleanup_stale_agents())
+            task = asyncio.create_task(self.cleanup_stale_agents())
+            task.add_done_callback(lambda t: t.exception() if not t.cancelled() else None)
 
     async def _handle_agent_start(self, feature_id: int, line: str, agent_type: str = "coding") -> dict | None:
         """Handle agent start message from orchestrator."""

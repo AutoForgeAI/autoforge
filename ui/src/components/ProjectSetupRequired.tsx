@@ -47,7 +47,6 @@ export function ProjectSetupRequired({ projectName, onSetupComplete }: ProjectSe
 
   const handleRetryInitializer = () => {
     setInitializerError(null)
-    setInitializerStatus('idle')
     handleSpecComplete('', yoloModeSelected)
   }
 
@@ -159,7 +158,10 @@ export function ProjectSetupRequired({ projectName, onSetupComplete }: ProjectSe
       )}
 
       {initializerError && (
-        <div className="mt-6 p-4 bg-[var(--color-neo-danger)] text-white border-3 border-[var(--color-neo-border)]">
+        <div 
+          role="alert"
+          className="mt-6 p-4 bg-[var(--color-neo-danger)] text-white border-3 border-[var(--color-neo-border)]"
+        >
           <p className="font-bold mb-2">Failed to start agent</p>
           <p className="text-sm">{initializerError}</p>
           <button

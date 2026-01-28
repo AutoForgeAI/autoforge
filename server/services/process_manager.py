@@ -248,10 +248,20 @@ class AgentProcessManager:
             # Check if we own this lock
             our_pid = self.pid
             if our_pid is None:
-                # We don't have a running process, but lock exists
-                # This is unexpected - remove it anyway
-                self.lock_file.unlink(missing_ok=True)
-                logger.debug("Removed orphaned lock file (no running process)")
+                # We don't have a running process handle, but lock exists
+                # Parse the lock to check if the PID is still alive before removing
+                if ":" in lock_content:
+                    lock_pid_str, _ = lock_content.split(":", 1)
+                    lock_pid = int(lock_pid_str)
+                else:
+                    lock_pid = int(lock_content)
+
+                # Only remove if the lock PID is not alive
+                if not psutil.pid_exists(lock_pid):
+                    self.lock_file.unlink(missing_ok=True)
+                    logger.debug(f"Removed stale lock file (PID {lock_pid} no longer exists, no local handle)")
+                else:
+                    logger.debug(f"Lock file exists for active PID {lock_pid}, but no local handle - skipping removal")
                 return
 
             # Parse lock content

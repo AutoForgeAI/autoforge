@@ -45,8 +45,9 @@ API_ENV_VARS = [
     "CLAUDE_CODE_MAX_OUTPUT_TOKENS",  # Max output tokens (default 32000, GLM 4.7 supports 131072)
 ]
 
-# Default max output tokens for GLM 4.7 compatibility (131k output limit)
-DEFAULT_MAX_OUTPUT_TOKENS = "131072"
+# Default max output tokens - use 131k only for alternative APIs (like GLM), otherwise use 32k for Anthropic
+import os
+DEFAULT_MAX_OUTPUT_TOKENS = "131072" if os.getenv("ANTHROPIC_BASE_URL") else "32000"
 
 # Read-only feature MCP tools
 READONLY_FEATURE_MCP_TOOLS = [
@@ -217,16 +218,24 @@ class AssistantChatSession:
                 self._client_entered = False
                 self.client = None
 
+        # Clean up MCP config file
+        if self._mcp_config_file and self._mcp_config_file.exists():
+            try:
+                self._mcp_config_file.unlink()
+            except Exception as e:
+                logger.warning(f"Error removing MCP config file: {e}")
+
     async def start(self, skip_greeting: bool = False) -> AsyncGenerator[dict, None]:
         """
         Initialize session with the Claude client.
 
         Creates a new conversation if none exists, then sends an initial greeting.
         For resumed conversations, skips the greeting since history is loaded from DB.
-        Yields message chunks as they stream in.
-
+        
         Args:
-            skip_greeting: If True, skip sending the greeting (for resuming conversations)
+            skip_greeting: If True, skip sending the greeting even for new conversations.
+        
+        Yields message chunks as they stream in.
         """
         # Track if this is a new conversation (for greeting decision)
         is_new_conversation = self.conversation_id is None
@@ -275,7 +284,8 @@ class AssistantChatSession:
                 },
             },
         }
-        mcp_config_file = self.project_dir / ".claude_mcp_config.json"
+        mcp_config_file = self.project_dir / f".claude_mcp_config.assistant.{uuid.uuid4().hex}.json"
+        self._mcp_config_file = mcp_config_file
         with open(mcp_config_file, "w") as f:
             json.dump(mcp_config, f, indent=2)
         logger.info(f"Wrote MCP config to {mcp_config_file}")
@@ -343,17 +353,20 @@ class AssistantChatSession:
         if is_new_conversation:
             # New conversations don't need history loading
             self._history_loaded = True
-            try:
-                greeting = f"Hello! I'm your project assistant for **{self.project_name}**. I can help you understand the codebase, manage features (create, edit, delete, and deprioritize), and answer questions about the project. What would you like to do?"
-
-                # Store the greeting in the database
-                add_message(self.project_dir, self.conversation_id, "assistant", greeting)
-
-                yield {"type": "text", "content": greeting}
+            if skip_greeting:
                 yield {"type": "response_done"}
-            except Exception as e:
-                logger.exception("Failed to send greeting")
-                yield {"type": "error", "content": f"Failed to start conversation: {str(e)}"}
+            else:
+                try:
+                    greeting = f"Hello! I'm your project assistant for **{self.project_name}**. I can help you understand the codebase, manage features (create, edit, delete, and deprioritize), and answer questions about the project. What would you like to do?"
+
+                    # Store the greeting in the database
+                    add_message(self.project_dir, self.conversation_id, "assistant", greeting)
+
+                    yield {"type": "text", "content": greeting}
+                    yield {"type": "response_done"}
+                except Exception as e:
+                    logger.exception("Failed to send greeting")
+                    yield {"type": "error", "content": f"Failed to start conversation: {str(e)}"}
         else:
             # For resumed conversations, history will be loaded on first message
             # _history_loaded stays False so send_message() will include history

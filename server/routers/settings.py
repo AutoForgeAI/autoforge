@@ -174,5 +174,5 @@ async def get_denied_commands_list():
 @router.delete("/denied-commands")
 async def clear_denied_commands_list():
     """Clear the denied commands history."""
-    clear_denied_commands()
-    return {"status": "cleared"}
+    count = clear_denied_commands()
+    return {"status": "cleared", "count": count}
