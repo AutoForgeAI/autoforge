@@ -200,11 +200,10 @@ async def get_doc_content(project_name: str, filename: str):
     """
     project_dir = get_project_dir(project_name)
 
-    # Validate filename to prevent path traversal
-    if ".." in filename:
-        raise HTTPException(status_code=400, detail="Invalid filename")
-
-    file_path = project_dir / filename
+    # Validate filename to prevent path traversal (including URL-encoded attacks)
+    file_path = (project_dir / filename).resolve()
+    if not file_path.is_relative_to(project_dir.resolve()):
+        raise HTTPException(status_code=400, detail="Invalid filename: path traversal detected")
 
     if not file_path.exists():
         raise HTTPException(status_code=404, detail=f"File not found: {filename}")

@@ -249,8 +249,20 @@ async def apply_template(request: ApplyRequest):
         if not template:
             raise HTTPException(status_code=404, detail=f"Template not found: {request.template_id}")
 
-        # Create project directory
-        project_dir = Path(request.project_dir)
+        # Validate and create project directory
+        project_dir = Path(request.project_dir).resolve()
+
+        # Prevent path traversal - ensure the path doesn't escape via ../
+        if ".." in request.project_dir:
+            raise HTTPException(status_code=400, detail="Invalid project directory: path traversal detected")
+
+        # Ensure project_dir is an absolute path within allowed boundaries
+        # (i.e., not trying to write to system directories)
+        project_dir_str = str(project_dir)
+        sensitive_paths = ["/etc", "/usr", "/bin", "/sbin", "/var", "/root", "/home/root"]
+        if any(project_dir_str.startswith(p) for p in sensitive_paths):
+            raise HTTPException(status_code=400, detail="Invalid project directory: cannot write to system paths")
+
         prompts_dir = project_dir / "prompts"
         prompts_dir.mkdir(parents=True, exist_ok=True)
 

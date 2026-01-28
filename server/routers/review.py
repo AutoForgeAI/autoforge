@@ -147,6 +147,22 @@ async def run_code_review(request: RunReviewRequest):
     - Code complexity
     """
     project_dir = get_project_dir(request.project_name)
+    project_dir_resolved = project_dir.resolve()
+
+    # Validate files to prevent path traversal attacks
+    validated_files = None
+    if request.files:
+        validated_files = []
+        for file_path in request.files:
+            # Resolve the full path and validate it's within project boundaries
+            full_path = (project_dir / file_path).resolve()
+            if not full_path.is_relative_to(project_dir_resolved):
+                raise HTTPException(
+                    status_code=400,
+                    detail=f"Invalid file path: path traversal detected in '{file_path}'",
+                )
+            # Store the relative path for the agent
+            validated_files.append(str(full_path.relative_to(project_dir_resolved)))
 
     # Configure checks
     check_config = request.checks or {}
@@ -163,7 +179,7 @@ async def run_code_review(request: RunReviewRequest):
 
         report = agent.review(
             commits=request.commits,
-            files=request.files,
+            files=validated_files,
         )
 
         report_path = None

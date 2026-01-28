@@ -230,42 +230,44 @@ class VisualRegressionTester:
         if not HAS_PIL:
             raise RuntimeError("Pillow not installed. Run: pip install Pillow")
 
-        baseline = Image.open(baseline_path).convert("RGB")
-        current = Image.open(current_path).convert("RGB")
+        # Use context managers to ensure file handles are properly closed
+        with Image.open(baseline_path) as baseline_img, Image.open(current_path) as current_img:
+            baseline = baseline_img.convert("RGB")
+            current = current_img.convert("RGB")
 
-        # Resize if dimensions differ
-        if baseline.size != current.size:
-            current = current.resize(baseline.size, Image.Resampling.LANCZOS)
+            # Resize if dimensions differ
+            if baseline.size != current.size:
+                current = current.resize(baseline.size, Image.Resampling.LANCZOS)
 
-        # Calculate difference
-        diff = ImageChops.difference(baseline, current)
+            # Calculate difference
+            diff = ImageChops.difference(baseline, current)
 
-        # Count different pixels
-        diff_data = diff.getdata()
-        total_pixels = baseline.size[0] * baseline.size[1]
-        diff_pixels = sum(1 for pixel in diff_data if sum(pixel) > 30)  # Threshold for "different"
+            # Count different pixels
+            diff_data = diff.getdata()
+            total_pixels = baseline.size[0] * baseline.size[1]
+            diff_pixels = sum(1 for pixel in diff_data if sum(pixel) > 30)  # Threshold for "different"
 
-        diff_percentage = (diff_pixels / total_pixels) * 100
+            diff_percentage = (diff_pixels / total_pixels) * 100
 
-        # Generate highlighted diff image
-        if diff_percentage > 0:
-            # Create diff overlay
-            diff_highlight = Image.new("RGBA", baseline.size, (0, 0, 0, 0))
-            draw = ImageDraw.Draw(diff_highlight)
+            # Generate highlighted diff image
+            if diff_percentage > 0:
+                # Create diff overlay
+                diff_highlight = Image.new("RGBA", baseline.size, (0, 0, 0, 0))
+                draw = ImageDraw.Draw(diff_highlight)
 
-            for y in range(baseline.size[1]):
-                for x in range(baseline.size[0]):
-                    pixel = diff.getpixel((x, y))
-                    if sum(pixel) > 30:
-                        draw.point((x, y), fill=(255, 0, 0, 128))  # Red highlight
+                for y in range(baseline.size[1]):
+                    for x in range(baseline.size[0]):
+                        pixel = diff.getpixel((x, y))
+                        if sum(pixel) > 30:
+                            draw.point((x, y), fill=(255, 0, 0, 128))  # Red highlight
 
-            # Composite with original
-            result = Image.alpha_composite(baseline.convert("RGBA"), diff_highlight)
-            result.save(diff_path)
+                # Composite with original
+                result = Image.alpha_composite(baseline.convert("RGBA"), diff_highlight)
+                result.save(diff_path)
 
-        passed = diff_percentage <= self.threshold
+            passed = diff_percentage <= self.threshold
 
-        return diff_percentage, passed
+            return diff_percentage, passed
 
     async def test_page(
         self,

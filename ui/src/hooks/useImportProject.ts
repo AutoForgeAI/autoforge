@@ -65,9 +65,9 @@ interface ImportState {
 
 export interface UseImportProjectReturn {
   state: ImportState
-  analyze: (path: string) => Promise<void>
-  extractFeatures: () => Promise<void>
-  createFeatures: (projectName: string) => Promise<void>
+  analyze: (path: string) => Promise<boolean>
+  extractFeatures: () => Promise<boolean>
+  createFeatures: (projectName: string) => Promise<boolean>
   toggleFeature: (feature: DetectedFeature) => void
   selectAllFeatures: () => void
   deselectAllFeatures: () => void
@@ -87,7 +87,7 @@ const initialState: ImportState = {
 export function useImportProject(): UseImportProjectReturn {
   const [state, setState] = useState<ImportState>(initialState)
 
-  const analyze = useCallback(async (path: string) => {
+  const analyze = useCallback(async (path: string): Promise<boolean> => {
     setState(prev => ({ ...prev, step: 'analyzing', projectPath: path, error: null }))
 
     try {
@@ -108,17 +108,19 @@ export function useImportProject(): UseImportProjectReturn {
         step: 'detected',
         analyzeResult: result,
       }))
+      return true
     } catch (err) {
       setState(prev => ({
         ...prev,
         step: 'error',
         error: err instanceof Error ? err.message : 'Analysis failed',
       }))
+      return false
     }
   }, [])
 
-  const extractFeatures = useCallback(async () => {
-    if (!state.projectPath) return
+  const extractFeatures = useCallback(async (): Promise<boolean> => {
+    if (!state.projectPath) return false
 
     setState(prev => ({ ...prev, step: 'extracting', error: null }))
 
@@ -141,17 +143,19 @@ export function useImportProject(): UseImportProjectReturn {
         featuresResult: result,
         selectedFeatures: result.features, // Select all by default
       }))
+      return true
     } catch (err) {
       setState(prev => ({
         ...prev,
         step: 'error',
         error: err instanceof Error ? err.message : 'Feature extraction failed',
       }))
+      return false
     }
   }, [state.projectPath])
 
-  const createFeatures = useCallback(async (projectName: string) => {
-    if (!state.selectedFeatures.length) return
+  const createFeatures = useCallback(async (projectName: string): Promise<boolean> => {
+    if (!state.selectedFeatures.length) return false
 
     setState(prev => ({ ...prev, step: 'creating', error: null }))
 
@@ -180,12 +184,14 @@ export function useImportProject(): UseImportProjectReturn {
         step: 'complete',
         createResult: result,
       }))
+      return true
     } catch (err) {
       setState(prev => ({
         ...prev,
         step: 'error',
         error: err instanceof Error ? err.message : 'Feature creation failed',
       }))
+      return false
     }
   }, [state.selectedFeatures])
 

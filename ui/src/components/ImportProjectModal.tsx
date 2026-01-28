@@ -9,7 +9,7 @@
  * 5. Create features in database
  */
 
-import { useState } from 'react'
+import { useState, useEffect } from 'react'
 import {
   X,
   Folder,
@@ -64,24 +64,29 @@ export function ImportProjectModal({
 
   const createProject = useCreateProject()
 
+  // Expand all categories when features are extracted
+  useEffect(() => {
+    if (step === 'features' && state.featuresResult) {
+      setExpandedCategories(new Set(Object.keys(state.featuresResult.by_category)))
+    }
+  }, [step, state.featuresResult])
+
   if (!isOpen) return null
 
   const handleFolderSelect = async (path: string) => {
     setStep('analyzing')
-    await analyze(path)
-    if (state.step !== 'error') {
+    const success = await analyze(path)
+    if (success) {
       setStep('detected')
     }
   }
 
   const handleExtractFeatures = async () => {
-    await extractFeatures()
-    if (state.step !== 'error') {
+    const success = await extractFeatures()
+    if (success) {
       setStep('features')
-      // Expand all categories by default
-      if (state.featuresResult) {
-        setExpandedCategories(new Set(Object.keys(state.featuresResult.by_category)))
-      }
+      // Expand all categories by default - need to get fresh state via callback
+      // The featuresResult will be available after the state update from extractFeatures
     }
   }
 
@@ -107,9 +112,9 @@ export function ImportProjectModal({
       })
 
       // Then create features
-      await createFeatures(projectName.trim())
+      const success = await createFeatures(projectName.trim())
 
-      if (state.step !== 'error') {
+      if (success) {
         setStep('complete')
         setTimeout(() => {
           onProjectImported(projectName.trim())

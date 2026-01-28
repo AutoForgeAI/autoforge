@@ -505,48 +505,93 @@ class LogQuery:
         conn.close()
         return [dict(row) for row in rows]
 
+    def _iter_logs(
+        self,
+        batch_size: int = 1000,
+        **filters,
+    ):
+        """
+        Iterate over logs in batches using cursor-based pagination.
+
+        This avoids loading all logs into memory at once.
+
+        Args:
+            batch_size: Number of rows to fetch per batch
+            **filters: Query filters passed to query()
+
+        Yields:
+            Log entries as dicts
+        """
+        offset = 0
+        while True:
+            batch = self.query(limit=batch_size, offset=offset, **filters)
+            if not batch:
+                break
+            yield from batch
+            offset += len(batch)
+            # If we got fewer than batch_size, we've reached the end
+            if len(batch) < batch_size:
+                break
+
     def export_logs(
         self,
         output_path: Path,
         format: Literal["json", "jsonl", "csv"] = "jsonl",
+        batch_size: int = 1000,
         **filters,
     ) -> int:
         """
-        Export logs to file.
+        Export logs to file using cursor-based streaming.
 
         Args:
             output_path: Output file path
             format: Export format (json, jsonl, csv)
+            batch_size: Number of rows to fetch per batch (default 1000)
             **filters: Query filters
 
         Returns:
             Number of exported entries
         """
-        # Get all matching logs
-        logs = self.query(limit=1000000, **filters)
+        import csv
 
         output_path = Path(output_path)
         output_path.parent.mkdir(parents=True, exist_ok=True)
 
+        count = 0
+
         if format == "json":
+            # For JSON format, we still need to collect all to produce valid JSON
+            # but we stream to avoid massive single query
             with open(output_path, "w") as f:
-                json.dump(logs, f, indent=2)
+                f.write("[\n")
+                first = True
+                for log in self._iter_logs(batch_size=batch_size, **filters):
+                    if not first:
+                        f.write(",\n")
+                    f.write("  " + json.dumps(log))
+                    first = False
+                    count += 1
+                f.write("\n]")
 
         elif format == "jsonl":
             with open(output_path, "w") as f:
-                for log in logs:
+                for log in self._iter_logs(batch_size=batch_size, **filters):
                     f.write(json.dumps(log) + "\n")
+                    count += 1
 
         elif format == "csv":
-            import csv
+            fieldnames = None
+            with open(output_path, "w", newline="") as f:
+                writer = None
+                for log in self._iter_logs(batch_size=batch_size, **filters):
+                    if writer is None:
+                        fieldnames = list(log.keys())
+                        writer = csv.DictWriter(f, fieldnames=fieldnames)
+                        writer.writeheader()
+                    writer.writerow(log)
+                    count += 1
 
-            if logs:
-                with open(output_path, "w", newline="") as f:
-                    writer = csv.DictWriter(f, fieldnames=logs[0].keys())
-                    writer.writeheader()
-                    writer.writerows(logs)
-
-        return len(logs)
+        return count
 
 
 def get_logger(
