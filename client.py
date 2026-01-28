@@ -47,8 +47,9 @@ API_ENV_VARS = [
     "CLAUDE_CODE_MAX_OUTPUT_TOKENS",   # Max output tokens (default 32000, GLM 4.7 supports 131072)
 ]
 
-# Default max output tokens for GLM 4.7 compatibility (131k output limit)
-DEFAULT_MAX_OUTPUT_TOKENS = "131072"
+# Default max output tokens - use 131k only for alternative APIs (like GLM), otherwise use 32k for Anthropic
+import os
+DEFAULT_MAX_OUTPUT_TOKENS = "131072" if os.getenv("ANTHROPIC_BASE_URL") else "32000"
 
 
 def get_playwright_headless() -> bool:

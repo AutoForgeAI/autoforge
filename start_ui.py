@@ -150,19 +150,24 @@ def install_npm_deps() -> bool:
     # Check if npm install is needed
     needs_install = False
 
-    if not node_modules.exists():
+    if not node_modules.exists() or not node_modules.is_dir():
         needs_install = True
-    elif not any(node_modules.iterdir()):
-        # Treat empty node_modules as stale (failed/partial install)
-        needs_install = True
-        print("  Note: node_modules is empty, reinstalling...")
     else:
-        # If package.json or package-lock.json is newer than node_modules, reinstall
-        node_modules_mtime = node_modules.stat().st_mtime
-        if package_json.stat().st_mtime > node_modules_mtime:
+        try:
+            if not any(node_modules.iterdir()):
+                # Treat empty node_modules as stale (failed/partial install)
+                needs_install = True
+                print("  Note: node_modules is empty, reinstalling...")
+            else:
+                # If package.json or package-lock.json is newer than node_modules, reinstall
+                node_modules_mtime = node_modules.stat().st_mtime
+                if package_json.stat().st_mtime > node_modules_mtime:
+                    needs_install = True
+                elif package_lock.exists() and package_lock.stat().st_mtime > node_modules_mtime:
+                    needs_install = True
+        except OSError:
             needs_install = True
-        elif package_lock.exists() and package_lock.stat().st_mtime > node_modules_mtime:
-            needs_install = True
+            print("  Note: node_modules is not accessible, reinstalling...")
 
     if not needs_install:
         print("  npm dependencies already installed")

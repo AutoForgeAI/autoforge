@@ -40,8 +40,9 @@ API_ENV_VARS = [
     "CLAUDE_CODE_MAX_OUTPUT_TOKENS",  # Max output tokens (default 32000, GLM 4.7 supports 131072)
 ]
 
-# Default max output tokens for GLM 4.7 compatibility (131k output limit)
-DEFAULT_MAX_OUTPUT_TOKENS = "131072"
+# Default max output tokens - use 131k only for alternative APIs (like GLM), otherwise use 32k for Anthropic
+import os
+DEFAULT_MAX_OUTPUT_TOKENS = "131072" if os.getenv("ANTHROPIC_BASE_URL") else "32000"
 
 
 async def _make_multimodal_message(content_blocks: list[dict]) -> AsyncGenerator[dict, None]:
@@ -242,6 +243,21 @@ class ExpandChatSession:
             self._client_entered = True
         except Exception:
             logger.exception("Failed to create Claude client")
+            # Clean up temp files created earlier in start()
+            if self._settings_file and self._settings_file.exists():
+                try:
+                    self._settings_file.unlink()
+                except Exception as e:
+                    logger.warning(f"Error removing settings file: {e}")
+                finally:
+                    self._settings_file = None
+            if self._mcp_config_file and self._mcp_config_file.exists():
+                try:
+                    self._mcp_config_file.unlink()
+                except Exception as e:
+                    logger.warning(f"Error removing MCP config file: {e}")
+                finally:
+                    self._mcp_config_file = None
             yield {
                 "type": "error",
                 "content": "Failed to initialize Claude"
@@ -383,8 +399,11 @@ class ExpandChatSession:
                         tool_use_id = getattr(block, "tool_use_id", None)
                         tool_name = tool_use_map.get(tool_use_id, "") or getattr(block, "tool_name", "")
                         if "feature_create_bulk" in tool_name:
-                            mcp_tool_succeeded = True
-                            logger.info("Detected successful feature_create_bulk MCP tool call")
+                            # Check if this is an error result before marking as successful
+                            is_error = getattr(block, "is_error", False)
+                            if is_error:
+                                logger.warning("feature_create_bulk MCP tool returned an error")
+                                continue
 
                             # Extract created features from tool result
                             tool_content = getattr(block, "content", [])
@@ -396,6 +415,10 @@ class ExpandChatSession:
                                             created_features = result_data.get("created_features", [])
 
                                             if created_features:
+                                                # Only mark as succeeded after successfully extracting features
+                                                mcp_tool_succeeded = True
+                                                logger.info("Successfully extracted features from feature_create_bulk MCP tool call")
+
                                                 self.features_created += len(created_features)
                                                 # Safely extract feature IDs, filtering out any without valid IDs
                                                 self.created_feature_ids.extend(

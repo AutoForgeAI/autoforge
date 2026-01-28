@@ -15,7 +15,8 @@ Supports:
 import json
 import shutil
 import subprocess
-from datetime import datetime
+import time
+from datetime import datetime, timezone
 from pathlib import Path
 from typing import TypedDict
 
@@ -48,7 +49,6 @@ def _run_command(cmd: list[str], cwd: Path, timeout: int = 60) -> tuple[int, str
     Returns:
         (exit_code, combined_output, duration_ms)
     """
-    import time
     start = time.time()
 
     try:
@@ -347,7 +347,7 @@ def verify_quality(
 
     return {
         "passed": all_passed,
-        "timestamp": datetime.utcnow().isoformat(),
+        "timestamp": datetime.now(timezone.utc).isoformat(),
         "checks": checks,
         "summary": summary,
     }

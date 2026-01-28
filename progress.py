@@ -155,8 +155,10 @@ def count_passing_tests(project_dir: Path) -> tuple[int, int, int]:
                 total = row[0] or 0
                 passing = row[1] or 0
                 in_progress = row[2] or 0
-            except sqlite3.OperationalError:
-                # Fallback for databases without in_progress column
+            except sqlite3.OperationalError as e:
+                # Fallback only for databases without in_progress column
+                if "in_progress" not in str(e).lower() and "no such column" not in str(e).lower():
+                    raise  # Re-raise other operational errors
                 cursor.execute("""
                     SELECT
                         COUNT(*) as total,

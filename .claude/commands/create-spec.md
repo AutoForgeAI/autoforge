@@ -228,9 +228,9 @@ After gathering all features, **you** (the agent) should tally up the testable f
 
 **Typical ranges for reference:**
 
-- **Simple apps** (todo list, calculator, notes): ~25-55 features (includes 5 infrastructure)
-- **Medium apps** (blog, task manager with auth): ~105 features (includes 5 infrastructure)
-- **Advanced apps** (e-commerce, CRM, full SaaS): ~155-205 features (includes 5 infrastructure)
+- **Simple apps** (todo list, calculator, notes): ~25-55 features (includes 5 infrastructure when a database is required)
+- **Medium apps** (blog, task manager with auth): ~105 features (includes 5 infrastructure when a database is required)
+- **Advanced apps** (e-commerce, CRM, full SaaS): ~155-205 features (includes 5 infrastructure when a database is required)
 
 These are just reference points - your actual count should come from the requirements discussed.
 
@@ -257,13 +257,13 @@ For each feature area discussed, estimate the number of discrete, testable behav
 
 > "Based on what we discussed, here's my feature breakdown:
 >
-> - **Infrastructure (required)**: 5 features (database setup, persistence verification)
+> - **Infrastructure (required when database is needed)**: 5 features (database setup, persistence verification)
 > - [Category 1]: ~X features
 > - [Category 2]: ~Y features
 > - [Category 3]: ~Z features
 > - ...
 >
-> **Total: ~N features** (including 5 infrastructure)
+> **Total: ~N features** (including infrastructure when applicable)
 >
 > Does this seem right, or should I adjust?"
 

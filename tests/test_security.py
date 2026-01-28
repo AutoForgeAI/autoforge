@@ -120,6 +120,7 @@ def test_extract_commands():
             print(f"         Expected: {expected}, Got: {result}")
             failed += 1
 
+    assert failed == 0, f"{failed} test(s) failed in test_extract_commands"
     return passed, failed
 
 
@@ -163,6 +164,7 @@ def test_validate_chmod():
                 print(f"         Reason: {reason}")
             failed += 1
 
+    assert failed == 0, f"{failed} test(s) failed in test_validate_chmod"
     return passed, failed
 
 
@@ -202,6 +204,7 @@ def test_validate_init_script():
                 print(f"         Reason: {reason}")
             failed += 1
 
+    assert failed == 0, f"{failed} test(s) failed in test_validate_init_script"
     return passed, failed
 
 
@@ -261,6 +264,7 @@ def test_pattern_matching():
             print(f"         Expected: {expected}, Got: {actual}")
             failed += 1
 
+    assert failed == 0, f"{failed} test(s) failed in test_pattern_matching"
     return passed, failed
 
 
@@ -329,6 +333,7 @@ commands:
             print(f"         Got: {config}")
             failed += 1
 
+    assert failed == 0, f"{failed} test(s) failed in test_yaml_loading"
     return passed, failed
 
 
@@ -375,6 +380,7 @@ def test_command_validation():
                 print(f"         Error: {error}")
             failed += 1
 
+    assert failed == 0, f"{failed} test(s) failed in test_command_validation"
     return passed, failed
 
 
@@ -395,6 +401,7 @@ def test_blocklist_enforcement():
             print(f"  FAIL: Should block {cmd.split()[0]}")
             failed += 1
 
+    assert failed == 0, f"{failed} test(s) failed in test_blocklist_enforcement"
     return passed, failed
 
 
@@ -454,6 +461,7 @@ commands:
             print("  FAIL: Non-allowed command 'rustc' should be blocked")
             failed += 1
 
+    assert failed == 0, f"{failed} test(s) failed in test_project_commands"
     return passed, failed
 
 
@@ -547,6 +555,7 @@ allowed_commands:
                 print(f"         Got: {config}")
                 failed += 1
 
+    assert failed == 0, f"{failed} test(s) failed in test_org_config_loading"
     return passed, failed
 
 
@@ -631,6 +640,7 @@ commands:
                     print("  FAIL: Hardcoded blocklist enforced")
                     failed += 1
 
+    assert failed == 0, f"{failed} test(s) failed in test_hierarchy_resolution"
     return passed, failed
 
 
@@ -670,6 +680,7 @@ blocked_commands:
                     print("  FAIL: Org blocked command 'terraform' should be rejected")
                     failed += 1
 
+    assert failed == 0, f"{failed} test(s) failed in test_org_blocklist_enforcement"
     return passed, failed
 
 
@@ -734,6 +745,7 @@ def test_command_injection_prevention():
                 print(f"         Error: {error}")
             failed += 1
 
+    assert failed == 0, f"{failed} test(s) failed in test_command_injection_prevention"
     return passed, failed
 
 
@@ -968,6 +980,7 @@ pkill_processes:
         print("  FAIL: Should block when second pattern is disallowed")
         failed += 1
 
+    assert failed == 0, f"{failed} test(s) failed in test_pkill_extensibility"
     return passed, failed
 
 

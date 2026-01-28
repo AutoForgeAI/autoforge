@@ -1,5 +1,6 @@
 #!/bin/bash
 cd "$(dirname "$0")"
+SCRIPT_DIR="$(pwd)"
 # AutoCoder UI Launcher for Unix/Linux/macOS
 # This script launches the web UI for the autonomous coding agent.
 
@@ -31,9 +32,9 @@ fi
 echo ""
 
 # Activate virtual environment if it exists
-if [ -d "$SCRIPT_DIR/venv" ]; then
+if [ -f "venv/bin/activate" ]; then
     echo "Activating virtual environment..."
-    source "$SCRIPT_DIR/venv/bin/activate"
+    source venv/bin/activate
 fi
 
 # Check if Python is available

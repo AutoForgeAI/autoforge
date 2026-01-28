@@ -32,7 +32,7 @@ for f in knowledge/*.md; do [ -f "$f" ] && echo "=== $f ===" && cat "$f"; done 2
 
 Then use MCP tools:
 
-```
+```text
 # 5. Get progress statistics
 Use the feature_get_stats tool
 ```
@@ -475,7 +475,7 @@ To maximize context window usage:
 
 - **Don't read files unnecessarily** - Feature details from `feature_get_by_id` contain everything you need
 - **Be concise** - Short, focused responses save tokens for actual work
-- **Use `feature_get_summary`** for status checks (lighter than `feature_get_by_id`)
+- **Use `feature_get_stats`** for status checks (lighter than `feature_get_by_id`)
 - **Avoid re-reading large files** - Read once, remember the content
 
 ---

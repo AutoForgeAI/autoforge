@@ -6,8 +6,8 @@ Pre-tool-use hooks that validate bash commands for security.
 Uses an allowlist approach - only explicitly permitted commands can run.
 """
 
-import logging
 import hashlib
+import logging
 import os
 import re
 import shlex
@@ -64,24 +64,16 @@ def record_denied_command(command: str, reason: str, project_dir: Optional[Path]
     )
     with _denied_commands_lock:
         _denied_commands.append(denied)
-    
+
     # Redact sensitive data before logging to prevent secret leakage
     # Use deterministic hash for identification without exposing content
     command_hash = hashlib.sha256(command.encode('utf-8')).hexdigest()[:16]
     reason_hash = hashlib.sha256(reason.encode('utf-8')).hexdigest()[:16]
-    
-    # Create redacted preview (first 20 + last 20 chars with mask in between)
-    def redact_string(s: str, max_preview: int = 20) -> str:
-        if len(s) <= max_preview * 2:
-            return s[:max_preview] + "..." if len(s) > max_preview else s
-        return f"{s[:max_preview]}...{s[-max_preview:]}"
-    
-    command_preview = redact_string(command, 20)
-    reason_preview = redact_string(reason, 20)
-    
+
     logger.info(
-        f"[SECURITY] Command denied (hash: {command_hash}): {command_preview} "
-        f"Reason (hash: {reason_hash}): {reason_preview}"
+        f"[SECURITY] Command denied - hash: {command_hash}, "
+        f"length: {len(command)} chars, reason hash: {reason_hash}, "
+        f"reason length: {len(reason)} chars"
     )
 
 
@@ -157,7 +149,7 @@ DANGEROUS_SHELL_PATTERNS = [
     (re.compile(r'wget\s+[^|]*\|\s*ruby', re.IGNORECASE), "wget piped to ruby"),
 
     # Null byte injection (can terminate strings early in C-based parsers)
-    (re.compile(r'\\x00'), "null byte injection (hex)"),
+    (re.compile(r'\\x00|\x00'), "null byte injection (hex or raw)"),
 ]
 
 

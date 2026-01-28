@@ -16,7 +16,11 @@ export function ResetProjectModal({ projectName, onClose, onReset }: ResetProjec
   const handleReset = async () => {
     setError(null)
     try {
-      await resetProject.mutateAsync({ name: projectName, fullReset })
+      const result = await resetProject.mutateAsync({ name: projectName, fullReset })
+      if (!result.success) {
+        setError(result.message || 'Failed to reset project')
+        return
+      }
       onReset?.()
       onClose()
     } catch (err) {
@@ -25,7 +29,7 @@ export function ResetProjectModal({ projectName, onClose, onReset }: ResetProjec
   }
 
   return (
-    <div className="neo-modal-backdrop" onClick={onClose}>
+    <div className="neo-modal-backdrop" onClick={resetProject.isPending ? undefined : onClose}>
       <div
         className="neo-modal w-full max-w-lg"
         onClick={(e) => e.stopPropagation()}
@@ -38,6 +42,7 @@ export function ResetProjectModal({ projectName, onClose, onReset }: ResetProjec
           </h2>
           <button
             onClick={onClose}
+            disabled={resetProject.isPending}
             className="neo-btn neo-btn-ghost p-2"
           >
             <X size={24} />

@@ -10,6 +10,7 @@ import re
 import shutil
 import subprocess
 import sys
+from datetime import datetime
 from pathlib import Path
 
 from fastapi import APIRouter, HTTPException
@@ -507,7 +508,7 @@ async def open_project_in_ide(name: str, ide: str):
             subprocess.Popen([cmd_path, project_path])
         else:
             # Unix-like systems
-            subprocess.Popen([cmd, project_path], start_new_session=True)
+            subprocess.Popen([cmd_path, project_path], start_new_session=True)
     except Exception as e:
         raise HTTPException(
             status_code=500,
@@ -662,7 +663,6 @@ async def list_knowledge_files(name: str):
     for filepath in knowledge_dir.glob("*.md"):
         if filepath.is_file():
             stat = filepath.stat()
-            from datetime import datetime
             files.append(KnowledgeFile(
                 name=filepath.name,
                 size=stat.st_size,
@@ -721,6 +721,10 @@ async def upload_knowledge_file(name: str, file: KnowledgeFileUpload):
 
     if not project_dir.exists():
         raise HTTPException(status_code=404, detail="Project directory not found")
+
+    # Validate filename to prevent path traversal
+    if not file.filename or ".." in file.filename or "/" in file.filename or "\\" in file.filename:
+        raise HTTPException(status_code=400, detail="Invalid filename")
 
     knowledge_dir = get_knowledge_dir(project_dir)
     knowledge_dir.mkdir(parents=True, exist_ok=True)
