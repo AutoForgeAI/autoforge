@@ -33,7 +33,8 @@ from pathlib import Path
 from typing import Literal, Optional
 
 # Type aliases
-LogLevel = Literal["debug", "info", "warn", "error"]
+# Note: Python's logging uses "warning" but we normalize to "warn" for consistency
+LogLevel = Literal["debug", "info", "warn", "warning", "error"]
 
 
 @dataclass
@@ -96,56 +97,60 @@ class StructuredLogHandler(logging.Handler):
     def _init_database(self) -> None:
         """Initialize the SQLite database for logs."""
         with self._lock:
-            conn = sqlite3.connect(self.db_path)
-            cursor = conn.cursor()
+            # Use context manager to ensure connection is closed on errors
+            with sqlite3.connect(self.db_path) as conn:
+                cursor = conn.cursor()
 
-            # Enable WAL mode for better concurrency with parallel agents
-            # WAL allows readers and writers to work concurrently without blocking
-            cursor.execute("PRAGMA journal_mode=WAL")
+                # Enable WAL mode for better concurrency with parallel agents
+                # WAL allows readers and writers to work concurrently without blocking
+                cursor.execute("PRAGMA journal_mode=WAL")
 
-            # Create logs table
-            cursor.execute("""
-                CREATE TABLE IF NOT EXISTS logs (
-                    id INTEGER PRIMARY KEY AUTOINCREMENT,
-                    timestamp TEXT NOT NULL,
-                    level TEXT NOT NULL,
-                    message TEXT NOT NULL,
-                    agent_id TEXT,
-                    feature_id INTEGER,
-                    tool_name TEXT,
-                    duration_ms INTEGER,
-                    extra TEXT
-                )
-            """)
+                # Create logs table
+                cursor.execute("""
+                    CREATE TABLE IF NOT EXISTS logs (
+                        id INTEGER PRIMARY KEY AUTOINCREMENT,
+                        timestamp TEXT NOT NULL,
+                        level TEXT NOT NULL,
+                        message TEXT NOT NULL,
+                        agent_id TEXT,
+                        feature_id INTEGER,
+                        tool_name TEXT,
+                        duration_ms INTEGER,
+                        extra TEXT
+                    )
+                """)
 
-            # Create indexes for common queries
-            cursor.execute("""
-                CREATE INDEX IF NOT EXISTS idx_logs_timestamp
-                ON logs(timestamp)
-            """)
-            cursor.execute("""
-                CREATE INDEX IF NOT EXISTS idx_logs_level
-                ON logs(level)
-            """)
-            cursor.execute("""
-                CREATE INDEX IF NOT EXISTS idx_logs_agent_id
-                ON logs(agent_id)
-            """)
-            cursor.execute("""
-                CREATE INDEX IF NOT EXISTS idx_logs_feature_id
-                ON logs(feature_id)
-            """)
+                # Create indexes for common queries
+                cursor.execute("""
+                    CREATE INDEX IF NOT EXISTS idx_logs_timestamp
+                    ON logs(timestamp)
+                """)
+                cursor.execute("""
+                    CREATE INDEX IF NOT EXISTS idx_logs_level
+                    ON logs(level)
+                """)
+                cursor.execute("""
+                    CREATE INDEX IF NOT EXISTS idx_logs_agent_id
+                    ON logs(agent_id)
+                """)
+                cursor.execute("""
+                    CREATE INDEX IF NOT EXISTS idx_logs_feature_id
+                    ON logs(feature_id)
+                """)
 
-            conn.commit()
-            conn.close()
+                conn.commit()
 
     def emit(self, record: logging.LogRecord) -> None:
         """Store a log record in the database."""
         try:
             # Extract structured data from record
+            # Normalize "warning" -> "warn" for consistency
+            level = record.levelname.lower()
+            if level == "warning":
+                level = "warn"
             entry = StructuredLogEntry(
                 timestamp=datetime.now(timezone.utc).isoformat().replace("+00:00", "Z"),
-                level=record.levelname.lower(),
+                level=level,
                 message=self.format(record),
                 agent_id=getattr(record, "agent_id", self.agent_id),
                 feature_id=getattr(record, "feature_id", None),
@@ -155,43 +160,43 @@ class StructuredLogHandler(logging.Handler):
             )
 
             with self._lock:
-                conn = sqlite3.connect(self.db_path)
-                cursor = conn.cursor()
+                # Use context manager to ensure connection is closed on errors
+                with sqlite3.connect(self.db_path) as conn:
+                    cursor = conn.cursor()
 
-                cursor.execute(
-                    """
-                    INSERT INTO logs
-                    (timestamp, level, message, agent_id, feature_id, tool_name, duration_ms, extra)
-                    VALUES (?, ?, ?, ?, ?, ?, ?, ?)
-                    """,
-                    (
-                        entry.timestamp,
-                        entry.level,
-                        entry.message,
-                        entry.agent_id,
-                        entry.feature_id,
-                        entry.tool_name,
-                        entry.duration_ms,
-                        json.dumps(entry.extra) if entry.extra else None,
-                    ),
-                )
-
-                # Cleanup old entries if over limit
-                cursor.execute("SELECT COUNT(*) FROM logs")
-                count = cursor.fetchone()[0]
-                if count > self.max_entries:
-                    delete_count = count - self.max_entries
                     cursor.execute(
                         """
-                        DELETE FROM logs WHERE id IN (
-                            SELECT id FROM logs ORDER BY timestamp ASC LIMIT ?
-                        )
+                        INSERT INTO logs
+                        (timestamp, level, message, agent_id, feature_id, tool_name, duration_ms, extra)
+                        VALUES (?, ?, ?, ?, ?, ?, ?, ?)
                         """,
-                        (delete_count,),
+                        (
+                            entry.timestamp,
+                            entry.level,
+                            entry.message,
+                            entry.agent_id,
+                            entry.feature_id,
+                            entry.tool_name,
+                            entry.duration_ms,
+                            json.dumps(entry.extra) if entry.extra else None,
+                        ),
                     )
 
-                conn.commit()
-                conn.close()
+                    # Cleanup old entries if over limit
+                    cursor.execute("SELECT COUNT(*) FROM logs")
+                    count = cursor.fetchone()[0]
+                    if count > self.max_entries:
+                        delete_count = count - self.max_entries
+                        cursor.execute(
+                            """
+                            DELETE FROM logs WHERE id IN (
+                                SELECT id FROM logs ORDER BY timestamp ASC LIMIT ?
+                            )
+                            """,
+                            (delete_count,),
+                        )
+
+                    conn.commit()
 
         except Exception:
             self.handleError(record)
@@ -365,11 +370,13 @@ class LogQuery:
 
         if since:
             conditions.append("timestamp >= ?")
-            params.append(since.isoformat())
+            # Use consistent timestamp format with stored logs (Z suffix for UTC)
+            params.append(since.isoformat().replace("+00:00", "Z"))
 
         if until:
             conditions.append("timestamp <= ?")
-            params.append(until.isoformat())
+            # Use consistent timestamp format with stored logs (Z suffix for UTC)
+            params.append(until.isoformat().replace("+00:00", "Z"))
 
         where_clause = " AND ".join(conditions) if conditions else "1=1"
 
@@ -412,7 +419,8 @@ class LogQuery:
             params.append(feature_id)
         if since:
             conditions.append("timestamp >= ?")
-            params.append(since.isoformat())
+            # Use consistent timestamp format with stored logs (Z suffix for UTC)
+            params.append(since.isoformat().replace("+00:00", "Z"))
 
         where_clause = " AND ".join(conditions) if conditions else "1=1"
         cursor.execute(f"SELECT COUNT(*) FROM logs WHERE {where_clause}", params)
@@ -453,7 +461,7 @@ class LogQuery:
             GROUP BY bucket, agent_id
             ORDER BY bucket
             """,
-            (bucket_minutes, bucket_minutes, since.isoformat(), until.isoformat()),
+            (bucket_minutes, bucket_minutes, since.isoformat().replace("+00:00", "Z"), until.isoformat().replace("+00:00", "Z")),
         )
 
         rows = cursor.fetchall()
@@ -481,7 +489,8 @@ class LogQuery:
         where_clause = "1=1"
         if since:
             where_clause = "timestamp >= ?"
-            params.append(since.isoformat())
+            # Use consistent timestamp format with stored logs (Z suffix for UTC)
+            params.append(since.isoformat().replace("+00:00", "Z"))
 
         cursor.execute(
             f"""
