@@ -646,6 +646,145 @@ export interface GitStatus {
 }
 
 // ============================================================================
+// Usage Tracking Types (Chance Edition Phase 3)
+// ============================================================================
+
+export interface UsageRecord {
+  id: number
+  projectName: string
+  modelId: string
+  agentType: string
+  featureId: number | null
+  featureName: string | null
+  inputTokens: number
+  outputTokens: number
+  cacheReadTokens: number
+  cacheWriteTokens: number
+  estimatedCost: number
+  timestamp: string
+  durationMs: number | null
+  metadata: Record<string, unknown> | null
+}
+
+export interface UsageTotals {
+  calls: number
+  inputTokens: number
+  outputTokens: number
+  cost: number
+}
+
+export interface UsageByModel {
+  modelId: string
+  calls: number
+  inputTokens: number
+  outputTokens: number
+  cost: number
+}
+
+export interface UsageByAgentType {
+  agentType: string
+  calls: number
+  cost: number
+}
+
+export interface FeatureStats {
+  totalAttempts: number
+  successful: number
+  successRate: number
+}
+
+export interface UsageSummary {
+  projectName: string
+  periodDays: number
+  totals: UsageTotals
+  byModel: UsageByModel[]
+  byAgentType: UsageByAgentType[]
+  featureStats: FeatureStats
+}
+
+export interface DailyUsage {
+  date: string
+  calls: number
+  inputTokens: number
+  outputTokens: number
+  cost: number
+}
+
+export interface FeatureAttempt {
+  id: number
+  projectName: string
+  featureId: number
+  featureName: string | null
+  featureCategory: string | null
+  attemptNumber: number
+  modelId: string
+  startedAt: string
+  completedAt: string | null
+  success: boolean
+  failureReason: string | null
+  totalInputTokens: number
+  totalOutputTokens: number
+  totalCost: number
+  totalDurationMs: number
+}
+
+export interface CostEstimate {
+  projectName: string
+  periodDays: number
+  totalCost: number
+  avgDailyCost: number
+  projectedMonthlyCost: number
+  costByModel: UsageByModel[]
+  costByAgentType: UsageByAgentType[]
+  dailyTrend: DailyUsage[]
+}
+
+// Learning/Smart Orchestrator Types
+export interface LearningInsight {
+  id: number
+  insightType: string
+  category: string | null
+  title: string
+  description: string
+  confidence: number
+  data: Record<string, unknown> | null
+  createdAt: string
+  applied: boolean
+}
+
+export interface CategoryStats {
+  id: number
+  category: string
+  totalAttempts: number
+  successfulAttempts: number
+  successRate: number
+  avgAttemptsToSuccess: number
+  bestModel: string | null
+  modelSuccessRate: number
+  avgInputTokens: number
+  avgOutputTokens: number
+  avgCost: number
+  avgDurationMs: number
+  estimatedDifficulty: number
+  updatedAt: string | null
+}
+
+export interface ModelStats {
+  id: number
+  modelId: string
+  category: string | null
+  totalAttempts: number
+  successfulAttempts: number
+  successRate: number
+  totalInputTokens: number
+  totalOutputTokens: number
+  totalCost: number
+  costPerSuccess: number
+  avgDurationMs: number
+  updatedAt: string | null
+}
+
+// ============================================================================
 // Schedule Types
 // ============================================================================
 

@@ -36,6 +36,11 @@ import type {
   ProfileListResponse,
   VersionInfo,
   GitStatus,
+  UsageSummary,
+  DailyUsage,
+  UsageRecord,
+  FeatureAttempt,
+  CostEstimate,
 } from './types'
 
 const API_BASE = '/api'
@@ -563,4 +568,36 @@ export async function refreshGitStatus(projectName: string): Promise<GitStatus> 
   return fetchJSON(`/git/status/${encodeURIComponent(projectName)}/refresh`, {
     method: 'POST',
   })
+}
+
+// ============================================================================
+// Usage API (Chance Edition Phase 3)
+// ============================================================================
+
+export async function getUsageSummary(projectName: string, days: number = 30): Promise<UsageSummary> {
+  return fetchJSON(`/usage/${encodeURIComponent(projectName)}/summary?days=${days}`)
+}
+
+export async function getDailyUsage(projectName: string, days: number = 30): Promise<DailyUsage[]> {
+  return fetchJSON(`/usage/${encodeURIComponent(projectName)}/daily?days=${days}`)
+}
+
+export async function getRecentUsage(projectName: string, limit: number = 50): Promise<UsageRecord[]> {
+  return fetchJSON(`/usage/${encodeURIComponent(projectName)}/recent?limit=${limit}`)
+}
+
+export async function getFeatureAttempts(
+  projectName: string,
+  featureId?: number,
+  limit: number = 100
+): Promise<FeatureAttempt[]> {
+  const params = new URLSearchParams({ limit: String(limit) })
+  if (featureId !== undefined) {
+    params.append('feature_id', String(featureId))
+  }
+  return fetchJSON(`/usage/${encodeURIComponent(projectName)}/attempts?${params}`)
+}
+
+export async function getCostEstimate(projectName: string, days: number = 30): Promise<CostEstimate> {
+  return fetchJSON(`/usage/${encodeURIComponent(projectName)}/cost-estimate?days=${days}`)
 }

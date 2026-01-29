@@ -41,6 +41,7 @@ from .routers import (
     settings_router,
     spec_creation_router,
     terminal_router,
+    usage_router,
     version_router,
 )
 from .schemas import SetupStatus
@@ -164,6 +165,7 @@ app.include_router(terminal_router)
 app.include_router(version_router)
 app.include_router(models_router)
 app.include_router(git_router)
+app.include_router(usage_router)
 
 
 # ============================================================================
