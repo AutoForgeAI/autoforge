@@ -145,6 +145,41 @@ class GitStatusResponse(BaseModel):
 
 
 # ============================================================================
+# Settings Schemas
+# ============================================================================
+
+class AvailableModel(BaseModel):
+    """A model available for selection."""
+    id: str
+    name: str
+    description: str
+
+
+class AppSettingsResponse(BaseModel):
+    """App-level settings response."""
+    models: ModelConfigSchema
+    available_models: list[AvailableModel] = []
+
+
+class ProjectSettingsResponse(BaseModel):
+    """Project-level settings response."""
+    has_custom_settings: bool = False
+    models: ModelConfigSchema | None = None
+    source: str = "App Defaults"  # "Project", "App Defaults", or "Built-in Defaults"
+
+
+class MergedSettingsResponse(BaseModel):
+    """Merged settings for a project (project + app + defaults)."""
+    models: ModelConfigSchema
+    source: str  # Where the settings came from
+
+
+class SettingsUpdateRequest(BaseModel):
+    """Request to update settings."""
+    models: ModelConfigSchema
+
+
+# ============================================================================
 # Setup Schemas
 # ============================================================================
 

@@ -210,6 +210,29 @@ export interface GitStatusResponse {
   total_commits: number
 }
 
+// Settings types
+export interface AvailableModel {
+  id: string
+  name: string
+  description: string
+}
+
+export interface AppSettingsResponse {
+  models: ModelConfig
+  available_models: AvailableModel[]
+}
+
+export interface ProjectSettingsResponse {
+  has_custom_settings: boolean
+  models: ModelConfig | null
+  source: string
+}
+
+export interface MergedSettingsResponse {
+  models: ModelConfig
+  source: string
+}
+
 export interface AgentActionResponse {
   success: boolean
   status: AgentStatus

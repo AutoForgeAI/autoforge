@@ -18,6 +18,10 @@ import type {
   AssistantConversationDetail,
   GitStatusResponse,
   ModelConfig,
+  AppSettingsResponse,
+  ProjectSettingsResponse,
+  MergedSettingsResponse,
+  AvailableModel,
 } from './types'
 
 const API_BASE = '/api'
@@ -159,6 +163,49 @@ export async function resumeAgent(projectName: string): Promise<AgentActionRespo
 
 export async function getGitStatus(projectName: string): Promise<GitStatusResponse> {
   return fetchJSON(`/projects/${encodeURIComponent(projectName)}/agent/git`)
+}
+
+// ============================================================================
+// Settings API
+// ============================================================================
+
+export async function getAppSettings(): Promise<AppSettingsResponse> {
+  return fetchJSON('/settings')
+}
+
+export async function updateAppSettings(models: ModelConfig): Promise<AppSettingsResponse> {
+  return fetchJSON('/settings', {
+    method: 'PUT',
+    body: JSON.stringify({ models }),
+  })
+}
+
+export async function getAvailableModels(): Promise<AvailableModel[]> {
+  return fetchJSON('/settings/models')
+}
+
+export async function getProjectSettings(projectName: string): Promise<ProjectSettingsResponse> {
+  return fetchJSON(`/projects/${encodeURIComponent(projectName)}/settings`)
+}
+
+export async function updateProjectSettings(
+  projectName: string,
+  models: ModelConfig
+): Promise<ProjectSettingsResponse> {
+  return fetchJSON(`/projects/${encodeURIComponent(projectName)}/settings`, {
+    method: 'PUT',
+    body: JSON.stringify({ models }),
+  })
+}
+
+export async function deleteProjectSettings(projectName: string): Promise<{ success: boolean; message: string }> {
+  return fetchJSON(`/projects/${encodeURIComponent(projectName)}/settings`, {
+    method: 'DELETE',
+  })
+}
+
+export async function getMergedSettings(projectName: string): Promise<MergedSettingsResponse> {
+  return fetchJSON(`/projects/${encodeURIComponent(projectName)}/settings/merged`)
 }
 
 // ============================================================================

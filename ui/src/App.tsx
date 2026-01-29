@@ -16,6 +16,8 @@ import { AgentThought } from './components/AgentThought'
 import { AssistantFAB } from './components/AssistantFAB'
 import { AssistantPanel } from './components/AssistantPanel'
 import { GitStatusBar } from './components/GitStatusBar'
+import { SettingsModal } from './components/SettingsModal'
+import { ProjectSettingsPanel } from './components/ProjectSettingsPanel'
 import {
   Plus,
   Loader2,
@@ -28,6 +30,7 @@ import {
   PlayCircle,
   ArrowRight,
   Sparkles,
+  Settings,
 } from 'lucide-react'
 import type { Feature } from './lib/types'
 
@@ -46,6 +49,7 @@ function App() {
   const [debugOpen, setDebugOpen] = useState(false)
   const [debugPanelHeight, setDebugPanelHeight] = useState(288)
   const [assistantOpen, setAssistantOpen] = useState(false)
+  const [settingsOpen, setSettingsOpen] = useState(false)
 
   const { data: projects, isLoading: projectsLoading } = useProjects()
   const { data: features } = useFeatures(selectedProject)
@@ -151,6 +155,15 @@ function App() {
 
             {/* Controls */}
             <div className="flex items-center gap-3">
+              {/* Settings Button */}
+              <button
+                onClick={() => setSettingsOpen(true)}
+                className="neo-btn neo-btn-ghost p-2"
+                title="Settings"
+              >
+                <Settings size={18} />
+              </button>
+
               <ProjectSelector
                 projects={projects ?? []}
                 selectedProject={selectedProject}
@@ -298,6 +311,9 @@ function App() {
             {/* Git Status Bar */}
             <GitStatusBar gitStatus={gitStatusData} isLoading={gitStatusLoading} />
 
+            {/* Project Settings Panel */}
+            <ProjectSettingsPanel projectName={selectedProject} />
+
             {/* Progress Bar */}
             <div className="neo-card p-4">
               <div className="flex items-center justify-between mb-3">
@@ -408,6 +424,12 @@ function App() {
           />
         </>
       )}
+
+      {/* Settings Modal */}
+      <SettingsModal
+        isOpen={settingsOpen}
+        onClose={() => setSettingsOpen(false)}
+      />
     </div>
   )
 }

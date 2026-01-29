@@ -33,6 +33,17 @@ def _get_project_path(project_name: str) -> Path:
     return get_project_path(project_name)
 
 
+def _get_merged_model_config(project_dir: Path) -> dict[str, str]:
+    """Get merged model configuration for a project."""
+    import sys
+    root = Path(__file__).parent.parent.parent
+    if str(root) not in sys.path:
+        sys.path.insert(0, str(root))
+
+    from settings import get_merged_model_config
+    return get_merged_model_config(project_dir)
+
+
 router = APIRouter(prefix="/api/projects/{project_name}/agent", tags=["agent"])
 
 # Root directory for process manager
@@ -93,10 +104,16 @@ async def start_agent(
     """Start the agent for a project."""
     manager = get_project_manager(project_name)
 
+    # Get project path for settings lookup
+    project_dir = _get_project_path(project_name)
+
     # Convert model config schema to dict for process manager
-    model_config_dict = None
+    # If no config provided, load merged config from settings
     if request.model_config:
         model_config_dict = request.model_config.model_dump()
+    else:
+        # Load merged config (project → app → built-in defaults)
+        model_config_dict = _get_merged_model_config(project_dir)
 
     success, message = await manager.start(
         yolo_mode=request.yolo_mode,
