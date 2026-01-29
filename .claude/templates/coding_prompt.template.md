@@ -404,7 +404,7 @@ To maximize context window usage:
 
 - **Don't read files unnecessarily** - Feature details from `feature_get_by_id` contain everything you need
 - **Be concise** - Short, focused responses save tokens for actual work
-- **Use `feature_get_summary`** for status checks (lighter than `feature_get_by_id`)
+- **Use `feature_get_stats`** for progress checks, `feature_get_summary` for single feature status
 - **Use `spec_get_summary`** for project context (~800 tokens vs 12,500 for full app_spec.txt)
 - **Avoid re-reading large files** - Read once, remember the content
 
