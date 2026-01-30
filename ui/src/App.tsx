@@ -31,6 +31,7 @@ import { ProjectSetupRequired } from './components/ProjectSetupRequired'
 import { GitStatusBar } from './components/GitStatusBar'
 import { PRWorkflowPanel } from './components/PRWorkflowPanel'
 import { DeployPanel } from './components/DeployPanel'
+import { ActivitySidebar } from './components/ActivitySidebar'
 import { VersionBadgeDetailed } from './components/VersionBadge'
 import { getDependencyGraph } from './lib/api'
 import { Loader2, Settings, Moon, Sun, RotateCcw } from 'lucide-react'
@@ -402,7 +403,6 @@ function App() {
             <AgentMissionControl
               agents={wsState.activeAgents}
               orchestratorStatus={wsState.orchestratorStatus}
-              recentActivity={wsState.recentActivity}
               getAgentLogs={wsState.getAgentLogs}
             />
 
@@ -552,6 +552,11 @@ function App() {
             onClose={() => setAssistantOpen(false)}
           />
         </>
+      )}
+
+      {/* Activity Sidebar - shows recent agent activity */}
+      {selectedProject && (
+        <ActivitySidebar activities={wsState.recentActivity} />
       )}
 
       {/* Settings Modal */}
