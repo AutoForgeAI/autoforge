@@ -33,11 +33,6 @@ export function ActivitySidebar({ activities }: ActivitySidebarProps) {
     }
   }
 
-  // Don't render if no activities
-  if (activities.length === 0) {
-    return null
-  }
-
   return (
     <>
       {/* Collapsed toggle button - on left edge */}
@@ -49,8 +44,8 @@ export function ActivitySidebar({ activities }: ActivitySidebarProps) {
         >
           <Activity size={20} />
           {activities.length > 0 && (
-            <span className="absolute -top-1 -right-1 bg-destructive text-destructive-foreground text-xs w-5 h-5 rounded-full flex items-center justify-center font-bold">
-              {activities.length > 9 ? '9+' : activities.length}
+            <span className="absolute -top-1 -right-1 bg-destructive text-destructive-foreground text-xs min-w-5 h-5 px-1 rounded-full flex items-center justify-center font-bold">
+              {activities.length > 99 ? '99+' : activities.length}
             </span>
           )}
         </button>
@@ -89,7 +84,15 @@ export function ActivitySidebar({ activities }: ActivitySidebarProps) {
 
         {/* Activity list - scrollable */}
         <div className="h-[calc(100%-49px)] overflow-y-auto p-3">
-          <ActivityFeed activities={activities} maxItems={50} showHeader={false} />
+          {activities.length > 0 ? (
+            <ActivityFeed activities={activities} maxItems={50} showHeader={false} />
+          ) : (
+            <div className="flex flex-col items-center justify-center h-full text-muted-foreground">
+              <Activity size={32} className="mb-2 opacity-50" />
+              <p className="text-sm">No activity yet</p>
+              <p className="text-xs mt-1">Agent thoughts will appear here</p>
+            </div>
+          )}
         </div>
 
         {/* Collapse tab on the right edge */}

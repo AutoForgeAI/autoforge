@@ -1,4 +1,4 @@
-import { Rocket, ChevronDown, ChevronUp } from 'lucide-react'
+import { Rocket, ChevronDown, ChevronUp, Play } from 'lucide-react'
 import { useState } from 'react'
 import { AgentCard, AgentLogModal } from './AgentCard'
 import { OrchestratorStatusCard } from './OrchestratorStatusCard'
@@ -22,10 +22,7 @@ export function AgentMissionControl({
   const [isExpanded, setIsExpanded] = useState(defaultExpanded)
   const [selectedAgentForLogs, setSelectedAgentForLogs] = useState<ActiveAgent | null>(null)
 
-  // Don't render if no orchestrator status and no agents
-  if (!orchestratorStatus && agents.length === 0) {
-    return null
-  }
+  const hasContent = orchestratorStatus || agents.length > 0
 
   return (
     <Card className="mb-4 overflow-hidden py-0">
@@ -46,7 +43,9 @@ export function AgentMissionControl({
                 ? 'Initializing'
                 : orchestratorStatus?.state === 'complete'
                   ? 'Complete'
-                  : 'Orchestrating'
+                  : orchestratorStatus
+                    ? 'Orchestrating'
+                    : 'Idle'
             }
           </Badge>
         </div>
@@ -65,26 +64,37 @@ export function AgentMissionControl({
         `}
       >
         <CardContent className="p-3">
-          {/* Orchestrator Status Card */}
-          {orchestratorStatus && (
-            <OrchestratorStatusCard status={orchestratorStatus} />
-          )}
+          {hasContent ? (
+            <>
+              {/* Orchestrator Status Card */}
+              {orchestratorStatus && (
+                <OrchestratorStatusCard status={orchestratorStatus} />
+              )}
 
-          {/* Agent Cards Row */}
-          {agents.length > 0 && (
-            <div className="flex gap-3 overflow-x-auto pb-2">
-              {agents.map((agent) => (
-                <AgentCard
-                  key={`agent-${agent.agentIndex}`}
-                  agent={agent}
-                  onShowLogs={(agentIndex) => {
-                    const agentToShow = agents.find(a => a.agentIndex === agentIndex)
-                    if (agentToShow) {
-                      setSelectedAgentForLogs(agentToShow)
-                    }
-                  }}
-                />
-              ))}
+              {/* Agent Cards Row */}
+              {agents.length > 0 && (
+                <div className="flex gap-3 overflow-x-auto pb-2">
+                  {agents.map((agent) => (
+                    <AgentCard
+                      key={`agent-${agent.agentIndex}`}
+                      agent={agent}
+                      onShowLogs={(agentIndex) => {
+                        const agentToShow = agents.find(a => a.agentIndex === agentIndex)
+                        if (agentToShow) {
+                          setSelectedAgentForLogs(agentToShow)
+                        }
+                      }}
+                    />
+                  ))}
+                </div>
+              )}
+            </>
+          ) : (
+            /* Empty state when no agents running */
+            <div className="flex flex-col items-center justify-center py-8 text-muted-foreground">
+              <Play size={32} className="mb-2 opacity-50" />
+              <p className="text-sm font-medium">No agents running</p>
+              <p className="text-xs mt-1">Start a project to see agents here</p>
             </div>
           )}
         </CardContent>
