@@ -29,6 +29,7 @@ import { ThemeSelector } from './components/ThemeSelector'
 import { ResetProjectModal } from './components/ResetProjectModal'
 import { ProjectSetupRequired } from './components/ProjectSetupRequired'
 import { GitStatusBar } from './components/GitStatusBar'
+import { ActiveSettingsDisplay } from './components/ActiveSettingsDisplay'
 // import { UsageLevelIndicator } from './components/UsageLevelIndicator'  // Disabled until smart scheduler integration
 import { PRWorkflowPanel } from './components/PRWorkflowPanel'
 import { DeployPanel } from './components/DeployPanel'
@@ -406,6 +407,13 @@ function App() {
               gracefulShutdown={agentStatusData?.graceful_shutdown}
             />
 
+            {/* Active Settings Display - shows current agent config when running */}
+            <ActiveSettingsDisplay
+              settings={settings}
+              agentStatus={agentStatusData}
+              isRunning={wsState.agentStatus === 'running'}
+            />
+
             {/* Agent Mission Control - shows orchestrator status and active agents in parallel mode */}
             <AgentMissionControl
               agents={wsState.activeAgents}
@@ -454,7 +462,7 @@ function App() {
             )}
 
             {/* Kanban Board or Dependency Graph based on view mode */}
-            {viewMode === 'kanban' ? (
+            {(viewMode === 'kanban' || viewMode === 'kanban4') ? (
               <KanbanBoard
                 features={features}
                 onFeatureClick={setSelectedFeature}
@@ -463,6 +471,7 @@ function App() {
                 activeAgents={wsState.activeAgents}
                 onCreateSpec={() => setShowSpecChat(true)}
                 hasSpec={hasSpec}
+                fourColumnView={viewMode === 'kanban4'}
               />
             ) : (
               <Card className="overflow-hidden" style={{ height: '600px' }}>

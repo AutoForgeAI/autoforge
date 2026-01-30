@@ -101,6 +101,14 @@ export interface FeatureListResponse {
   done: Feature[]
 }
 
+// 4-column Kanban view: splits done into testing vs complete
+export interface FeatureListResponse4Column {
+  pending: Feature[]
+  in_progress: Feature[]
+  testing: Feature[]  // Done features with active testing agents
+  complete: Feature[] // Done features not being tested
+}
+
 export interface FeatureCreate {
   category: string
   name: string

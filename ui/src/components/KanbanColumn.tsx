@@ -11,7 +11,7 @@ interface KanbanColumnProps {
   features: Feature[]
   allFeatures?: Feature[]
   activeAgents?: ActiveAgent[]
-  color: 'pending' | 'progress' | 'done'
+  color: 'pending' | 'progress' | 'testing' | 'done'
   onFeatureClick: (feature: Feature) => void
   onAddFeature?: () => void
   onExpandProject?: () => void
@@ -23,6 +23,7 @@ interface KanbanColumnProps {
 const colorMap = {
   pending: 'border-t-4 border-t-muted',
   progress: 'border-t-4 border-t-primary',
+  testing: 'border-t-4 border-t-orange-500',
   done: 'border-t-4 border-t-primary',
 }
 
@@ -106,7 +107,7 @@ export function KanbanColumn({
                   <FeatureCard
                     feature={feature}
                     onClick={() => onFeatureClick(feature)}
-                    isInProgress={color === 'progress'}
+                    isInProgress={color === 'progress' || color === 'testing'}
                     allFeatures={allFeatures}
                     activeAgent={agentByFeatureId.get(feature.id)}
                   />
