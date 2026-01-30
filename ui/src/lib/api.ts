@@ -256,6 +256,7 @@ export async function startAgent(
   projectName: string,
   options: {
     yoloMode?: boolean
+    model?: string
     parallelMode?: boolean
     maxConcurrency?: number
     testingAgentRatio?: number
@@ -265,6 +266,7 @@ export async function startAgent(
     method: 'POST',
     body: JSON.stringify({
       yolo_mode: options.yoloMode ?? false,
+      model: options.model,
       parallel_mode: options.parallelMode ?? false,
       max_concurrency: options.maxConcurrency,
       testing_agent_ratio: options.testingAgentRatio,

@@ -655,19 +655,6 @@ async def project_websocket(websocket: WebSocket, project_name: str):
     # Create orchestrator tracker for observability
     orchestrator_tracker = OrchestratorTracker()
 
-    # Track usage for scheduler
-    async def record_usage_event(event_type: str, is_success: bool = False):
-        """Record usage events to the smart scheduler."""
-        try:
-            from smart_scheduler import get_scheduler
-            scheduler = get_scheduler(project_name)
-            if event_type == "feature":
-                scheduler.record_feature_attempt(completed=is_success)
-            elif event_type == "message":
-                scheduler.record_message()
-        except Exception:
-            pass  # Don't let scheduler errors affect agent operation
-
     async def on_output(line: str):
         """Handle agent output - broadcast to this WebSocket."""
         try:
@@ -697,11 +684,6 @@ async def project_websocket(websocket: WebSocket, project_name: str):
             agent_update = await agent_tracker.process_line(line)
             if agent_update:
                 await websocket.send_json(agent_update)
-                # Track feature completion/failure for usage scheduler
-                if agent_update.get('state') in ('success', 'error'):
-                    await record_usage_event("feature", is_success=agent_update.get('state') == 'success')
-                # Track any agent activity as a message for usage estimation
-                await record_usage_event("message")
 
             # Also check for orchestrator events and emit orchestrator_update messages
             orch_update = await orchestrator_tracker.process_line(line)

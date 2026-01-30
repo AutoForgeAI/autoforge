@@ -90,6 +90,7 @@ export function AgentControl({ projectName, status, agentStatusResponse, default
 
   const handleStart = () => startAgent.mutate({
     yoloMode,
+    model: settings?.model,
     parallelMode: isParallel,
     maxConcurrency: concurrency,
     testingAgentRatio: settings?.testing_agent_ratio,

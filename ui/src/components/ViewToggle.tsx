@@ -10,6 +10,7 @@ interface ViewToggleProps {
 
 /**
  * Toggle button to switch between Kanban and Graph views
+ * Column count for Kanban is controlled via settings
  */
 export function ViewToggle({ viewMode, onViewModeChange }: ViewToggleProps) {
   return (

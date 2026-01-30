@@ -59,6 +59,7 @@ class AppSettingsResponse(BaseModel):
     showDebugPanel: bool = False
     debugPanelHeight: int = 288
     celebrateOnComplete: bool = True
+    kanbanColumns: int = 3  # 3 or 4 columns in Kanban view
 
     # Git settings
     autoCommit: bool = False
@@ -82,6 +83,7 @@ class AppSettingsUpdate(BaseModel):
     showDebugPanel: bool | None = None
     debugPanelHeight: int | None = Field(None, ge=100, le=800)
     celebrateOnComplete: bool | None = None
+    kanbanColumns: int | None = Field(None, ge=3, le=4)
     autoCommit: bool | None = None
     commitMessagePrefix: str | None = None
     createPullRequests: bool | None = None
@@ -163,6 +165,7 @@ def _settings_to_response(settings: dict, defaults: dict) -> dict:
         "showDebugPanel": settings.get("showDebugPanel", defaults.get("showDebugPanel")),
         "debugPanelHeight": settings.get("debugPanelHeight", 288),
         "celebrateOnComplete": settings.get("celebrateOnComplete", defaults.get("celebrateOnComplete")),
+        "kanbanColumns": settings.get("kanbanColumns", 3),
         "autoCommit": settings.get("autoCommit", defaults.get("autoCommit")),
         "commitMessagePrefix": settings.get("commitMessagePrefix", defaults.get("commitMessagePrefix")),
         "createPullRequests": settings.get("createPullRequests", defaults.get("createPullRequests")),
@@ -391,6 +394,7 @@ async def get_settings_by_category(project_name: str):
             "showDebugPanel": effective.get("showDebugPanel"),
             "debugPanelHeight": effective.get("debugPanelHeight", 288),
             "celebrateOnComplete": effective.get("celebrateOnComplete"),
+            "kanbanColumns": effective.get("kanbanColumns", 3),
         },
         git={
             "autoCommit": effective.get("autoCommit"),

@@ -29,10 +29,11 @@ import { ThemeSelector } from './components/ThemeSelector'
 import { ResetProjectModal } from './components/ResetProjectModal'
 import { ProjectSetupRequired } from './components/ProjectSetupRequired'
 import { GitStatusBar } from './components/GitStatusBar'
-import { UsageLevelIndicator } from './components/UsageLevelIndicator'
+import { ActiveSettingsDisplay } from './components/ActiveSettingsDisplay'
+import { ServerStatusBanner } from './components/ServerStatusBanner'
+// import { UsageLevelIndicator } from './components/UsageLevelIndicator'  // Disabled until smart scheduler integration
 import { PRWorkflowPanel } from './components/PRWorkflowPanel'
 import { DeployPanel } from './components/DeployPanel'
-import { ActivitySidebar } from './components/ActivitySidebar'
 import { VersionBadgeDetailed } from './components/VersionBadge'
 import { getDependencyGraph } from './lib/api'
 import { Loader2, Settings, Moon, Sun, RotateCcw } from 'lucide-react'
@@ -43,6 +44,7 @@ import { Badge } from '@/components/ui/badge'
 
 const STORAGE_KEY = 'autocoder-selected-project'
 const VIEW_MODE_KEY = 'autocoder-view-mode'
+const KANBAN_COLUMNS_KEY = 'autocoder-kanban-columns'
 
 // Bottom padding for main content when debug panel is collapsed (40px header + 8px margin)
 const COLLAPSED_DEBUG_PANEL_CLEARANCE = 48
@@ -77,6 +79,14 @@ function App() {
       return 'kanban'
     }
   })
+  const [kanbanColumns, setKanbanColumns] = useState<3 | 4>(() => {
+    try {
+      const stored = localStorage.getItem(KANBAN_COLUMNS_KEY)
+      return stored === '4' ? 4 : 3
+    } catch {
+      return 3
+    }
+  })
 
   const queryClient = useQueryClient()
   const { data: projects, isLoading: projectsLoading } = useProjects()
@@ -106,6 +116,26 @@ function App() {
       // localStorage not available
     }
   }, [viewMode])
+
+  // Persist kanban columns to localStorage
+  useEffect(() => {
+    try {
+      localStorage.setItem(KANBAN_COLUMNS_KEY, String(kanbanColumns))
+    } catch {
+      // localStorage not available
+    }
+  }, [kanbanColumns])
+
+  // Listen for kanban columns changes from settings modal
+  useEffect(() => {
+    const handleStorageChange = (e: StorageEvent) => {
+      if (e.key === KANBAN_COLUMNS_KEY) {
+        setKanbanColumns(e.newValue === '4' ? 4 : 3)
+      }
+    }
+    window.addEventListener('storage', handleStorageChange)
+    return () => window.removeEventListener('storage', handleStorageChange)
+  }, [])
 
   // Play sounds when features move between columns
   useFeatureSound(features)
@@ -261,6 +291,9 @@ function App() {
 
   return (
     <div className="min-h-screen bg-background">
+      {/* Server Status Banner - shows when server is unreachable */}
+      <ServerStatusBanner />
+
       {/* Header */}
       <header className="sticky top-0 z-50 bg-card/80 backdrop-blur-md text-foreground border-b-2 border-border">
         <div className="max-w-7xl mx-auto px-4 py-4">
@@ -343,8 +376,8 @@ function App() {
                   {/* Git Status */}
                   <GitStatusBar projectName={selectedProject} />
 
-                  {/* Usage Level Indicator */}
-                  <UsageLevelIndicator projectName={selectedProject} />
+                  {/* Usage Level Indicator - disabled until smart scheduler integration is complete */}
+                  {/* <UsageLevelIndicator projectName={selectedProject} /> */}
                 </>
               )}
 
@@ -407,6 +440,13 @@ function App() {
               gracefulShutdown={agentStatusData?.graceful_shutdown}
             />
 
+            {/* Active Settings Display - shows current agent config when running */}
+            <ActiveSettingsDisplay
+              settings={settings}
+              agentStatus={agentStatusData}
+              isRunning={wsState.agentStatus === 'running'}
+            />
+
             {/* Agent Mission Control - shows orchestrator status and active agents in parallel mode */}
             <AgentMissionControl
               agents={wsState.activeAgents}
@@ -464,6 +504,7 @@ function App() {
                 activeAgents={wsState.activeAgents}
                 onCreateSpec={() => setShowSpecChat(true)}
                 hasSpec={hasSpec}
+                fourColumnView={kanbanColumns === 4}
               />
             ) : (
               <Card className="overflow-hidden" style={{ height: '600px' }}>
@@ -560,11 +601,6 @@ function App() {
             onClose={() => setAssistantOpen(false)}
           />
         </>
-      )}
-
-      {/* Activity Sidebar - shows recent agent activity */}
-      {selectedProject && (
-        <ActivitySidebar activities={wsState.recentActivity} />
       )}
 
       {/* Settings Modal */}

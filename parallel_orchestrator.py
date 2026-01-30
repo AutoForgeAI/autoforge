@@ -180,6 +180,7 @@ class ParallelOrchestrator:
         # Graceful shutdown / pause pickup state
         self._pickup_paused = False
         self._graceful_shutdown = False
+        self._pause_on_error = self._load_pause_on_error_setting()
         self._control_file = self.project_dir / ".agent.control"
         self._status_file = self.project_dir / ".agent.orchestrator_status"
 
@@ -201,6 +202,16 @@ class ParallelOrchestrator:
     def get_session(self):
         """Get a new database session."""
         return self._session_maker()
+
+    def _load_pause_on_error_setting(self) -> bool:
+        """Load the pauseOnError setting from the settings hierarchy."""
+        try:
+            from settings import SettingsManager
+            manager = SettingsManager(project_path=self.project_dir)
+            return manager.get("pauseOnError") is True
+        except Exception as e:
+            debug_log.log("SETTINGS", f"Failed to load pauseOnError setting: {e}")
+            return True  # Default to True (safe default)
 
     def _get_random_passing_feature(self) -> int | None:
         """Get a random passing feature for regression testing (no claim needed).
@@ -857,6 +868,14 @@ class ParallelOrchestrator:
                 debug_log.log("COMPLETE", f"Feature #{feature_id} exceeded max retries",
                     failure_count=failure_count)
 
+            # Pause pickup on error if enabled
+            if self._pause_on_error and not self._pickup_paused:
+                self._pickup_paused = True
+                print(f"[pauseOnError] Feature #{feature_id} failed - pausing new feature pickup", flush=True)
+                print("[pauseOnError] Running agents will complete. Use resume-pickup to continue.", flush=True)
+                debug_log.log("PAUSE_ON_ERROR", f"Paused pickup due to feature #{feature_id} failure")
+                self._write_orchestrator_status()
+
         status = "completed" if return_code == 0 else "failed"
         if self.on_status:
             self.on_status(feature_id, status)
@@ -931,6 +950,7 @@ class ParallelOrchestrator:
         debug_log.section("ORCHESTRATOR STARTUP")
         debug_log.log("STARTUP", "Orchestrator run_loop starting",
             project_dir=str(self.project_dir),
+            model=self.model,
             max_concurrency=self.max_concurrency,
             yolo_mode=self.yolo_mode,
             testing_agent_ratio=self.testing_agent_ratio,
@@ -940,6 +960,7 @@ class ParallelOrchestrator:
         print("  UNIFIED ORCHESTRATOR SETTINGS", flush=True)
         print("=" * 70, flush=True)
         print(f"Project: {self.project_dir}", flush=True)
+        print(f"Model: {self.model or 'default'}", flush=True)
         print(f"Max concurrency: {self.max_concurrency} coding agents", flush=True)
         print(f"YOLO mode: {self.yolo_mode}", flush=True)
         print(f"Regression agents: {self.testing_agent_ratio} (maintained independently)", flush=True)

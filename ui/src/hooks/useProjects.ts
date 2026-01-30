@@ -152,6 +152,7 @@ export function useStartAgent(projectName: string) {
   return useMutation({
     mutationFn: (options: {
       yoloMode?: boolean
+      model?: string
       parallelMode?: boolean
       maxConcurrency?: number
       testingAgentRatio?: number
