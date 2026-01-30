@@ -117,13 +117,40 @@ def get_single_feature_prompt(feature_id: int, project_dir: Path | None = None, 
     Args:
         feature_id: The specific feature ID to work on
         project_dir: Optional project directory for project-specific prompts
-        yolo_mode: Ignored (kept for backward compatibility). Testing is now
-                   handled by separate testing agents, not YOLO prompts.
+        yolo_mode: If True, inject YOLO mode instructions that disable browser testing
 
     Returns:
         The prompt with single-feature header prepended
     """
     base_prompt = get_coding_prompt(project_dir)
+
+    # YOLO mode instructions - prepended when yolo_mode=True
+    yolo_instructions = ""
+    if yolo_mode:
+        yolo_instructions = """## ⚡ YOLO MODE ACTIVE - NO BROWSER TESTING ⚡
+
+**CRITICAL: You are running in YOLO mode for rapid prototyping.**
+
+In YOLO mode, you must NOT:
+- Open any browser windows
+- Write Playwright/Puppeteer test scripts
+- Run any browser automation (no `chromium`, `firefox`, `webkit` imports)
+- Execute test files that launch browsers
+- Use `node` to run `.mjs` or `.js` files that do browser testing
+
+In YOLO mode, you SHOULD:
+- Implement the feature code
+- Verify with lint (`npm run lint` or equivalent)
+- Verify with type-check (`npm run typecheck` or `tsc`)
+- Do quick code review to ensure logic is correct
+- Use `curl` for API endpoint testing if needed
+- Mark feature as passing after lint/type-check succeeds
+
+**Skip all browser verification steps in the prompt below.** Focus on building, not testing.
+
+---
+
+"""
 
     # Minimal header - the base prompt already contains the full workflow
     single_feature_header = f"""## ASSIGNED FEATURE: #{feature_id}
@@ -135,7 +162,7 @@ If blocked, use `feature_skip` and document the blocker.
 ---
 
 """
-    return single_feature_header + base_prompt
+    return yolo_instructions + single_feature_header + base_prompt
 
 
 def get_app_spec(project_dir: Path) -> str:
