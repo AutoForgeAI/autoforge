@@ -39,7 +39,7 @@ export function ActivitySidebar({ activities }: ActivitySidebarProps) {
       {isCollapsed && (
         <button
           onClick={toggleCollapsed}
-          className="fixed left-0 top-1/2 -translate-y-1/2 z-40 bg-primary text-primary-foreground p-2 rounded-r-lg shadow-lg hover:bg-primary/90 transition-colors"
+          className="fixed left-0 top-1/3 -translate-y-1/2 z-30 bg-primary text-primary-foreground p-2 rounded-r-lg shadow-lg hover:bg-primary/90 transition-colors"
           title="Show Activity"
         >
           <Activity size={20} />
@@ -51,14 +51,14 @@ export function ActivitySidebar({ activities }: ActivitySidebarProps) {
         </button>
       )}
 
-      {/* Sidebar panel - positioned on left */}
+      {/* Sidebar panel - positioned on left, stops before debug area */}
       <div
         className={`
-          fixed left-0 top-0 h-full z-40 bg-card border-r-2 border-border shadow-xl
+          fixed left-0 top-0 z-30 bg-card border-r-2 border-border shadow-xl
           transition-transform duration-300 ease-out
           ${isCollapsed ? '-translate-x-full' : 'translate-x-0'}
         `}
-        style={{ width: '320px' }}
+        style={{ width: '320px', height: 'calc(100% - 300px)', minHeight: '400px' }}
       >
         {/* Header */}
         <div className="flex items-center justify-between p-3 border-b border-border bg-muted/50">
@@ -108,8 +108,9 @@ export function ActivitySidebar({ activities }: ActivitySidebarProps) {
       {/* Overlay for mobile */}
       {!isCollapsed && (
         <div
-          className="fixed inset-0 bg-black/20 z-30 lg:hidden"
+          className="fixed inset-0 bg-black/20 z-20 lg:hidden"
           onClick={toggleCollapsed}
+          style={{ height: 'calc(100% - 300px)' }}
         />
       )}
     </>

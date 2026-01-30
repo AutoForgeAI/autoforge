@@ -78,12 +78,21 @@ class AgentTracker:
     types for the same feature.
     """
 
-    def __init__(self, model: str | None = None):
+    def __init__(self, model_getter: callable = None):
         # (feature_id, agent_type) -> {name, state, last_thought, agent_index, agent_type}
         self.active_agents: dict[tuple[int, str], dict] = {}
         self._next_agent_index = 0
         self._lock = asyncio.Lock()
-        self.model = model  # Model being used by agents
+        # Use a getter function to get the current model dynamically
+        # This ensures we get the model even if it's set after AgentTracker is created
+        self._model_getter = model_getter
+
+    @property
+    def model(self) -> str | None:
+        """Get the current model from the agent manager."""
+        if self._model_getter:
+            return self._model_getter()
+        return None
 
     async def process_line(self, line: str) -> dict | None:
         """
@@ -640,11 +649,24 @@ async def project_websocket(websocket: WebSocket, project_name: str):
     agent_manager = get_manager(project_name, project_dir, ROOT_DIR)
 
     # Create agent tracker for multi-agent mode
-    # Pass the model from agent_manager so it can be included in agent_update messages
-    agent_tracker = AgentTracker(model=agent_manager.model)
+    # Pass a getter function to get the model dynamically (model is set when agent starts)
+    agent_tracker = AgentTracker(model_getter=lambda: agent_manager.model)
 
     # Create orchestrator tracker for observability
     orchestrator_tracker = OrchestratorTracker()
+
+    # Track usage for scheduler
+    async def record_usage_event(event_type: str, is_success: bool = False):
+        """Record usage events to the smart scheduler."""
+        try:
+            from smart_scheduler import get_scheduler
+            scheduler = get_scheduler(project_name)
+            if event_type == "feature":
+                scheduler.record_feature_attempt(completed=is_success)
+            elif event_type == "message":
+                scheduler.record_message()
+        except Exception:
+            pass  # Don't let scheduler errors affect agent operation
 
     async def on_output(line: str):
         """Handle agent output - broadcast to this WebSocket."""
@@ -675,6 +697,11 @@ async def project_websocket(websocket: WebSocket, project_name: str):
             agent_update = await agent_tracker.process_line(line)
             if agent_update:
                 await websocket.send_json(agent_update)
+                # Track feature completion/failure for usage scheduler
+                if agent_update.get('state') in ('success', 'error'):
+                    await record_usage_event("feature", is_success=agent_update.get('state') == 'success')
+                # Track any agent activity as a message for usage estimation
+                await record_usage_event("message")
 
             # Also check for orchestrator events and emit orchestrator_update messages
             orch_update = await orchestrator_tracker.process_line(line)

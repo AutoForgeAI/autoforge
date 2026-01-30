@@ -402,6 +402,9 @@ function App() {
               total={progress.total}
               percentage={progress.percentage}
               isConnected={wsState.isConnected}
+              yoloMode={agentStatusData?.yolo_mode}
+              pickupPaused={agentStatusData?.pickup_paused}
+              gracefulShutdown={agentStatusData?.graceful_shutdown}
             />
 
             {/* Agent Mission Control - shows orchestrator status and active agents in parallel mode */}

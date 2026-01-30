@@ -1,4 +1,4 @@
-import { Wifi, WifiOff } from 'lucide-react'
+import { Wifi, WifiOff, Zap, PauseCircle, AlertTriangle } from 'lucide-react'
 import { Card, CardContent, CardHeader, CardTitle } from '@/components/ui/card'
 import { Badge } from '@/components/ui/badge'
 
@@ -7,6 +7,9 @@ interface ProgressDashboardProps {
   total: number
   percentage: number
   isConnected: boolean
+  yoloMode?: boolean
+  pickupPaused?: boolean
+  gracefulShutdown?: boolean
 }
 
 export function ProgressDashboard({
@@ -14,6 +17,9 @@ export function ProgressDashboard({
   total,
   percentage,
   isConnected,
+  yoloMode = false,
+  pickupPaused = false,
+  gracefulShutdown = false,
 }: ProgressDashboardProps) {
   return (
     <Card className="py-2">
@@ -21,19 +27,43 @@ export function ProgressDashboard({
         <CardTitle className="text-sm uppercase tracking-wide text-muted-foreground">
           Progress
         </CardTitle>
-        <Badge variant={isConnected ? 'default' : 'destructive'} className="gap-1 text-xs py-0.5">
-          {isConnected ? (
-            <>
-              <Wifi size={12} />
-              Live
-            </>
-          ) : (
-            <>
-              <WifiOff size={12} />
-              Offline
-            </>
+        <div className="flex items-center gap-2">
+          {/* YOLO Mode badge */}
+          {yoloMode && (
+            <Badge variant="secondary" className="gap-1 text-xs py-0.5 bg-amber-500/20 text-amber-600 border-amber-500/30">
+              <Zap size={12} />
+              YOLO
+            </Badge>
           )}
-        </Badge>
+          {/* Pickup paused badge */}
+          {pickupPaused && !gracefulShutdown && (
+            <Badge variant="outline" className="gap-1 text-xs py-0.5 border-amber-500 text-amber-600">
+              <PauseCircle size={12} />
+              Paused
+            </Badge>
+          )}
+          {/* Graceful shutdown badge */}
+          {gracefulShutdown && (
+            <Badge variant="outline" className="gap-1 text-xs py-0.5 border-orange-500 text-orange-600">
+              <AlertTriangle size={12} />
+              Stopping
+            </Badge>
+          )}
+          {/* Connection status badge */}
+          <Badge variant={isConnected ? 'default' : 'destructive'} className="gap-1 text-xs py-0.5">
+            {isConnected ? (
+              <>
+                <Wifi size={12} />
+                Live
+              </>
+            ) : (
+              <>
+                <WifiOff size={12} />
+                Offline
+              </>
+            )}
+          </Badge>
+        </div>
       </CardHeader>
 
       <CardContent className="pb-3">

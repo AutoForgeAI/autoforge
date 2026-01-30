@@ -74,21 +74,22 @@ export function GracefulShutdownDialog({
           {activeAgentCount > 0 && (
             <Button
               variant="outline"
-              className="justify-start h-auto py-3 px-4"
+              className="justify-start h-auto py-3 px-4 w-full overflow-hidden"
               onClick={handleGracefulStop}
               disabled={isLoading}
             >
-              <div className="flex items-start gap-3">
-                {isLoading && gracefulStopAgent.isPending ? (
-                  <Loader2 className="h-5 w-5 mt-0.5 animate-spin text-muted-foreground" />
-                ) : (
-                  <Clock className="h-5 w-5 mt-0.5 text-muted-foreground" />
-                )}
-                <div className="text-left">
+              <div className="flex items-start gap-3 w-full min-w-0">
+                <div className="shrink-0">
+                  {isLoading && gracefulStopAgent.isPending ? (
+                    <Loader2 className="h-5 w-5 mt-0.5 animate-spin text-muted-foreground" />
+                  ) : (
+                    <Clock className="h-5 w-5 mt-0.5 text-muted-foreground" />
+                  )}
+                </div>
+                <div className="text-left min-w-0 flex-1">
                   <div className="font-medium">Wait for completion</div>
-                  <div className="text-sm text-muted-foreground">
+                  <div className="text-sm text-muted-foreground text-wrap">
                     Let running agents finish their current features, then stop.
-                    No new features will be started.
                   </div>
                 </div>
               </div>
@@ -97,21 +98,23 @@ export function GracefulShutdownDialog({
 
           <Button
             variant={activeAgentCount > 0 ? 'destructive' : 'default'}
-            className="justify-start h-auto py-3 px-4"
+            className="justify-start h-auto py-3 px-4 w-full overflow-hidden"
             onClick={handleImmediateStop}
             disabled={isLoading}
           >
-            <div className="flex items-start gap-3">
-              {isLoading && stopAgent.isPending ? (
-                <Loader2 className="h-5 w-5 mt-0.5 animate-spin" />
-              ) : (
-                <Square className="h-5 w-5 mt-0.5" />
-              )}
-              <div className="text-left">
+            <div className="flex items-start gap-3 w-full min-w-0">
+              <div className="shrink-0">
+                {isLoading && stopAgent.isPending ? (
+                  <Loader2 className="h-5 w-5 mt-0.5 animate-spin" />
+                ) : (
+                  <Square className="h-5 w-5 mt-0.5" />
+                )}
+              </div>
+              <div className="text-left min-w-0 flex-1">
                 <div className="font-medium">Stop immediately</div>
-                <div className={`text-sm ${activeAgentCount > 0 ? 'text-destructive-foreground/80' : 'text-muted-foreground'}`}>
+                <div className={`text-sm text-wrap ${activeAgentCount > 0 ? 'text-destructive-foreground/80' : 'text-muted-foreground'}`}>
                   {activeAgentCount > 0
-                    ? 'Terminate all agents now. Work in progress may be lost.'
+                    ? 'Terminate all agents now. Work may be lost.'
                     : 'Stop the orchestrator.'}
                 </div>
               </div>
