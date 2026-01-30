@@ -620,6 +620,110 @@ export interface AppModelSettings {
   commitMessagePrefix: string
 }
 
+// ============================================================================
+// Settings V2 Types (Unified Settings Architecture)
+// ============================================================================
+
+export interface AppSettingsV2 {
+  // Model settings
+  defaultModel: string
+  coderModel: string
+  testerModel: string
+  initializerModel: string
+  // Agent settings
+  maxConcurrency: number
+  yoloMode: boolean
+  autoResume: boolean
+  pauseOnError: boolean
+  testingAgentRatio: number
+  // UI settings
+  theme: string
+  darkMode: boolean
+  showDebugPanel: boolean
+  debugPanelHeight: number
+  celebrateOnComplete: boolean
+  // Git settings
+  autoCommit: boolean
+  commitMessagePrefix: string
+  createPullRequests: boolean
+}
+
+export interface AppSettingsV2Update {
+  defaultModel?: string
+  coderModel?: string
+  testerModel?: string
+  initializerModel?: string
+  maxConcurrency?: number
+  yoloMode?: boolean
+  autoResume?: boolean
+  pauseOnError?: boolean
+  testingAgentRatio?: number
+  theme?: string
+  darkMode?: boolean
+  showDebugPanel?: boolean
+  debugPanelHeight?: number
+  celebrateOnComplete?: boolean
+  autoCommit?: boolean
+  commitMessagePrefix?: string
+  createPullRequests?: boolean
+}
+
+export interface ProjectSettingsV2 {
+  coderModel: string | null
+  testerModel: string | null
+  initializerModel: string | null
+  maxConcurrency: number | null
+  yoloMode: boolean | null
+  testingAgentRatio: number | null
+  testingDirectory: string | null
+  autoCommit: boolean | null
+}
+
+export interface ProjectSettingsV2Update {
+  coderModel?: string | null
+  testerModel?: string | null
+  initializerModel?: string | null
+  maxConcurrency?: number | null
+  yoloMode?: boolean | null
+  testingAgentRatio?: number | null
+  testingDirectory?: string | null
+  autoCommit?: boolean | null
+}
+
+export interface EffectiveSettingsV2 {
+  settings: Record<string, unknown>
+  sources: Record<string, 'project' | 'app' | 'default'>
+}
+
+export interface SettingsCategoriesResponse {
+  models: {
+    defaultModel: string
+    coderModel: string
+    testerModel: string
+    initializerModel: string
+  }
+  agents: {
+    maxConcurrency: number
+    yoloMode: boolean
+    autoResume: boolean
+    pauseOnError: boolean
+    testingAgentRatio: number
+  }
+  ui: {
+    theme: string
+    darkMode: boolean
+    showDebugPanel: boolean
+    debugPanelHeight: number
+    celebrateOnComplete: boolean
+  }
+  git: {
+    autoCommit: boolean
+    commitMessagePrefix: string
+    createPullRequests: boolean
+  }
+  sources: Record<string, string>
+}
+
 export interface EffectiveSettingsResponse {
   settings: Record<string, unknown>
   sources: Record<string, 'project' | 'app' | 'default'>

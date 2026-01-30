@@ -17,7 +17,9 @@ from .models import router as models_router
 from .pr import router as pr_router
 from .projects import router as projects_router
 from .schedules import router as schedules_router
+from .scheduler import router as scheduler_router
 from .settings import router as settings_router
+from .settings_v2 import router as settings_v2_router
 from .spec_creation import router as spec_creation_router
 from .terminal import router as terminal_router
 from .usage import router as usage_router
@@ -28,12 +30,14 @@ __all__ = [
     "features_router",
     "agent_router",
     "schedules_router",
+    "scheduler_router",
     "devserver_router",
     "spec_creation_router",
     "expand_project_router",
     "filesystem_router",
     "assistant_chat_router",
     "settings_router",
+    "settings_v2_router",
     "terminal_router",
     "version_router",
     "models_router",

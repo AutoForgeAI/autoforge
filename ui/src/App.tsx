@@ -20,7 +20,7 @@ import { AssistantFAB } from './components/AssistantFAB'
 import { AssistantPanel } from './components/AssistantPanel'
 import { ExpandProjectModal } from './components/ExpandProjectModal'
 import { SpecCreationChat } from './components/SpecCreationChat'
-import { SettingsModal } from './components/SettingsModal'
+import { SettingsModalV2 } from './components/SettingsModalV2'
 import { DevServerControl } from './components/DevServerControl'
 import { ViewToggle, type ViewMode } from './components/ViewToggle'
 import { DependencyGraph } from './components/DependencyGraph'
@@ -29,6 +29,7 @@ import { ThemeSelector } from './components/ThemeSelector'
 import { ResetProjectModal } from './components/ResetProjectModal'
 import { ProjectSetupRequired } from './components/ProjectSetupRequired'
 import { GitStatusBar } from './components/GitStatusBar'
+import { UsageLevelIndicator } from './components/UsageLevelIndicator'
 import { PRWorkflowPanel } from './components/PRWorkflowPanel'
 import { DeployPanel } from './components/DeployPanel'
 import { ActivitySidebar } from './components/ActivitySidebar'
@@ -340,6 +341,9 @@ function App() {
 
                   {/* Git Status */}
                   <GitStatusBar projectName={selectedProject} />
+
+                  {/* Usage Level Indicator */}
+                  <UsageLevelIndicator projectName={selectedProject} />
                 </>
               )}
 
@@ -560,7 +564,11 @@ function App() {
       )}
 
       {/* Settings Modal */}
-      <SettingsModal isOpen={showSettings} onClose={() => setShowSettings(false)} />
+      <SettingsModalV2
+        isOpen={showSettings}
+        onClose={() => setShowSettings(false)}
+        projectName={selectedProject}
+      />
 
       {/* Keyboard Shortcuts Help */}
       <KeyboardShortcutsHelp isOpen={showKeyboardHelp} onClose={() => setShowKeyboardHelp(false)} />

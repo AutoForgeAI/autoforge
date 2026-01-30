@@ -269,3 +269,371 @@ async def refresh_git_status(project_name: str):
         Fresh git status information.
     """
     return await get_git_status(project_name)
+
+
+class InitGitRequest(BaseModel):
+    """Request to initialize git repository."""
+
+    initialBranch: str = "main"
+
+
+class SetRemoteRequest(BaseModel):
+    """Request to set git remote."""
+
+    url: str
+    name: str = "origin"
+
+
+class CheckpointRequest(BaseModel):
+    """Request to create a checkpoint commit."""
+
+    message: str
+    description: str | None = None
+
+
+class CheckpointResponse(BaseModel):
+    """Response from checkpoint commit."""
+
+    success: bool
+    commitHash: str | None = None
+    message: str
+    filesCommitted: int = 0
+
+
+@router.post("/checkpoint/{project_name}", response_model=CheckpointResponse)
+async def create_checkpoint(project_name: str, request: CheckpointRequest):
+    """
+    Create a checkpoint commit with all current changes.
+
+    Stages all changes (tracked and untracked) and creates a commit
+    with the provided message and optional description.
+
+    Args:
+        project_name: The project name.
+        request: Checkpoint request with commit message.
+
+    Returns:
+        Checkpoint response with commit hash and details.
+    """
+    import sys
+
+    # Import registry to get project path
+    root_dir = Path(__file__).parent.parent.parent
+    if str(root_dir) not in sys.path:
+        sys.path.insert(0, str(root_dir))
+
+    from registry import get_project_path
+
+    project_path = get_project_path(project_name)
+    if project_path is None:
+        raise HTTPException(status_code=404, detail=f"Project not found: {project_name}")
+
+    if not project_path.exists():
+        raise HTTPException(status_code=404, detail=f"Project path does not exist: {project_path}")
+
+    # Check if it's a git repo
+    success, _, error = run_git_command(project_path, ["rev-parse", "--git-dir"])
+    if not success:
+        # Try to initialize git
+        success, _, error = run_git_command(project_path, ["init"])
+        if not success:
+            return CheckpointResponse(
+                success=False,
+                message=f"Failed to initialize git: {error.message if error else 'Unknown error'}",
+            )
+
+    # Stage all changes
+    success, _, error = run_git_command(project_path, ["add", "-A"])
+    if not success:
+        return CheckpointResponse(
+            success=False,
+            message=f"Failed to stage changes: {error.message if error else 'Unknown error'}",
+        )
+
+    # Check if there are any staged changes
+    success, status_output, _ = run_git_command(project_path, ["status", "--porcelain"])
+    if success and not status_output.strip():
+        return CheckpointResponse(
+            success=False,
+            message="No changes to commit",
+            filesCommitted=0,
+        )
+
+    # Count files to be committed
+    files_count = len([line for line in status_output.split("\n") if line.strip()])
+
+    # Build commit message
+    commit_message = request.message
+    if request.description:
+        commit_message += f"\n\n{request.description}"
+
+    # Add co-author attribution
+    commit_message += "\n\nCo-Authored-By: Claude <noreply@anthropic.com>"
+
+    # Create the commit
+    success, output, error = run_git_command(
+        project_path,
+        ["commit", "-m", commit_message],
+    )
+    if not success:
+        return CheckpointResponse(
+            success=False,
+            message=f"Failed to commit: {error.message if error else output}",
+        )
+
+    # Get the commit hash
+    success, commit_hash, _ = run_git_command(project_path, ["rev-parse", "--short", "HEAD"])
+
+    return CheckpointResponse(
+        success=True,
+        commitHash=commit_hash if success else None,
+        message=f"Created checkpoint: {request.message}",
+        filesCommitted=files_count,
+    )
+
+
+@router.get("/diff/{project_name}")
+async def get_git_diff(project_name: str):
+    """
+    Get the current diff for a project.
+
+    Args:
+        project_name: The project name.
+
+    Returns:
+        Git diff information.
+    """
+    import sys
+
+    # Import registry to get project path
+    root_dir = Path(__file__).parent.parent.parent
+    if str(root_dir) not in sys.path:
+        sys.path.insert(0, str(root_dir))
+
+    from registry import get_project_path
+
+    project_path = get_project_path(project_name)
+    if project_path is None:
+        raise HTTPException(status_code=404, detail=f"Project not found: {project_name}")
+
+    if not project_path.exists():
+        raise HTTPException(status_code=404, detail=f"Project path does not exist: {project_path}")
+
+    # Get staged diff
+    success, staged_diff, _ = run_git_command(project_path, ["diff", "--cached", "--stat"])
+
+    # Get unstaged diff
+    success, unstaged_diff, _ = run_git_command(project_path, ["diff", "--stat"])
+
+    # Get list of untracked files
+    success, untracked, _ = run_git_command(
+        project_path,
+        ["ls-files", "--others", "--exclude-standard"],
+    )
+
+    return {
+        "stagedDiff": staged_diff if staged_diff else None,
+        "unstagedDiff": unstaged_diff if unstaged_diff else None,
+        "untrackedFiles": untracked.split("\n") if untracked else [],
+    }
+
+
+@router.post("/init/{project_name}")
+async def init_git_repo(project_name: str, request: InitGitRequest):
+    """
+    Initialize a git repository in the project directory.
+
+    Args:
+        project_name: The project name.
+        request: Init request with optional initial branch name.
+
+    Returns:
+        Success status and message.
+    """
+    import sys
+
+    root_dir = Path(__file__).parent.parent.parent
+    if str(root_dir) not in sys.path:
+        sys.path.insert(0, str(root_dir))
+
+    from registry import get_project_path
+
+    project_path = get_project_path(project_name)
+    if project_path is None:
+        raise HTTPException(status_code=404, detail=f"Project not found: {project_name}")
+
+    if not project_path.exists():
+        raise HTTPException(status_code=404, detail=f"Project path does not exist: {project_path}")
+
+    # Check if already a git repo
+    success, _, _ = run_git_command(project_path, ["rev-parse", "--git-dir"])
+    if success:
+        return {"success": False, "message": "Already a git repository"}
+
+    # Initialize git
+    success, output, error = run_git_command(
+        project_path,
+        ["init", "-b", request.initialBranch],
+    )
+    if not success:
+        return {
+            "success": False,
+            "message": f"Failed to initialize git: {error.message if error else output}",
+        }
+
+    return {"success": True, "message": f"Initialized git repository with branch '{request.initialBranch}'"}
+
+
+@router.get("/remotes/{project_name}")
+async def get_git_remotes(project_name: str):
+    """
+    Get list of git remotes for a project.
+
+    Args:
+        project_name: The project name.
+
+    Returns:
+        List of remotes with their URLs.
+    """
+    import sys
+
+    root_dir = Path(__file__).parent.parent.parent
+    if str(root_dir) not in sys.path:
+        sys.path.insert(0, str(root_dir))
+
+    from registry import get_project_path
+
+    project_path = get_project_path(project_name)
+    if project_path is None:
+        raise HTTPException(status_code=404, detail=f"Project not found: {project_name}")
+
+    if not project_path.exists():
+        raise HTTPException(status_code=404, detail=f"Project path does not exist: {project_path}")
+
+    # Check if it's a git repo
+    success, _, _ = run_git_command(project_path, ["rev-parse", "--git-dir"])
+    if not success:
+        return {"remotes": [], "isRepo": False}
+
+    # Get remotes with URLs
+    success, output, _ = run_git_command(project_path, ["remote", "-v"])
+    if not success or not output:
+        return {"remotes": [], "isRepo": True}
+
+    # Parse remote output
+    remotes = {}
+    for line in output.split("\n"):
+        if not line.strip():
+            continue
+        parts = line.split()
+        if len(parts) >= 2:
+            name = parts[0]
+            url = parts[1]
+            # Only keep fetch URL (skip push duplicates)
+            if "(fetch)" in line or name not in remotes:
+                remotes[name] = url
+
+    return {
+        "remotes": [{"name": name, "url": url} for name, url in remotes.items()],
+        "isRepo": True,
+    }
+
+
+@router.post("/remotes/{project_name}")
+async def set_git_remote(project_name: str, request: SetRemoteRequest):
+    """
+    Add or update a git remote.
+
+    Args:
+        project_name: The project name.
+        request: Remote configuration with name and URL.
+
+    Returns:
+        Success status and message.
+    """
+    import sys
+
+    root_dir = Path(__file__).parent.parent.parent
+    if str(root_dir) not in sys.path:
+        sys.path.insert(0, str(root_dir))
+
+    from registry import get_project_path
+
+    project_path = get_project_path(project_name)
+    if project_path is None:
+        raise HTTPException(status_code=404, detail=f"Project not found: {project_name}")
+
+    if not project_path.exists():
+        raise HTTPException(status_code=404, detail=f"Project path does not exist: {project_path}")
+
+    # Check if it's a git repo
+    success, _, _ = run_git_command(project_path, ["rev-parse", "--git-dir"])
+    if not success:
+        return {"success": False, "message": "Not a git repository. Initialize git first."}
+
+    # Check if remote already exists
+    success, remotes, _ = run_git_command(project_path, ["remote"])
+    remote_exists = request.name in (remotes.split("\n") if remotes else [])
+
+    if remote_exists:
+        # Update existing remote
+        success, output, error = run_git_command(
+            project_path,
+            ["remote", "set-url", request.name, request.url],
+        )
+    else:
+        # Add new remote
+        success, output, error = run_git_command(
+            project_path,
+            ["remote", "add", request.name, request.url],
+        )
+
+    if not success:
+        return {
+            "success": False,
+            "message": f"Failed to set remote: {error.message if error else output}",
+        }
+
+    action = "Updated" if remote_exists else "Added"
+    return {"success": True, "message": f"{action} remote '{request.name}' -> {request.url}"}
+
+
+@router.delete("/remotes/{project_name}/{remote_name}")
+async def remove_git_remote(project_name: str, remote_name: str):
+    """
+    Remove a git remote.
+
+    Args:
+        project_name: The project name.
+        remote_name: The remote to remove.
+
+    Returns:
+        Success status and message.
+    """
+    import sys
+
+    root_dir = Path(__file__).parent.parent.parent
+    if str(root_dir) not in sys.path:
+        sys.path.insert(0, str(root_dir))
+
+    from registry import get_project_path
+
+    project_path = get_project_path(project_name)
+    if project_path is None:
+        raise HTTPException(status_code=404, detail=f"Project not found: {project_name}")
+
+    if not project_path.exists():
+        raise HTTPException(status_code=404, detail=f"Project path does not exist: {project_path}")
+
+    success, output, error = run_git_command(
+        project_path,
+        ["remote", "remove", remote_name],
+    )
+
+    if not success:
+        return {
+            "success": False,
+            "message": f"Failed to remove remote: {error.message if error else output}",
+        }
+
+    return {"success": True, "message": f"Removed remote '{remote_name}'"}

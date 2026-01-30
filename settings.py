@@ -41,6 +41,7 @@ BUILT_IN_DEFAULTS: dict[str, Any] = {
     "yoloMode": False,
     "autoResume": True,
     "pauseOnError": True,
+    "testingAgentRatio": 1,
 
     # Testing settings
     "testingDirectory": "",  # Empty means use project directory
@@ -48,8 +49,10 @@ BUILT_IN_DEFAULTS: dict[str, Any] = {
     "testTimeout": 300,  # seconds
 
     # UI settings
-    "theme": "system",
+    "theme": "twitter",
+    "darkMode": False,
     "showDebugPanel": False,
+    "debugPanelHeight": 288,
     "celebrateOnComplete": True,
 
     # Git settings

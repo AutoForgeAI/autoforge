@@ -46,6 +46,12 @@ import type {
   PullRequest,
   PRListResponse,
   PRChecksResponse,
+  AppSettingsV2,
+  AppSettingsV2Update,
+  ProjectSettingsV2,
+  ProjectSettingsV2Update,
+  EffectiveSettingsV2,
+  SettingsCategoriesResponse,
 } from './types'
 
 const API_BASE = '/api'
@@ -575,6 +581,93 @@ export async function refreshGitStatus(projectName: string): Promise<GitStatus> 
   })
 }
 
+export interface CheckpointRequest {
+  message: string
+  description?: string
+}
+
+export interface CheckpointResponse {
+  success: boolean
+  commitHash?: string
+  message: string
+  filesCommitted: number
+}
+
+export async function createCheckpoint(
+  projectName: string,
+  request: CheckpointRequest
+): Promise<CheckpointResponse> {
+  return fetchJSON(`/git/checkpoint/${encodeURIComponent(projectName)}`, {
+    method: 'POST',
+    headers: { 'Content-Type': 'application/json' },
+    body: JSON.stringify(request),
+  })
+}
+
+export interface GitDiff {
+  stagedDiff: string | null
+  unstagedDiff: string | null
+  untrackedFiles: string[]
+}
+
+export async function getGitDiff(projectName: string): Promise<GitDiff> {
+  return fetchJSON(`/git/diff/${encodeURIComponent(projectName)}`)
+}
+
+export interface InitGitRequest {
+  initialBranch?: string
+}
+
+export async function initGitRepo(
+  projectName: string,
+  request: InitGitRequest = {}
+): Promise<{ success: boolean; message: string }> {
+  return fetchJSON(`/git/init/${encodeURIComponent(projectName)}`, {
+    method: 'POST',
+    headers: { 'Content-Type': 'application/json' },
+    body: JSON.stringify(request),
+  })
+}
+
+export interface GitRemote {
+  name: string
+  url: string
+}
+
+export interface GitRemotesResponse {
+  remotes: GitRemote[]
+  isRepo: boolean
+}
+
+export async function getGitRemotes(projectName: string): Promise<GitRemotesResponse> {
+  return fetchJSON(`/git/remotes/${encodeURIComponent(projectName)}`)
+}
+
+export interface SetRemoteRequest {
+  name?: string
+  url: string
+}
+
+export async function setGitRemote(
+  projectName: string,
+  request: SetRemoteRequest
+): Promise<{ success: boolean; message: string }> {
+  return fetchJSON(`/git/remotes/${encodeURIComponent(projectName)}`, {
+    method: 'POST',
+    headers: { 'Content-Type': 'application/json' },
+    body: JSON.stringify(request),
+  })
+}
+
+export async function removeGitRemote(
+  projectName: string,
+  remoteName: string
+): Promise<{ success: boolean; message: string }> {
+  return fetchJSON(`/git/remotes/${encodeURIComponent(projectName)}/${remoteName}`, {
+    method: 'DELETE',
+  })
+}
+
 // ============================================================================
 // Usage API (Chance Edition Phase 3)
 // ============================================================================
@@ -711,4 +804,67 @@ export async function cancelDeployment(
 
 export async function getEnvironmentStatus(projectName: string): Promise<EnvironmentStatusResponse> {
   return fetchJSON(`/deploy/${encodeURIComponent(projectName)}/environments`)
+}
+
+// ============================================================================
+// Settings V2 API (Unified Settings Architecture)
+// ============================================================================
+
+export async function getAppSettingsV2(): Promise<AppSettingsV2> {
+  return fetchJSON('/settings/v2/app')
+}
+
+export async function updateAppSettingsV2(settings: AppSettingsV2Update): Promise<AppSettingsV2> {
+  return fetchJSON('/settings/v2/app', {
+    method: 'PATCH',
+    body: JSON.stringify(settings),
+  })
+}
+
+export async function getProjectSettingsV2(projectName: string): Promise<ProjectSettingsV2> {
+  return fetchJSON(`/settings/v2/project/${encodeURIComponent(projectName)}`)
+}
+
+export async function updateProjectSettingsV2(
+  projectName: string,
+  settings: ProjectSettingsV2Update
+): Promise<ProjectSettingsV2> {
+  return fetchJSON(`/settings/v2/project/${encodeURIComponent(projectName)}`, {
+    method: 'PATCH',
+    body: JSON.stringify(settings),
+  })
+}
+
+export async function clearProjectSettingV2(
+  projectName: string,
+  key: string
+): Promise<{ success: boolean; key: string }> {
+  return fetchJSON(`/settings/v2/project/${encodeURIComponent(projectName)}/${key}`, {
+    method: 'DELETE',
+  })
+}
+
+export async function resetProjectSettingsV2(
+  projectName: string
+): Promise<{ success: boolean; message: string; keysCleared: number }> {
+  return fetchJSON(`/settings/v2/project/${encodeURIComponent(projectName)}/reset`, {
+    method: 'POST',
+  })
+}
+
+export async function resetAppSettingsV2(): Promise<{ success: boolean; message: string; keysCleared: number }> {
+  return fetchJSON('/settings/v2/app/reset', {
+    method: 'POST',
+  })
+}
+
+export async function getEffectiveSettingsV2(projectName?: string): Promise<EffectiveSettingsV2> {
+  if (projectName) {
+    return fetchJSON(`/settings/v2/effective/${encodeURIComponent(projectName)}`)
+  }
+  return fetchJSON('/settings/v2/effective')
+}
+
+export async function getSettingsByCategory(projectName: string): Promise<SettingsCategoriesResponse> {
+  return fetchJSON(`/settings/v2/categories/${encodeURIComponent(projectName)}`)
 }

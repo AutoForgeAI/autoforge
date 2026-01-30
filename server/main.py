@@ -40,7 +40,9 @@ from .routers import (
     pr_router,
     projects_router,
     schedules_router,
+    scheduler_router,
     settings_router,
+    settings_v2_router,
     spec_creation_router,
     terminal_router,
     usage_router,
@@ -157,12 +159,14 @@ app.include_router(projects_router)
 app.include_router(features_router)
 app.include_router(agent_router)
 app.include_router(schedules_router)
+app.include_router(scheduler_router)
 app.include_router(devserver_router)
 app.include_router(spec_creation_router)
 app.include_router(expand_project_router)
 app.include_router(filesystem_router)
 app.include_router(assistant_chat_router)
 app.include_router(settings_router)
+app.include_router(settings_v2_router)
 app.include_router(terminal_router)
 app.include_router(version_router)
 app.include_router(models_router)
