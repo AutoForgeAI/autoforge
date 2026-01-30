@@ -68,17 +68,17 @@ python autonomous_agent_demo.py --project-dir my-app --yolo
 ```
 
 **What's different in YOLO mode:**
-- No regression testing (skips `feature_get_for_regression`)
-- No Playwright MCP server (browser automation disabled)
-- Features marked passing after lint/type-check succeeds
-- Faster iteration for prototyping
+- No separate regression testing agents spawn
+- No Playwright MCP server attached to coding agents
+- Features complete faster due to no separate regression testing phase
 
 **What's the same:**
+- Coding agents still do their own quick verification (may include browser checks via scripts)
 - Lint and type-check still run to verify code compiles
 - Feature MCP server for tracking progress
 - All other development tools available
 
-**When to use:** Early prototyping when you want to quickly scaffold features without verification overhead. Switch back to standard mode for production-quality development.
+**When to use:** Early prototyping when you want to quickly scaffold features without the overhead of separate regression testing agents. The coding agents still verify their own work - they just don't trigger additional testing agents.
 
 ### React UI (in ui/ directory)
 

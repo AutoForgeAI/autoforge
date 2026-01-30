@@ -22,7 +22,16 @@ A running list of ideas and improvements to implement when time permits.
 
 ## Agent & Orchestrator
 
-*(Add ideas here)*
+### 🟡 Documentation Admin Agent (Haiku)
+- Background agent using Claude Haiku (cheap/fast) for admin tasks
+- Responsibilities:
+  - Keep CLAUDE.md and README.md up to date with code changes
+  - Maintain CHANGELOG.md with feature additions/fixes
+  - Update version documentation
+  - Sync documentation with actual behavior
+  - Flag outdated documentation for review
+- Runs periodically or triggered by commits
+- "Maestro's Admin Assistant" - handles the paperwork
 
 ---
 
