@@ -263,13 +263,14 @@ class DatabaseHealth(BaseModel):
 
 ---
 
-## Update Checklist
+## 4. Update Checklist
 
 When updating AutoCoder from upstream, verify these items:
 
 ### UI Changes
 - [ ] `ui/src/styles/custom-theme.css` is preserved
 - [ ] `ui/src/components/KanbanColumn.tsx` changes are preserved
+- [ ] `ui/src/main.tsx` imports custom theme
 - [ ] Run `npm run build` in `ui/` directory
 - [ ] Test both light and dark modes
 
@@ -311,6 +312,7 @@ git checkout server/routers/projects.py server/schemas.py
 |------|------|-------------------|
 | `ui/src/styles/custom-theme.css` | UI | Twitter-style theme |
 | `ui/src/components/KanbanColumn.tsx` | UI | Themeable kanban columns |
+| `ui/src/main.tsx` | UI | Imports custom theme |
 | `client.py` | Backend | Firefox + headless defaults |
 | `.env.example` | Config | Updated documentation |
 | `api/database.py` | Backend | Robust SQLite connections |
@@ -326,3 +328,4 @@ git checkout server/routers/projects.py server/schemas.py
 **Commits:**
 - `1910b96` - SQLite robust connection handling
 - `e014b04` - Custom theme override system
+**PR:** #93 - Twitter-style UI theme with custom theme override system

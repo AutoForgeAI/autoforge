@@ -15,6 +15,7 @@ export interface ProjectSummary {
   path: string
   has_spec: boolean
   stats: ProjectStats
+  default_concurrency: number
 }
 
 export interface ProjectDetail extends ProjectSummary {
@@ -526,6 +527,7 @@ export interface Settings {
   yolo_mode: boolean
   model: string
   glm_mode: boolean
+  ollama_mode: boolean
   testing_agent_ratio: number  // Regression testing agents (0-3)
 }
 
@@ -533,6 +535,10 @@ export interface SettingsUpdate {
   yolo_mode?: boolean
   model?: string
   testing_agent_ratio?: number
+}
+
+export interface ProjectSettingsUpdate {
+  default_concurrency?: number
 }
 
 // ============================================================================

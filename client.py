@@ -7,6 +7,7 @@ Functions for creating and configuring the Claude Agent SDK client.
 
 import json
 import os
+import re
 import shutil
 import sys
 from pathlib import Path
@@ -31,7 +32,7 @@ DEFAULT_PLAYWRIGHT_HEADLESS = True
 DEFAULT_PLAYWRIGHT_BROWSER = "firefox"
 
 # Environment variables to pass through to Claude CLI for API configuration
-# These allow using alternative API endpoints (e.g., GLM via z.ai) without
+# These allow using alternative API endpoints (e.g., GLM via z.ai, Vertex AI) without
 # affecting the user's global Claude Code settings
 API_ENV_VARS = [
     "ANTHROPIC_BASE_URL",              # Custom API endpoint (e.g., https://api.z.ai/api/anthropic)
@@ -40,7 +41,62 @@ API_ENV_VARS = [
     "ANTHROPIC_DEFAULT_SONNET_MODEL",  # Model override for Sonnet
     "ANTHROPIC_DEFAULT_OPUS_MODEL",    # Model override for Opus
     "ANTHROPIC_DEFAULT_HAIKU_MODEL",   # Model override for Haiku
+    # Vertex AI configuration
+    "CLAUDE_CODE_USE_VERTEX",          # Enable Vertex AI mode (set to "1")
+    "CLOUD_ML_REGION",                 # GCP region (e.g., us-east5)
+    "ANTHROPIC_VERTEX_PROJECT_ID",     # GCP project ID
 ]
+
+# Extra read paths for cross-project file access (read-only)
+# Set EXTRA_READ_PATHS environment variable with comma-separated absolute paths
+# Example: EXTRA_READ_PATHS=/Volumes/Data/dev,/Users/shared/libs
+EXTRA_READ_PATHS_VAR = "EXTRA_READ_PATHS"
+
+# Sensitive directories that should never be allowed via EXTRA_READ_PATHS
+# These contain credentials, keys, or system-critical files
+EXTRA_READ_PATHS_BLOCKLIST = {
+    ".ssh",
+    ".aws",
+    ".azure",
+    ".kube",
+    ".gnupg",
+    ".gpg",
+    ".password-store",
+    ".docker",
+    ".config/gcloud",
+    ".npmrc",
+    ".pypirc",
+    ".netrc",
+}
+
+def convert_model_for_vertex(model: str) -> str:
+    """
+    Convert model name format for Vertex AI compatibility.
+
+    Vertex AI uses @ to separate model name from version (e.g., claude-opus-4-5@20251101)
+    while the Anthropic API uses - (e.g., claude-opus-4-5-20251101).
+
+    Args:
+        model: Model name in Anthropic format (with hyphens)
+
+    Returns:
+        Model name in Vertex AI format (with @ before date) if Vertex AI is enabled,
+        otherwise returns the model unchanged.
+    """
+    # Only convert if Vertex AI is enabled
+    if os.getenv("CLAUDE_CODE_USE_VERTEX") != "1":
+        return model
+
+    # Pattern: claude-{name}-{version}-{date} -> claude-{name}-{version}@{date}
+    # Example: claude-opus-4-5-20251101 -> claude-opus-4-5@20251101
+    # The date is always 8 digits at the end
+    match = re.match(r'^(claude-.+)-(\d{8})$', model)
+    if match:
+        base_name, date = match.groups()
+        return f"{base_name}@{date}"
+
+    # If already in @ format or doesn't match expected pattern, return as-is
+    return model
 
 
 def get_playwright_headless() -> bool:
@@ -50,9 +106,17 @@ def get_playwright_headless() -> bool:
     Reads from PLAYWRIGHT_HEADLESS environment variable, defaults to True.
     Returns True for headless mode (invisible browser), False for visible browser.
     """
-    value = os.getenv("PLAYWRIGHT_HEADLESS", str(DEFAULT_PLAYWRIGHT_HEADLESS).lower()).lower()
-    # Accept various truthy/falsy values
-    return value in ("true", "1", "yes", "on")
+    value = os.getenv("PLAYWRIGHT_HEADLESS", str(DEFAULT_PLAYWRIGHT_HEADLESS).lower()).strip().lower()
+    truthy = {"true", "1", "yes", "on"}
+    falsy = {"false", "0", "no", "off"}
+    if value not in truthy | falsy:
+        print(f"   - Warning: Invalid PLAYWRIGHT_HEADLESS='{value}', defaulting to {DEFAULT_PLAYWRIGHT_HEADLESS}")
+        return DEFAULT_PLAYWRIGHT_HEADLESS
+    return value in truthy
+
+
+# Valid browsers supported by Playwright MCP
+VALID_PLAYWRIGHT_BROWSERS = {"chrome", "firefox", "webkit", "msedge"}
 
 
 def get_playwright_browser() -> str:
@@ -63,7 +127,86 @@ def get_playwright_browser() -> str:
     Options: chrome, firefox, webkit, msedge
     Firefox is recommended for lower CPU usage.
     """
-    return os.getenv("PLAYWRIGHT_BROWSER", DEFAULT_PLAYWRIGHT_BROWSER).lower()
+    value = os.getenv("PLAYWRIGHT_BROWSER", DEFAULT_PLAYWRIGHT_BROWSER).strip().lower()
+    if value not in VALID_PLAYWRIGHT_BROWSERS:
+        print(f"   - Warning: Invalid PLAYWRIGHT_BROWSER='{value}', "
+              f"valid options: {', '.join(sorted(VALID_PLAYWRIGHT_BROWSERS))}. "
+              f"Defaulting to {DEFAULT_PLAYWRIGHT_BROWSER}")
+        return DEFAULT_PLAYWRIGHT_BROWSER
+    return value
+
+
+def get_extra_read_paths() -> list[Path]:
+    """
+    Get extra read-only paths from EXTRA_READ_PATHS environment variable.
+
+    Parses comma-separated absolute paths and validates each one:
+    - Must be an absolute path
+    - Must exist and be a directory
+    - Cannot be or contain sensitive directories (e.g., .ssh, .aws)
+
+    Returns:
+        List of validated, canonicalized Path objects.
+    """
+    raw_value = os.getenv(EXTRA_READ_PATHS_VAR, "").strip()
+    if not raw_value:
+        return []
+
+    validated_paths: list[Path] = []
+    home_dir = Path.home()
+
+    for path_str in raw_value.split(","):
+        path_str = path_str.strip()
+        if not path_str:
+            continue
+
+        # Parse and canonicalize the path
+        try:
+            path = Path(path_str).resolve()
+        except (OSError, ValueError) as e:
+            print(f"   - Warning: Invalid EXTRA_READ_PATHS path '{path_str}': {e}")
+            continue
+
+        # Must be absolute (resolve() makes it absolute, but check original input)
+        if not Path(path_str).is_absolute():
+            print(f"   - Warning: EXTRA_READ_PATHS requires absolute paths, skipping: {path_str}")
+            continue
+
+        # Must exist
+        if not path.exists():
+            print(f"   - Warning: EXTRA_READ_PATHS path does not exist, skipping: {path_str}")
+            continue
+
+        # Must be a directory
+        if not path.is_dir():
+            print(f"   - Warning: EXTRA_READ_PATHS path is not a directory, skipping: {path_str}")
+            continue
+
+        # Check against sensitive directory blocklist
+        is_blocked = False
+        for sensitive in EXTRA_READ_PATHS_BLOCKLIST:
+            sensitive_path = (home_dir / sensitive).resolve()
+            try:
+                # Block if path IS the sensitive dir or is INSIDE it
+                if path == sensitive_path or path.is_relative_to(sensitive_path):
+                    print(f"   - Warning: EXTRA_READ_PATHS blocked sensitive path: {path_str}")
+                    is_blocked = True
+                    break
+                # Also block if sensitive dir is INSIDE the requested path
+                if sensitive_path.is_relative_to(path):
+                    print(f"   - Warning: EXTRA_READ_PATHS path contains sensitive directory ({sensitive}): {path_str}")
+                    is_blocked = True
+                    break
+            except (OSError, ValueError):
+                # is_relative_to can raise on some edge cases
+                continue
+
+        if is_blocked:
+            continue
+
+        validated_paths.append(path)
+
+    return validated_paths
 
 
 # Feature MCP tools for feature/test management
@@ -188,6 +331,16 @@ def create_client(
         # Allow Feature MCP tools for feature management
         *FEATURE_MCP_TOOLS,
     ]
+
+    # Add extra read paths from environment variable (read-only access)
+    # Paths are validated, canonicalized, and checked against sensitive blocklist
+    extra_read_paths = get_extra_read_paths()
+    for path in extra_read_paths:
+        # Add read-only permissions for each validated path
+        permissions_list.append(f"Read({path}/**)")
+        permissions_list.append(f"Glob({path}/**)")
+        permissions_list.append(f"Grep({path}/**)")
+
     if not yolo_mode:
         # Allow Playwright MCP tools for browser automation (standard mode only)
         permissions_list.extend(PLAYWRIGHT_TOOLS)
@@ -214,6 +367,8 @@ def create_client(
     print(f"Created security settings at {settings_file}")
     print("   - Sandbox enabled (OS-level bash isolation)")
     print(f"   - Filesystem restricted to: {project_dir.resolve()}")
+    if extra_read_paths:
+        print(f"   - Extra read paths (validated): {', '.join(str(p) for p in extra_read_paths)}")
     print("   - Bash commands restricted to allowlist (see security.py)")
     if yolo_mode:
         print("   - MCP servers: features (database) - YOLO MODE (no Playwright)")
@@ -279,9 +434,21 @@ def create_client(
         if value:
             sdk_env[var] = value
 
+    # Detect alternative API mode (Ollama, GLM, or Vertex AI)
+    base_url = sdk_env.get("ANTHROPIC_BASE_URL", "")
+    is_vertex = sdk_env.get("CLAUDE_CODE_USE_VERTEX") == "1"
+    is_alternative_api = bool(base_url) or is_vertex
+    is_ollama = "localhost:11434" in base_url or "127.0.0.1:11434" in base_url
+    model = convert_model_for_vertex(model)
     if sdk_env:
         print(f"   - API overrides: {', '.join(sdk_env.keys())}")
-        if "ANTHROPIC_BASE_URL" in sdk_env:
+        if is_vertex:
+            project_id = sdk_env.get("ANTHROPIC_VERTEX_PROJECT_ID", "unknown")
+            region = sdk_env.get("CLOUD_ML_REGION", "unknown")
+            print(f"   - Vertex AI Mode: Using GCP project '{project_id}' with model '{model}' in region '{region}'")
+        elif is_ollama:
+            print("   - Ollama Mode: Using local models")
+        elif "ANTHROPIC_BASE_URL" in sdk_env:
             print(f"   - GLM Mode: Using {sdk_env['ANTHROPIC_BASE_URL']}")
 
     # Create a wrapper for bash_security_hook that passes project_dir via context
@@ -358,7 +525,8 @@ def create_client(
             # Enable extended context beta for better handling of long sessions.
             # This provides up to 1M tokens of context with automatic compaction.
             # See: https://docs.anthropic.com/en/api/beta-headers
-            betas=["context-1m-2025-08-07"],
+            # Disabled for alternative APIs (Ollama, GLM, Vertex AI) as they don't support this beta.
+            betas=[] if is_alternative_api else ["context-1m-2025-08-07"],
             # Note on context management:
             # The Claude Agent SDK handles context management automatically through the
             # underlying Claude Code CLI. When context approaches limits, the CLI

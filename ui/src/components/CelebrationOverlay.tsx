@@ -2,6 +2,7 @@ import { useCallback, useEffect, useState } from 'react'
 import { Sparkles, PartyPopper } from 'lucide-react'
 import { AgentAvatar } from './AgentAvatar'
 import type { AgentMascot } from '../lib/types'
+import { Card, CardContent } from '@/components/ui/card'
 
 interface CelebrationOverlayProps {
   agentName: AgentMascot | 'Unknown'
@@ -80,17 +81,18 @@ export function CelebrationOverlay({ agentName, featureName, onComplete }: Celeb
       </div>
 
       {/* Celebration card - click to dismiss */}
-      <button
-        type="button"
+      <Card
         onClick={dismiss}
-        className="neo-card p-6 bg-[var(--color-neo-done)] animate-bounce-in pointer-events-auto cursor-pointer hover:scale-105 transition-transform focus:outline-none focus:ring-2 focus:ring-neo-accent"
+        className="p-6 bg-green-500 border-green-600 animate-bounce-in pointer-events-auto cursor-pointer hover:scale-105 transition-transform focus:outline-none focus:ring-2 focus:ring-primary"
+        role="button"
+        tabIndex={0}
       >
-        <div className="flex flex-col items-center gap-4">
+        <CardContent className="p-0 flex flex-col items-center gap-4">
           {/* Icons */}
           <div className="flex items-center gap-2">
-            <Sparkles size={24} className="text-neo-pending animate-pulse" />
-            <PartyPopper size={28} className="text-neo-accent" />
-            <Sparkles size={24} className="text-neo-pending animate-pulse" />
+            <Sparkles size={24} className="text-yellow-300 animate-pulse" />
+            <PartyPopper size={28} className="text-white" />
+            <Sparkles size={24} className="text-yellow-300 animate-pulse" />
           </div>
 
           {/* Avatar celebrating */}
@@ -98,23 +100,23 @@ export function CelebrationOverlay({ agentName, featureName, onComplete }: Celeb
 
           {/* Message */}
           <div className="text-center">
-            <h3 className="font-display text-lg font-bold text-neo-text-on-bright mb-1">
+            <h3 className="font-display text-lg font-bold text-white mb-1">
               Feature Complete!
             </h3>
-            <p className="text-sm text-neo-text-on-bright/80 max-w-[200px] truncate">
+            <p className="text-sm text-white/80 max-w-[200px] truncate">
               {featureName}
             </p>
-            <p className="text-xs text-neo-text-on-bright/60 mt-2">
+            <p className="text-xs text-white/60 mt-2">
               Great job, {agentName}!
             </p>
           </div>
 
           {/* Dismiss hint */}
-          <p className="text-xs text-neo-text-on-bright/40 mt-1">
+          <p className="text-xs text-white/40 mt-1">
             Click or press Esc to dismiss
           </p>
-        </div>
-      </button>
+        </CardContent>
+      </Card>
     </div>
   )
 }

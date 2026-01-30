@@ -12,6 +12,8 @@ import { Terminal } from './Terminal'
 import { TerminalTabs } from './TerminalTabs'
 import { listTerminals, createTerminal, renameTerminal, deleteTerminal } from '@/lib/api'
 import type { TerminalInfo } from '@/lib/types'
+import { Button } from '@/components/ui/button'
+import { Badge } from '@/components/ui/badge'
 
 const MIN_HEIGHT = 150
 const MAX_HEIGHT = 600
@@ -273,18 +275,18 @@ export function DebugLogViewer({
     return 'info'
   }
 
-  // Get color class for log level using theme CSS variables
+  // Get color class for log level
   const getLogColor = (level: LogLevel): string => {
     switch (level) {
       case 'error':
-        return 'text-[var(--color-neo-log-error)]'
+        return 'text-red-500'
       case 'warn':
-        return 'text-[var(--color-neo-log-warning)]'
+        return 'text-yellow-500'
       case 'debug':
-        return 'text-[var(--color-neo-log-debug)]'
+        return 'text-blue-400'
       case 'info':
       default:
-        return 'text-[var(--color-neo-log-info)]'
+        return 'text-foreground'
     }
   }
 
@@ -316,89 +318,83 @@ export function DebugLogViewer({
           className="absolute top-0 left-0 right-0 h-2 cursor-ns-resize group flex items-center justify-center -translate-y-1/2 z-50"
           onMouseDown={handleResizeStart}
         >
-          <div className="w-16 h-1.5 bg-[var(--color-neo-border)] rounded-full group-hover:bg-[var(--color-neo-text-secondary)] transition-colors flex items-center justify-center">
-            <GripHorizontal size={12} className="text-[var(--color-neo-text-muted)] group-hover:text-[var(--color-neo-text-secondary)]" />
+          <div className="w-16 h-1.5 bg-border rounded-full group-hover:bg-muted-foreground transition-colors flex items-center justify-center">
+            <GripHorizontal size={12} className="text-muted-foreground group-hover:text-foreground" />
           </div>
         </div>
       )}
 
       {/* Header bar */}
       <div
-        className="flex items-center justify-between h-10 px-4 bg-[var(--color-neo-border)] border-t-3 border-[var(--color-neo-text)]"
+        className="flex items-center justify-between h-10 px-4 bg-muted border-t border-border"
       >
         <div className="flex items-center gap-2">
           {/* Collapse/expand toggle */}
           <button
             onClick={onToggle}
-            className="flex items-center gap-2 hover:bg-[var(--color-neo-hover-subtle)] px-2 py-1 rounded transition-colors cursor-pointer"
+            className="flex items-center gap-2 hover:bg-accent px-2 py-1 rounded transition-colors cursor-pointer"
           >
-            <TerminalIcon size={16} className="text-[var(--color-neo-done)]" />
-            <span className="font-mono text-sm text-[var(--color-neo-bg)] font-bold">
+            <TerminalIcon size={16} className="text-green-500" />
+            <span className="font-mono text-sm text-foreground font-bold">
               Debug
             </span>
-            <span className="px-1.5 py-0.5 text-xs font-mono bg-[var(--color-neo-card)] text-[var(--color-neo-text-muted)] rounded" title="Toggle debug panel">
+            <Badge variant="secondary" className="text-xs font-mono" title="Toggle debug panel">
               D
-            </span>
+            </Badge>
           </button>
 
           {/* Tabs - only visible when open */}
           {isOpen && (
             <div className="flex items-center gap-1 ml-4">
-              <button
-                onClick={(e) => {
+              <Button
+                variant={activeTab === 'agent' ? 'secondary' : 'ghost'}
+                size="sm"
+                onClick={(e: React.MouseEvent) => {
                   e.stopPropagation()
                   setActiveTab('agent')
                 }}
-                className={`flex items-center gap-1.5 px-3 py-1 text-xs font-mono rounded transition-colors ${
-                  activeTab === 'agent'
-                    ? 'bg-[var(--color-neo-card)] text-[var(--color-neo-text)]'
-                    : 'text-[var(--color-neo-text-muted)] hover:text-[var(--color-neo-text)] hover:bg-[var(--color-neo-hover-subtle)]'
-                }`}
+                className="h-7 text-xs font-mono gap-1.5"
               >
                 <Cpu size={12} />
                 Agent
                 {logs.length > 0 && (
-                  <span className="px-1.5 py-0.5 text-[10px] bg-[var(--color-neo-text-secondary)] text-[var(--color-neo-bg)] rounded">
+                  <Badge variant="default" className="h-4 px-1.5 text-[10px]">
                     {logs.length}
-                  </span>
+                  </Badge>
                 )}
-              </button>
-              <button
-                onClick={(e) => {
+              </Button>
+              <Button
+                variant={activeTab === 'devserver' ? 'secondary' : 'ghost'}
+                size="sm"
+                onClick={(e: React.MouseEvent) => {
                   e.stopPropagation()
                   setActiveTab('devserver')
                 }}
-                className={`flex items-center gap-1.5 px-3 py-1 text-xs font-mono rounded transition-colors ${
-                  activeTab === 'devserver'
-                    ? 'bg-[var(--color-neo-card)] text-[var(--color-neo-text)]'
-                    : 'text-[var(--color-neo-text-muted)] hover:text-[var(--color-neo-text)] hover:bg-[var(--color-neo-hover-subtle)]'
-                }`}
+                className="h-7 text-xs font-mono gap-1.5"
               >
                 <Server size={12} />
                 Dev Server
                 {devLogs.length > 0 && (
-                  <span className="px-1.5 py-0.5 text-[10px] bg-[var(--color-neo-text-secondary)] text-[var(--color-neo-bg)] rounded">
+                  <Badge variant="default" className="h-4 px-1.5 text-[10px]">
                     {devLogs.length}
-                  </span>
+                  </Badge>
                 )}
-              </button>
-              <button
-                onClick={(e) => {
+              </Button>
+              <Button
+                variant={activeTab === 'terminal' ? 'secondary' : 'ghost'}
+                size="sm"
+                onClick={(e: React.MouseEvent) => {
                   e.stopPropagation()
                   setActiveTab('terminal')
                 }}
-                className={`flex items-center gap-1.5 px-3 py-1 text-xs font-mono rounded transition-colors ${
-                  activeTab === 'terminal'
-                    ? 'bg-[var(--color-neo-card)] text-[var(--color-neo-text)]'
-                    : 'text-[var(--color-neo-text-muted)] hover:text-[var(--color-neo-text)] hover:bg-[var(--color-neo-hover-subtle)]'
-                }`}
+                className="h-7 text-xs font-mono gap-1.5"
               >
                 <TerminalIcon size={12} />
                 Terminal
-                <span className="px-1.5 py-0.5 text-[10px] bg-[var(--color-neo-text-secondary)] text-[var(--color-neo-text-muted)] rounded" title="Toggle terminal">
+                <Badge variant="outline" className="h-4 px-1.5 text-[10px]" title="Toggle terminal">
                   T
-                </span>
-              </button>
+                </Badge>
+              </Button>
             </div>
           )}
 
@@ -406,14 +402,14 @@ export function DebugLogViewer({
           {isOpen && activeTab !== 'terminal' && (
             <>
               {getCurrentLogCount() > 0 && (
-                <span className="px-2 py-0.5 text-xs font-mono bg-[var(--color-neo-card)] text-[var(--color-neo-text-secondary)] rounded ml-2">
+                <Badge variant="secondary" className="ml-2 font-mono">
                   {getCurrentLogCount()}
-                </span>
+                </Badge>
               )}
               {isAutoScrollPaused() && (
-                <span className="px-2 py-0.5 text-xs font-mono bg-[var(--color-neo-pending)] text-[var(--color-neo-text-on-bright)] rounded">
+                <Badge variant="default" className="bg-yellow-500 text-yellow-950">
                   Paused
-                </span>
+                </Badge>
               )}
             </>
           )}
@@ -422,22 +418,24 @@ export function DebugLogViewer({
         <div className="flex items-center gap-2">
           {/* Clear button - only for log tabs */}
           {isOpen && activeTab !== 'terminal' && (
-            <button
-              onClick={(e) => {
+            <Button
+              variant="ghost"
+              size="icon"
+              onClick={(e: React.MouseEvent) => {
                 e.stopPropagation()
                 handleClear()
               }}
-              className="p-1.5 hover:bg-[var(--color-neo-hover-subtle)] rounded transition-colors"
+              className="h-7 w-7"
               title="Clear logs"
             >
-              <Trash2 size={14} className="text-[var(--color-neo-text-muted)]" />
-            </button>
+              <Trash2 size={14} className="text-muted-foreground" />
+            </Button>
           )}
           <div className="p-1">
             {isOpen ? (
-              <ChevronDown size={16} className="text-[var(--color-neo-text-muted)]" />
+              <ChevronDown size={16} className="text-muted-foreground" />
             ) : (
-              <ChevronUp size={16} className="text-[var(--color-neo-text-muted)]" />
+              <ChevronUp size={16} className="text-muted-foreground" />
             )}
           </div>
         </div>
@@ -445,7 +443,7 @@ export function DebugLogViewer({
 
       {/* Content area */}
       {isOpen && (
-        <div className="h-[calc(100%-2.5rem)] bg-[var(--color-neo-border)]">
+        <div className="h-[calc(100%-2.5rem)] bg-card">
           {/* Agent Logs Tab */}
           {activeTab === 'agent' && (
             <div
@@ -454,7 +452,7 @@ export function DebugLogViewer({
               className="h-full overflow-y-auto p-2 font-mono text-sm"
             >
               {logs.length === 0 ? (
-                <div className="flex items-center justify-center h-full text-[var(--color-neo-text-muted)]">
+                <div className="flex items-center justify-center h-full text-muted-foreground">
                   No logs yet. Start the agent to see output.
                 </div>
               ) : (
@@ -467,9 +465,9 @@ export function DebugLogViewer({
                     return (
                       <div
                         key={`${log.timestamp}-${index}`}
-                        className="flex gap-2 hover:bg-[var(--color-neo-hover-subtle)] px-1 py-0.5 rounded"
+                        className="flex gap-2 hover:bg-muted px-1 py-0.5 rounded"
                       >
-                        <span className="text-[var(--color-neo-text-muted)] select-none shrink-0">
+                        <span className="text-muted-foreground select-none shrink-0">
                           {timestamp}
                         </span>
                         <span className={`${colorClass} whitespace-pre-wrap break-all`}>
@@ -491,7 +489,7 @@ export function DebugLogViewer({
               className="h-full overflow-y-auto p-2 font-mono text-sm"
             >
               {devLogs.length === 0 ? (
-                <div className="flex items-center justify-center h-full text-[var(--color-neo-text-muted)]">
+                <div className="flex items-center justify-center h-full text-muted-foreground">
                   No dev server logs yet.
                 </div>
               ) : (
@@ -504,9 +502,9 @@ export function DebugLogViewer({
                     return (
                       <div
                         key={`${log.timestamp}-${index}`}
-                        className="flex gap-2 hover:bg-[var(--color-neo-hover-subtle)] px-1 py-0.5 rounded"
+                        className="flex gap-2 hover:bg-muted px-1 py-0.5 rounded"
                       >
-                        <span className="text-[var(--color-neo-text-muted)] select-none shrink-0">
+                        <span className="text-muted-foreground select-none shrink-0">
                           {timestamp}
                         </span>
                         <span className={`${colorClass} whitespace-pre-wrap break-all`}>
@@ -538,11 +536,11 @@ export function DebugLogViewer({
               {/* Terminal content - render all terminals and show/hide to preserve buffers */}
               <div className="flex-1 min-h-0 relative">
                 {isLoadingTerminals ? (
-                  <div className="h-full flex items-center justify-center text-[var(--color-neo-text-muted)] font-mono text-sm">
+                  <div className="h-full flex items-center justify-center text-muted-foreground font-mono text-sm">
                     Loading terminals...
                   </div>
                 ) : terminals.length === 0 ? (
-                  <div className="h-full flex items-center justify-center text-[var(--color-neo-text-muted)] font-mono text-sm">
+                  <div className="h-full flex items-center justify-center text-muted-foreground font-mono text-sm">
                     No terminal available
                   </div>
                 ) : (

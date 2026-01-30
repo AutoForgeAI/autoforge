@@ -581,12 +581,20 @@ def create_database(project_dir: Path) -> tuple:
     """
     Create database and return engine + session maker.
 
+    Uses a cache to avoid creating new engines for each request, which improves
+    performance by reusing database connections.
+
     Args:
         project_dir: Directory containing the project
 
     Returns:
         Tuple of (engine, SessionLocal)
     """
+    cache_key = project_dir.as_posix()
+
+    if cache_key in _engine_cache:
+        return _engine_cache[cache_key]
+
     db_url = get_database_url(project_dir)
     engine = create_engine(db_url, connect_args={
         "check_same_thread": False,
@@ -614,11 +622,38 @@ def create_database(project_dir: Path) -> tuple:
     _migrate_add_schedules_tables(engine)
 
     SessionLocal = sessionmaker(autocommit=False, autoflush=False, bind=engine)
+
+    # Cache the engine and session maker
+    _engine_cache[cache_key] = (engine, SessionLocal)
+
     return engine, SessionLocal
+
+
+def dispose_engine(project_dir: Path) -> bool:
+    """Dispose of and remove the cached engine for a project.
+
+    This closes all database connections, releasing file locks on Windows.
+    Should be called before deleting the database file.
+
+    Returns:
+        True if an engine was disposed, False if no engine was cached.
+    """
+    cache_key = project_dir.as_posix()
+
+    if cache_key in _engine_cache:
+        engine, _ = _engine_cache.pop(cache_key)
+        engine.dispose()
+        return True
+
+    return False
 
 
 # Global session maker - will be set when server starts
 _session_maker: Optional[sessionmaker] = None
+
+# Engine cache to avoid creating new engines for each request
+# Key: project directory path (as posix string), Value: (engine, SessionLocal)
+_engine_cache: dict[str, tuple] = {}
 
 
 def set_session_maker(session_maker: sessionmaker) -> None:

@@ -93,7 +93,7 @@ async def get_agent_status(project_name: str):
     return AgentStatus(
         status=manager.status,
         pid=manager.pid,
-        started_at=manager.started_at,
+        started_at=manager.started_at.isoformat() if manager.started_at else None,
         yolo_mode=manager.yolo_mode,
         model=manager.model,
         parallel_mode=manager.parallel_mode,

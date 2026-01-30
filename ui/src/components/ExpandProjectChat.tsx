@@ -11,6 +11,11 @@ import { useExpandChat } from '../hooks/useExpandChat'
 import { ChatMessage } from './ChatMessage'
 import { TypingIndicator } from './TypingIndicator'
 import type { ImageAttachment } from '../lib/types'
+import { isSubmitEnter } from '../lib/keyboard'
+import { Button } from '@/components/ui/button'
+import { Input } from '@/components/ui/input'
+import { Card, CardContent } from '@/components/ui/card'
+import { Alert, AlertDescription } from '@/components/ui/alert'
 
 // Image upload validation constants
 const MAX_FILE_SIZE = 5 * 1024 * 1024 // 5 MB
@@ -84,7 +89,7 @@ export function ExpandProjectChat({
   }
 
   const handleKeyDown = (e: React.KeyboardEvent) => {
-    if (e.key === 'Enter' && !e.shiftKey) {
+    if (isSubmitEnter(e)) {
       e.preventDefault()
       handleSendMessage()
     }
@@ -152,28 +157,28 @@ export function ExpandProjectChat({
     switch (connectionStatus) {
       case 'connected':
         return (
-          <span className="flex items-center gap-1 text-xs text-neo-done">
+          <span className="flex items-center gap-1 text-xs text-green-500">
             <Wifi size={12} />
             Connected
           </span>
         )
       case 'connecting':
         return (
-          <span className="flex items-center gap-1 text-xs text-neo-pending">
+          <span className="flex items-center gap-1 text-xs text-yellow-500">
             <Wifi size={12} className="animate-pulse" />
             Connecting...
           </span>
         )
       case 'error':
         return (
-          <span className="flex items-center gap-1 text-xs text-neo-danger">
+          <span className="flex items-center gap-1 text-xs text-destructive">
             <WifiOff size={12} />
             Error
           </span>
         )
       default:
         return (
-          <span className="flex items-center gap-1 text-xs text-neo-text-secondary">
+          <span className="flex items-center gap-1 text-xs text-muted-foreground">
             <WifiOff size={12} />
             Disconnected
           </span>
@@ -182,16 +187,16 @@ export function ExpandProjectChat({
   }
 
   return (
-    <div className="flex flex-col h-full bg-neo-bg">
+    <div className="flex flex-col h-full bg-background">
       {/* Header */}
-      <div className="flex items-center justify-between p-4 border-b-3 border-neo-border bg-neo-card">
+      <div className="flex items-center justify-between p-4 border-b-2 border-border bg-card">
         <div className="flex items-center gap-3">
-          <h2 className="font-display font-bold text-lg text-neo-text">
+          <h2 className="font-display font-bold text-lg text-foreground">
             Expand Project: {projectName}
           </h2>
           <ConnectionIndicator />
           {featuresCreated > 0 && (
-            <span className="flex items-center gap-1 text-sm text-neo-done font-bold">
+            <span className="flex items-center gap-1 text-sm text-green-500 font-bold">
               <Plus size={14} />
               {featuresCreated} added
             </span>
@@ -200,57 +205,63 @@ export function ExpandProjectChat({
 
         <div className="flex items-center gap-2">
           {isComplete && (
-            <span className="flex items-center gap-1 text-sm text-neo-done font-bold">
+            <span className="flex items-center gap-1 text-sm text-green-500 font-bold">
               <CheckCircle2 size={16} />
               Complete
             </span>
           )}
 
-          <button
+          <Button
             onClick={onCancel}
-            className="neo-btn neo-btn-ghost p-2"
+            variant="ghost"
+            size="icon"
             title="Close"
           >
             <X size={20} />
-          </button>
+          </Button>
         </div>
       </div>
 
       {/* Error banner */}
       {error && (
-        <div className="flex items-center gap-2 p-3 bg-neo-error-bg text-neo-error-text border-b-3 border-neo-error-border">
+        <Alert variant="destructive" className="rounded-none border-x-0 border-t-0">
           <AlertCircle size={16} />
-          <span className="flex-1 text-sm">{error}</span>
-          <button
+          <AlertDescription className="flex-1">{error}</AlertDescription>
+          <Button
             onClick={() => setError(null)}
-            className="p-1 hover:opacity-70 transition-opacity rounded"
+            variant="ghost"
+            size="icon"
+            className="h-6 w-6"
           >
             <X size={14} />
-          </button>
-        </div>
+          </Button>
+        </Alert>
       )}
 
       {/* Messages area */}
       <div className="flex-1 overflow-y-auto py-4">
         {messages.length === 0 && !isLoading && (
           <div className="flex flex-col items-center justify-center h-full text-center p-8">
-            <div className="neo-card p-6 max-w-md">
-              <h3 className="font-display font-bold text-lg mb-2">
-                Starting Project Expansion
-              </h3>
-              <p className="text-sm text-neo-text-secondary">
-                Connecting to Claude to help you add new features to your project...
-              </p>
-              {connectionStatus === 'error' && (
-                <button
-                  onClick={start}
-                  className="neo-btn neo-btn-primary mt-4 text-sm"
-                >
-                  <RotateCcw size={14} />
-                  Retry Connection
-                </button>
-              )}
-            </div>
+            <Card className="p-6 max-w-md">
+              <CardContent className="p-0">
+                <h3 className="font-display font-bold text-lg mb-2">
+                  Starting Project Expansion
+                </h3>
+                <p className="text-sm text-muted-foreground">
+                  Connecting to Claude to help you add new features to your project...
+                </p>
+                {connectionStatus === 'error' && (
+                  <Button
+                    onClick={start}
+                    className="mt-4"
+                    size="sm"
+                  >
+                    <RotateCcw size={14} />
+                    Retry Connection
+                  </Button>
+                )}
+              </CardContent>
+            </Card>
           </div>
         )}
 
@@ -268,7 +279,7 @@ export function ExpandProjectChat({
       {/* Input area */}
       {!isComplete && (
         <div
-          className="p-4 border-t-3 border-neo-border bg-neo-card"
+          className="p-4 border-t-2 border-border bg-card"
           onDrop={handleDrop}
           onDragOver={handleDragOver}
         >
@@ -278,22 +289,21 @@ export function ExpandProjectChat({
               {pendingAttachments.map((attachment) => (
                 <div
                   key={attachment.id}
-                  className="relative group border-2 border-neo-border p-1 bg-neo-card"
-                  style={{ boxShadow: 'var(--shadow-neo-sm)' }}
+                  className="relative group border-2 border-border p-1 bg-card rounded shadow-sm"
                 >
                   <img
                     src={attachment.previewUrl}
                     alt={attachment.filename}
-                    className="w-16 h-16 object-cover"
+                    className="w-16 h-16 object-cover rounded"
                   />
                   <button
                     onClick={() => handleRemoveAttachment(attachment.id)}
-                    className="absolute -top-2 -right-2 bg-neo-danger text-neo-text-on-bright rounded-full p-0.5 border-2 border-neo-border hover:scale-110 transition-transform"
+                    className="absolute -top-2 -right-2 bg-destructive text-destructive-foreground rounded-full p-0.5 border-2 border-border hover:scale-110 transition-transform"
                     title="Remove attachment"
                   >
                     <X size={12} />
                   </button>
-                  <span className="text-xs truncate block max-w-16 mt-1 text-center">
+                  <span className="text-xs truncate block max-w-16 mt-1 text-center text-muted-foreground">
                     {attachment.filename.length > 10
                       ? `${attachment.filename.substring(0, 7)}...`
                       : attachment.filename}
@@ -315,16 +325,17 @@ export function ExpandProjectChat({
             />
 
             {/* Attach button */}
-            <button
+            <Button
               onClick={() => fileInputRef.current?.click()}
               disabled={connectionStatus !== 'connected'}
-              className="neo-btn neo-btn-ghost p-3"
+              variant="ghost"
+              size="icon"
               title="Attach image (JPEG, PNG - max 5MB)"
             >
               <Paperclip size={18} />
-            </button>
+            </Button>
 
-            <input
+            <Input
               ref={inputRef}
               type="text"
               value={input}
@@ -335,24 +346,24 @@ export function ExpandProjectChat({
                   ? 'Add a message with your image(s)...'
                   : 'Describe the features you want to add...'
               }
-              className="neo-input flex-1"
+              className="flex-1"
               disabled={isLoading || connectionStatus !== 'connected'}
             />
-            <button
+            <Button
               onClick={handleSendMessage}
               disabled={
                 (!input.trim() && pendingAttachments.length === 0) ||
                 isLoading ||
                 connectionStatus !== 'connected'
               }
-              className="neo-btn neo-btn-primary px-6"
+              className="px-6"
             >
               <Send size={18} />
-            </button>
+            </Button>
           </div>
 
           {/* Help text */}
-          <p className="text-xs text-neo-text-secondary mt-2">
+          <p className="text-xs text-muted-foreground mt-2">
             Press Enter to send. Drag & drop or click <Paperclip size={12} className="inline" /> to attach images.
           </p>
         </div>
@@ -360,7 +371,7 @@ export function ExpandProjectChat({
 
       {/* Completion footer */}
       {isComplete && (
-        <div className="p-4 border-t-3 border-neo-border bg-neo-done text-neo-text-on-bright">
+        <div className="p-4 border-t-2 border-border bg-green-500 text-white">
           <div className="flex items-center justify-between">
             <div className="flex items-center gap-2">
               <CheckCircle2 size={20} />
@@ -368,12 +379,12 @@ export function ExpandProjectChat({
                 Added {featuresCreated} new feature{featuresCreated !== 1 ? 's' : ''}!
               </span>
             </div>
-            <button
+            <Button
               onClick={() => onComplete(featuresCreated)}
-              className="neo-btn bg-neo-card"
+              variant="secondary"
             >
               Close
-            </button>
+            </Button>
           </div>
         </div>
       )}

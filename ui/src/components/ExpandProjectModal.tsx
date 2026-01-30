@@ -30,7 +30,7 @@ export function ExpandProjectModal({
   }
 
   return (
-    <div className="fixed inset-0 z-50 bg-[var(--color-neo-bg)]">
+    <div className="fixed inset-0 z-50 bg-background">
       <ExpandProjectChat
         projectName={projectName}
         onComplete={handleComplete}

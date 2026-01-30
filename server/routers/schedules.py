@@ -261,8 +261,8 @@ async def get_next_scheduled_run(project_name: str):
 
         return NextRunResponse(
             has_schedules=True,
-            next_start=next_start if active_count == 0 else None,
-            next_end=latest_end,
+            next_start=next_start.isoformat() if (active_count == 0 and next_start) else None,
+            next_end=latest_end.isoformat() if latest_end else None,
             is_currently_running=active_count > 0,
             active_schedule_count=active_count,
         )

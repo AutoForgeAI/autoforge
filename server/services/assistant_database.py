@@ -79,6 +79,26 @@ def get_engine(project_dir: Path):
     return _engine_cache[cache_key]
 
 
+def dispose_engine(project_dir: Path) -> bool:
+    """Dispose of and remove the cached engine for a project.
+
+    This closes all database connections, releasing file locks on Windows.
+    Should be called before deleting the database file.
+
+    Returns:
+        True if an engine was disposed, False if no engine was cached.
+    """
+    cache_key = project_dir.as_posix()
+
+    if cache_key in _engine_cache:
+        engine = _engine_cache.pop(cache_key)
+        engine.dispose()
+        logger.debug(f"Disposed database engine for {cache_key}")
+        return True
+
+    return False
+
+
 def get_session(project_dir: Path):
     """Get a new database session for a project."""
     engine = get_engine(project_dir)

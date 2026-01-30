@@ -2,11 +2,10 @@
  * Schedule Modal Component
  *
  * Modal for managing agent schedules (create, edit, delete).
- * Follows neobrutalism design patterns from SettingsModal.
  */
 
 import { useState, useEffect, useRef } from 'react'
-import { Clock, GitBranch, Trash2, X } from 'lucide-react'
+import { Clock, GitBranch, Trash2 } from 'lucide-react'
 import {
   useSchedules,
   useCreateSchedule,
@@ -23,6 +22,20 @@ import {
   toggleDay,
 } from '../lib/timeUtils'
 import type { ScheduleCreate } from '../lib/types'
+import {
+  Dialog,
+  DialogContent,
+  DialogHeader,
+  DialogTitle,
+  DialogFooter,
+} from '@/components/ui/dialog'
+import { Button } from '@/components/ui/button'
+import { Input } from '@/components/ui/input'
+import { Label } from '@/components/ui/label'
+import { Alert, AlertDescription } from '@/components/ui/alert'
+import { Card, CardContent } from '@/components/ui/card'
+import { Checkbox } from '@/components/ui/checkbox'
+import { Separator } from '@/components/ui/separator'
 
 interface ScheduleModalProps {
   projectName: string
@@ -60,38 +73,6 @@ export function ScheduleModal({ projectName, isOpen, onClose }: ScheduleModalPro
     }
   }, [isOpen])
 
-  // Keyboard navigation
-  useEffect(() => {
-    const handleKeyDown = (e: KeyboardEvent) => {
-      if (!isOpen) return
-
-      if (e.key === 'Escape') {
-        onClose()
-      }
-
-      if (e.key === 'Tab' && modalRef.current) {
-        const focusableElements = modalRef.current.querySelectorAll<HTMLElement>(
-          'button, input, select, textarea, [tabindex]:not([tabindex="-1"])'
-        )
-        const firstElement = focusableElements[0]
-        const lastElement = focusableElements[focusableElements.length - 1]
-
-        if (e.shiftKey && document.activeElement === firstElement) {
-          e.preventDefault()
-          lastElement?.focus()
-        } else if (!e.shiftKey && document.activeElement === lastElement) {
-          e.preventDefault()
-          firstElement?.focus()
-        }
-      }
-    }
-
-    document.addEventListener('keydown', handleKeyDown)
-    return () => document.removeEventListener('keydown', handleKeyDown)
-  }, [isOpen, onClose])
-
-  if (!isOpen) return null
-
   const schedules = schedulesData?.schedules || []
 
   const handleCreateSchedule = async () => {
@@ -114,8 +95,6 @@ export function ScheduleModal({ projectName, isOpen, onClose }: ScheduleModalPro
       const { time: utcTime, dayShift } = localToUTCWithDayShift(newSchedule.start_time)
 
       // Adjust days_of_week based on day shift
-      // If UTC is on the next day (dayShift = 1), shift days forward
-      // If UTC is on the previous day (dayShift = -1), shift days backward
       const adjustedDays = adjustDaysForDayShift(newSchedule.days_of_week, dayShift)
 
       const scheduleToCreate = {
@@ -169,287 +148,256 @@ export function ScheduleModal({ projectName, isOpen, onClose }: ScheduleModalPro
   }
 
   return (
-    <div
-      className="neo-modal-backdrop"
-      onClick={(e) => {
-        if (e.target === e.currentTarget) {
-          onClose()
-        }
-      }}
-    >
-      <div ref={modalRef} className="neo-modal p-6" style={{ maxWidth: '650px', maxHeight: '80vh' }}>
+    <Dialog open={isOpen} onOpenChange={(open) => !open && onClose()}>
+      <DialogContent ref={modalRef} className="sm:max-w-[650px] max-h-[80vh] flex flex-col p-0">
         {/* Header */}
-        <div className="flex items-center justify-between mb-6">
-          <div className="flex items-center gap-2">
-            <Clock size={24} className="text-[var(--color-neo-progress)]" />
-            <h2 className="text-xl font-bold text-gray-900 dark:text-white">Agent Schedules</h2>
-          </div>
-          <button
-            ref={firstFocusableRef}
-            onClick={onClose}
-            className="neo-btn neo-btn-ghost p-2"
-            aria-label="Close modal"
-          >
-            <X size={20} />
-          </button>
-        </div>
+        <DialogHeader className="p-6 pb-4">
+          <DialogTitle className="flex items-center gap-2">
+            <Clock size={24} className="text-primary" />
+            Agent Schedules
+          </DialogTitle>
+        </DialogHeader>
 
-        {/* Error display */}
-        {error && (
-          <div className="mb-4 p-3 border-2 border-red-500 bg-red-50 dark:bg-red-900/20 text-red-800 dark:text-red-200 rounded">
-            {error}
-          </div>
-        )}
+        <div className="flex-1 min-h-0 overflow-y-auto px-6">
+          {/* Error display */}
+          {error && (
+            <Alert variant="destructive" className="mb-4">
+              <AlertDescription>{error}</AlertDescription>
+            </Alert>
+          )}
 
-        {/* Loading state */}
-        {isLoading && (
-          <div className="text-center py-8 text-gray-600 dark:text-gray-300">
-            Loading schedules...
-          </div>
-        )}
-
-        {/* Existing schedules */}
-        {!isLoading && schedules.length > 0 && (
-          <div className="space-y-3 mb-6 max-h-[300px] overflow-y-auto">
-            {schedules.map((schedule) => {
-              // Convert UTC time to local and get day shift for display
-              const { time: localTime, dayShift } = utcToLocalWithDayShift(schedule.start_time)
-              const duration = formatDuration(schedule.duration_minutes)
-              // Adjust displayed days: if local is next day (dayShift=1), shift forward
-              // if local is prev day (dayShift=-1), shift backward
-              const displayDays = adjustDaysForDayShift(schedule.days_of_week, dayShift)
-
-              return (
-                <div
-                  key={schedule.id}
-                  className="neo-card p-4 flex items-start justify-between gap-4"
-                >
-                  <div className="flex-1">
-                    {/* Time and duration */}
-                    <div className="flex items-baseline gap-2 mb-2">
-                      <span className="text-lg font-bold text-gray-900 dark:text-white">{localTime}</span>
-                      <span className="text-sm text-gray-600 dark:text-gray-300">
-                        for {duration}
-                      </span>
-                    </div>
-
-                    {/* Days */}
-                    <div className="flex gap-1 mb-2">
-                      {DAYS.map((day) => {
-                        const isActive = isDayActive(displayDays, day.bit)
-                        return (
-                          <span
-                            key={day.label}
-                            className={`text-xs px-2 py-1 rounded border-2 ${
-                              isActive
-                                ? 'border-[var(--color-neo-progress)] bg-[var(--color-neo-progress)] text-white font-bold'
-                                : 'border-gray-300 dark:border-gray-600 text-gray-400 dark:text-gray-500'
-                            }`}
-                          >
-                            {day.label}
-                          </span>
-                        )
-                      })}
-                    </div>
-
-                    {/* Metadata */}
-                    <div className="flex gap-3 text-xs text-gray-600 dark:text-gray-300">
-                      {schedule.yolo_mode && (
-                        <span className="font-bold text-yellow-600">⚡ YOLO mode</span>
-                      )}
-                      <span className="flex items-center gap-1">
-                        <GitBranch size={12} />
-                        {schedule.max_concurrency}x
-                      </span>
-                      {schedule.model && <span>Model: {schedule.model}</span>}
-                      {schedule.crash_count > 0 && (
-                        <span className="text-red-600">Crashes: {schedule.crash_count}</span>
-                      )}
-                    </div>
-                  </div>
-
-                  {/* Actions */}
-                  <div className="flex items-center gap-2">
-                    {/* Enable/disable toggle */}
-                    <button
-                      onClick={() => handleToggleSchedule(schedule.id, schedule.enabled)}
-                      className={`neo-btn neo-btn-ghost px-3 py-1 text-xs font-bold ${
-                        schedule.enabled
-                          ? 'text-[var(--color-neo-done)]'
-                          : 'text-[var(--color-neo-text-secondary)]'
-                      }`}
-                      disabled={toggleSchedule.isPending}
-                    >
-                      {schedule.enabled ? 'Enabled' : 'Disabled'}
-                    </button>
-
-                    {/* Delete button */}
-                    <button
-                      onClick={() => handleDeleteSchedule(schedule.id)}
-                      className="neo-btn neo-btn-ghost p-2 text-red-600 hover:bg-red-50"
-                      disabled={deleteSchedule.isPending}
-                      aria-label="Delete schedule"
-                    >
-                      <Trash2 size={16} />
-                    </button>
-                  </div>
-                </div>
-              )
-            })}
-          </div>
-        )}
-
-        {/* Empty state */}
-        {!isLoading && schedules.length === 0 && (
-          <div className="text-center py-6 text-gray-600 dark:text-gray-300 mb-6">
-            <Clock size={48} className="mx-auto mb-2 opacity-50 text-gray-400 dark:text-gray-500" />
-            <p>No schedules configured yet</p>
-          </div>
-        )}
-
-        {/* Divider */}
-        <div className="border-t-2 border-gray-200 dark:border-gray-700 my-6"></div>
-
-        {/* Add new schedule form */}
-        <div>
-          <h3 className="text-lg font-bold text-gray-900 dark:text-white mb-4">Add New Schedule</h3>
-
-          {/* Time and duration */}
-          <div className="grid grid-cols-2 gap-4 mb-4">
-            <div>
-              <label className="block text-sm font-bold text-gray-700 dark:text-gray-200 mb-2">Start Time (Local)</label>
-              <input
-                type="time"
-                value={newSchedule.start_time}
-                onChange={(e) =>
-                  setNewSchedule((prev) => ({ ...prev, start_time: e.target.value }))
-                }
-                className="neo-input w-full"
-              />
+          {/* Loading state */}
+          {isLoading && (
+            <div className="text-center py-8 text-muted-foreground">
+              Loading schedules...
             </div>
-            <div>
-              <label className="block text-sm font-bold text-gray-700 dark:text-gray-200 mb-2">Duration (minutes)</label>
-              <input
-                type="number"
-                min="1"
-                max="1440"
-                value={newSchedule.duration_minutes}
-                onChange={(e) => {
-                  const parsed = parseInt(e.target.value, 10)
-                  const value = isNaN(parsed) ? 1 : Math.max(1, Math.min(1440, parsed))
-                  setNewSchedule((prev) => ({
-                    ...prev,
-                    duration_minutes: value,
-                  }))
-                }}
-                className="neo-input w-full"
-              />
-              <div className="text-xs text-gray-600 dark:text-gray-400 mt-1">
-                {formatDuration(newSchedule.duration_minutes)}
-              </div>
-            </div>
-          </div>
+          )}
 
-          {/* Days of week */}
-          <div className="mb-4">
-            <label className="block text-sm font-bold text-gray-700 dark:text-gray-200 mb-2">Days</label>
-            <div className="flex gap-2">
-              {DAYS.map((day) => {
-                const isActive = isDayActive(newSchedule.days_of_week, day.bit)
+          {/* Existing schedules */}
+          {!isLoading && schedules.length > 0 && (
+            <div className="space-y-3 mb-6">
+              {schedules.map((schedule) => {
+                // Convert UTC time to local and get day shift for display
+                const { time: localTime, dayShift } = utcToLocalWithDayShift(schedule.start_time)
+                const duration = formatDuration(schedule.duration_minutes)
+                const displayDays = adjustDaysForDayShift(schedule.days_of_week, dayShift)
+
                 return (
-                  <button
-                    key={day.label}
-                    onClick={() => handleToggleDay(day.bit)}
-                    className={`neo-btn px-3 py-2 text-sm ${
-                      isActive
-                        ? 'bg-[var(--color-neo-progress)] text-white border-[var(--color-neo-progress)]'
-                        : 'neo-btn-ghost'
-                    }`}
-                  >
-                    {day.label}
-                  </button>
+                  <Card key={schedule.id}>
+                    <CardContent className="p-4">
+                      <div className="flex items-start justify-between gap-4">
+                        <div className="flex-1">
+                          {/* Time and duration */}
+                          <div className="flex items-baseline gap-2 mb-2">
+                            <span className="text-lg font-semibold">{localTime}</span>
+                            <span className="text-sm text-muted-foreground">
+                              for {duration}
+                            </span>
+                          </div>
+
+                          {/* Days */}
+                          <div className="flex gap-1 mb-2">
+                            {DAYS.map((day) => {
+                              const isActive = isDayActive(displayDays, day.bit)
+                              return (
+                                <span
+                                  key={day.label}
+                                  className={`text-xs px-2 py-1 rounded border ${
+                                    isActive
+                                      ? 'border-primary bg-primary text-primary-foreground font-medium'
+                                      : 'border-border text-muted-foreground'
+                                  }`}
+                                >
+                                  {day.label}
+                                </span>
+                              )
+                            })}
+                          </div>
+
+                          {/* Metadata */}
+                          <div className="flex gap-3 text-xs text-muted-foreground">
+                            {schedule.yolo_mode && (
+                              <span className="font-semibold text-yellow-600">YOLO mode</span>
+                            )}
+                            <span className="flex items-center gap-1">
+                              <GitBranch size={12} />
+                              {schedule.max_concurrency}x
+                            </span>
+                            {schedule.model && <span>Model: {schedule.model}</span>}
+                            {schedule.crash_count > 0 && (
+                              <span className="text-destructive">Crashes: {schedule.crash_count}</span>
+                            )}
+                          </div>
+                        </div>
+
+                        {/* Actions */}
+                        <div className="flex items-center gap-2">
+                          {/* Enable/disable toggle */}
+                          <Button
+                            variant="ghost"
+                            size="sm"
+                            onClick={() => handleToggleSchedule(schedule.id, schedule.enabled)}
+                            disabled={toggleSchedule.isPending}
+                            className={schedule.enabled ? 'text-primary' : 'text-muted-foreground'}
+                          >
+                            {schedule.enabled ? 'Enabled' : 'Disabled'}
+                          </Button>
+
+                          {/* Delete button */}
+                          <Button
+                            variant="ghost"
+                            size="icon-sm"
+                            onClick={() => handleDeleteSchedule(schedule.id)}
+                            disabled={deleteSchedule.isPending}
+                            className="text-destructive hover:text-destructive"
+                          >
+                            <Trash2 size={16} />
+                          </Button>
+                        </div>
+                      </div>
+                    </CardContent>
+                  </Card>
                 )
               })}
             </div>
-          </div>
+          )}
 
-          {/* YOLO mode toggle */}
-          <div className="mb-4">
-            <label className="flex items-center gap-2 cursor-pointer">
-              <input
-                type="checkbox"
+          {/* Empty state */}
+          {!isLoading && schedules.length === 0 && (
+            <div className="text-center py-6 text-muted-foreground mb-6">
+              <Clock size={48} className="mx-auto mb-2 opacity-50" />
+              <p>No schedules configured yet</p>
+            </div>
+          )}
+
+          <Separator className="my-6" />
+
+          {/* Add new schedule form */}
+          <div className="pb-6">
+            <h3 className="text-lg font-semibold mb-4">Add New Schedule</h3>
+
+            {/* Time and duration */}
+            <div className="grid grid-cols-2 gap-4 mb-4">
+              <div className="space-y-2">
+                <Label>Start Time (Local)</Label>
+                <Input
+                  type="time"
+                  value={newSchedule.start_time}
+                  onChange={(e) =>
+                    setNewSchedule((prev) => ({ ...prev, start_time: e.target.value }))
+                  }
+                />
+              </div>
+              <div className="space-y-2">
+                <Label>Duration (minutes)</Label>
+                <Input
+                  type="number"
+                  min="1"
+                  max="1440"
+                  value={newSchedule.duration_minutes}
+                  onChange={(e) => {
+                    const parsed = parseInt(e.target.value, 10)
+                    const value = isNaN(parsed) ? 1 : Math.max(1, Math.min(1440, parsed))
+                    setNewSchedule((prev) => ({
+                      ...prev,
+                      duration_minutes: value,
+                    }))
+                  }}
+                />
+                <p className="text-xs text-muted-foreground">
+                  {formatDuration(newSchedule.duration_minutes)}
+                </p>
+              </div>
+            </div>
+
+            {/* Days of week */}
+            <div className="mb-4 space-y-2">
+              <Label>Days</Label>
+              <div className="flex gap-2">
+                {DAYS.map((day) => {
+                  const isActive = isDayActive(newSchedule.days_of_week, day.bit)
+                  return (
+                    <Button
+                      key={day.label}
+                      variant={isActive ? 'default' : 'outline'}
+                      size="sm"
+                      onClick={() => handleToggleDay(day.bit)}
+                    >
+                      {day.label}
+                    </Button>
+                  )
+                })}
+              </div>
+            </div>
+
+            {/* YOLO mode toggle */}
+            <div className="mb-4 flex items-center space-x-2">
+              <Checkbox
+                id="yolo-mode"
                 checked={newSchedule.yolo_mode}
-                onChange={(e) =>
-                  setNewSchedule((prev) => ({ ...prev, yolo_mode: e.target.checked }))
+                onCheckedChange={(checked: boolean | 'indeterminate') =>
+                  setNewSchedule((prev) => ({ ...prev, yolo_mode: checked === true }))
                 }
-                className="w-4 h-4"
               />
-              <span className="text-sm font-bold text-gray-700 dark:text-gray-200">YOLO Mode (skip testing)</span>
-            </label>
-          </div>
+              <Label htmlFor="yolo-mode" className="font-normal">
+                YOLO Mode (skip testing)
+              </Label>
+            </div>
 
-          {/* Concurrency slider */}
-          <div className="mb-4">
-            <label className="block text-sm font-bold text-gray-700 dark:text-gray-200 mb-2">
-              Concurrent Agents (1-5)
-            </label>
-            <div className="flex items-center gap-3">
-              <GitBranch
-                size={16}
-                className={newSchedule.max_concurrency > 1 ? 'text-[var(--color-neo-primary)]' : 'text-gray-400'}
-              />
-              <input
-                type="range"
-                min={1}
-                max={5}
-                value={newSchedule.max_concurrency}
+            {/* Concurrency slider */}
+            <div className="mb-4 space-y-2">
+              <Label>Concurrent Agents (1-5)</Label>
+              <div className="flex items-center gap-3">
+                <GitBranch
+                  size={16}
+                  className={newSchedule.max_concurrency > 1 ? 'text-primary' : 'text-muted-foreground'}
+                />
+                <input
+                  type="range"
+                  min={1}
+                  max={5}
+                  value={newSchedule.max_concurrency}
+                  onChange={(e) =>
+                    setNewSchedule((prev) => ({ ...prev, max_concurrency: Number(e.target.value) }))
+                  }
+                  className="flex-1 h-2 accent-primary cursor-pointer"
+                />
+                <span className="text-sm font-medium min-w-[2rem] text-center">
+                  {newSchedule.max_concurrency}x
+                </span>
+              </div>
+              <p className="text-xs text-muted-foreground">
+                Run {newSchedule.max_concurrency} agent{newSchedule.max_concurrency > 1 ? 's' : ''} in parallel for faster feature completion
+              </p>
+            </div>
+
+            {/* Model selection (optional) */}
+            <div className="mb-4 space-y-2">
+              <Label>Model (optional, defaults to global setting)</Label>
+              <Input
+                placeholder="e.g., claude-3-5-sonnet-20241022"
+                value={newSchedule.model || ''}
                 onChange={(e) =>
-                  setNewSchedule((prev) => ({ ...prev, max_concurrency: Number(e.target.value) }))
+                  setNewSchedule((prev) => ({ ...prev, model: e.target.value || null }))
                 }
-                className="flex-1 h-2 accent-[var(--color-neo-primary)] cursor-pointer"
-                title={`${newSchedule.max_concurrency} concurrent agent${newSchedule.max_concurrency > 1 ? 's' : ''}`}
-                aria-label="Set number of concurrent agents"
               />
-              <span className="text-sm font-bold min-w-[2rem] text-center text-gray-900 dark:text-white">
-                {newSchedule.max_concurrency}x
-              </span>
             </div>
-            <div className="text-xs text-gray-600 dark:text-gray-400 mt-1">
-              Run {newSchedule.max_concurrency} agent{newSchedule.max_concurrency > 1 ? 's' : ''} in parallel for faster feature completion
-            </div>
-          </div>
-
-          {/* Model selection (optional) */}
-          <div className="mb-6">
-            <label className="block text-sm font-bold text-gray-700 dark:text-gray-200 mb-2">
-              Model (optional, defaults to global setting)
-            </label>
-            <input
-              type="text"
-              placeholder="e.g., claude-3-5-sonnet-20241022"
-              value={newSchedule.model || ''}
-              onChange={(e) =>
-                setNewSchedule((prev) => ({ ...prev, model: e.target.value || null }))
-              }
-              className="neo-input w-full"
-            />
-          </div>
-
-          {/* Actions */}
-          <div className="flex justify-end gap-3">
-            <button onClick={onClose} className="neo-btn neo-btn-ghost">
-              Close
-            </button>
-            <button
-              onClick={handleCreateSchedule}
-              disabled={createSchedule.isPending || newSchedule.days_of_week === 0}
-              className="neo-btn neo-btn-primary"
-            >
-              {createSchedule.isPending ? 'Creating...' : 'Create Schedule'}
-            </button>
           </div>
         </div>
-      </div>
-    </div>
+
+        {/* Actions */}
+        <DialogFooter className="p-6 pt-4 border-t">
+          <Button variant="outline" onClick={onClose}>
+            Close
+          </Button>
+          <Button
+            onClick={handleCreateSchedule}
+            disabled={createSchedule.isPending || newSchedule.days_of_week === 0}
+          >
+            {createSchedule.isPending ? 'Creating...' : 'Create Schedule'}
+          </Button>
+        </DialogFooter>
+      </DialogContent>
+    </Dialog>
   )
 }

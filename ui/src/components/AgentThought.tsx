@@ -1,6 +1,7 @@
 import { useMemo, useState, useEffect } from 'react'
 import { Brain, Sparkles } from 'lucide-react'
 import type { AgentStatus } from '../lib/types'
+import { Card } from '@/components/ui/card'
 
 interface AgentThoughtProps {
   logs: Array<{ line: string; timestamp: string }>
@@ -105,38 +106,25 @@ export function AgentThought({ logs, agentStatus }: AgentThoughtProps) {
         ${shouldShow ? 'opacity-100 max-h-20' : 'opacity-0 max-h-0'}
       `}
     >
-      <div
-        className={`
-          relative
-          bg-[var(--color-neo-card)]
-          border-3 border-[var(--color-neo-border)]
-          shadow-[var(--shadow-neo-sm)]
-          px-4 py-3
-          flex items-center gap-3
-          ${isRunning ? 'animate-pulse-neo' : ''}
-        `}
-      >
+      <Card className={`relative px-4 py-3 flex items-center gap-3 ${isRunning ? 'animate-pulse' : ''}`}>
         {/* Brain Icon with subtle glow */}
         <div className="relative shrink-0">
           <Brain
             size={22}
-            className="text-[var(--color-neo-progress)]"
+            className="text-primary"
             strokeWidth={2.5}
           />
           {isRunning && (
             <Sparkles
               size={10}
-              className="absolute -top-1 -right-1 text-[var(--color-neo-pending)] animate-pulse"
+              className="absolute -top-1 -right-1 text-yellow-500 animate-pulse"
             />
           )}
         </div>
 
-        {/* Thought text with fade transition + shimmer effect when running */}
+        {/* Thought text with fade transition */}
         <p
-          className={`
-            font-mono text-sm truncate transition-all duration-150 ease-out
-            ${isRunning ? 'animate-shimmer' : 'text-[var(--color-neo-text)]'}
-          `}
+          className="font-mono text-sm truncate transition-all duration-150 ease-out text-foreground"
           style={{
             opacity: textVisible ? 1 : 0,
             transform: textVisible ? 'translateY(0)' : 'translateY(-4px)',
@@ -147,14 +135,11 @@ export function AgentThought({ logs, agentStatus }: AgentThoughtProps) {
 
         {/* Subtle running indicator bar */}
         {isRunning && (
-          <div className="absolute bottom-0 left-0 right-0 h-0.5 bg-[var(--color-neo-progress)] opacity-50">
-            <div
-              className="h-full bg-[var(--color-neo-progress)] animate-pulse"
-              style={{ width: '100%' }}
-            />
+          <div className="absolute bottom-0 left-0 right-0 h-0.5 bg-primary/50">
+            <div className="h-full bg-primary animate-pulse" style={{ width: '100%' }} />
           </div>
         )}
-      </div>
+      </Card>
     </div>
   )
 }

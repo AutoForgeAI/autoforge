@@ -2,12 +2,16 @@
  * Question Options Component
  *
  * Renders structured questions from AskUserQuestion tool.
- * Shows clickable option buttons in neobrutalism style.
+ * Shows clickable option buttons.
  */
 
 import { useState } from 'react'
 import { Check } from 'lucide-react'
 import type { SpecQuestion } from '../lib/types'
+import { Button } from '@/components/ui/button'
+import { Input } from '@/components/ui/input'
+import { Card, CardContent } from '@/components/ui/card'
+import { Badge } from '@/components/ui/badge'
 
 interface QuestionOptionsProps {
   questions: SpecQuestion[]
@@ -91,165 +95,126 @@ export function QuestionOptions({
   return (
     <div className="space-y-6 p-4">
       {questions.map((q, questionIdx) => (
-        <div
-          key={questionIdx}
-          className="neo-card p-4 bg-[var(--color-neo-card)]"
-        >
-          {/* Question header */}
-          <div className="flex items-center gap-3 mb-4">
-            <span className="neo-badge bg-[var(--color-neo-accent)] text-[var(--color-neo-text-on-bright)]">
-              {q.header}
-            </span>
-            <span className="font-bold text-[var(--color-neo-text)]">
-              {q.question}
-            </span>
-            {q.multiSelect && (
-              <span className="text-xs text-[var(--color-neo-text-secondary)] font-mono">
-                (select multiple)
+        <Card key={questionIdx}>
+          <CardContent className="p-4">
+            {/* Question header */}
+            <div className="flex items-center gap-3 mb-4">
+              <Badge>{q.header}</Badge>
+              <span className="font-bold text-foreground">
+                {q.question}
               </span>
-            )}
-          </div>
-
-          {/* Options grid */}
-          <div className="grid grid-cols-1 md:grid-cols-2 gap-3">
-            {q.options.map((opt, optIdx) => {
-              const isSelected = isOptionSelected(questionIdx, opt.label, q.multiSelect)
-
-              return (
-                <button
-                  key={optIdx}
-                  onClick={() => handleOptionClick(questionIdx, opt.label, q.multiSelect)}
-                  disabled={disabled}
-                  className={`
-                    text-left p-4
-                    border-3 border-[var(--color-neo-border)]
-                    transition-all duration-150
-                    ${
-                      isSelected
-                        ? 'bg-[var(--color-neo-pending)] translate-x-[1px] translate-y-[1px]'
-                        : 'bg-[var(--color-neo-card)] hover:translate-x-[-1px] hover:translate-y-[-1px]'
-                    }
-                    disabled:opacity-50 disabled:cursor-not-allowed
-                  `}
-                  style={{
-                    boxShadow: isSelected ? 'var(--shadow-neo-sm)' : 'var(--shadow-neo-md)',
-                  }}
-                  onMouseEnter={(e) => {
-                    if (!isSelected && !disabled) {
-                      e.currentTarget.style.boxShadow = 'var(--shadow-neo-lg)'
-                    }
-                  }}
-                  onMouseLeave={(e) => {
-                    if (!isSelected && !disabled) {
-                      e.currentTarget.style.boxShadow = 'var(--shadow-neo-md)'
-                    }
-                  }}
-                >
-                  <div className="flex items-start gap-2">
-                    {/* Checkbox/Radio indicator */}
-                    <div
-                      className={`
-                        w-5 h-5 flex-shrink-0 mt-0.5
-                        border-2 border-[var(--color-neo-border)]
-                        flex items-center justify-center
-                        ${q.multiSelect ? '' : 'rounded-full'}
-                        ${isSelected ? 'bg-[var(--color-neo-done)]' : 'bg-[var(--color-neo-card)]'}
-                      `}
-                    >
-                      {isSelected && <Check size={12} strokeWidth={3} />}
-                    </div>
-
-                    <div className="flex-1">
-                      <div className="font-bold text-[var(--color-neo-text)]">
-                        {opt.label}
-                      </div>
-                      <div className="text-sm text-[var(--color-neo-text-secondary)] mt-1">
-                        {opt.description}
-                      </div>
-                    </div>
-                  </div>
-                </button>
-              )
-            })}
-
-            {/* "Other" option */}
-            <button
-              onClick={() => handleOptionClick(questionIdx, 'Other', q.multiSelect)}
-              disabled={disabled}
-              className={`
-                text-left p-4
-                border-3 border-[var(--color-neo-border)]
-                transition-all duration-150
-                ${
-                  showCustomInput[String(questionIdx)]
-                    ? 'bg-[var(--color-neo-pending)] translate-x-[1px] translate-y-[1px]'
-                    : 'bg-[var(--color-neo-card)] hover:translate-x-[-1px] hover:translate-y-[-1px]'
-                }
-                disabled:opacity-50 disabled:cursor-not-allowed
-              `}
-              style={{
-                boxShadow: showCustomInput[String(questionIdx)] ? 'var(--shadow-neo-sm)' : 'var(--shadow-neo-md)',
-              }}
-              onMouseEnter={(e) => {
-                if (!showCustomInput[String(questionIdx)] && !disabled) {
-                  e.currentTarget.style.boxShadow = 'var(--shadow-neo-lg)'
-                }
-              }}
-              onMouseLeave={(e) => {
-                if (!showCustomInput[String(questionIdx)] && !disabled) {
-                  e.currentTarget.style.boxShadow = 'var(--shadow-neo-md)'
-                }
-              }}
-            >
-              <div className="flex items-start gap-2">
-                <div
-                  className={`
-                    w-5 h-5 flex-shrink-0 mt-0.5
-                    border-2 border-[var(--color-neo-border)]
-                    flex items-center justify-center
-                    ${q.multiSelect ? '' : 'rounded-full'}
-                    ${showCustomInput[String(questionIdx)] ? 'bg-[var(--color-neo-done)]' : 'bg-[var(--color-neo-card)]'}
-                  `}
-                >
-                  {showCustomInput[String(questionIdx)] && <Check size={12} strokeWidth={3} />}
-                </div>
-
-                <div className="flex-1">
-                  <div className="font-bold text-[var(--color-neo-text)]">Other</div>
-                  <div className="text-sm text-[var(--color-neo-text-secondary)] mt-1">
-                    Provide a custom answer
-                  </div>
-                </div>
-              </div>
-            </button>
-          </div>
-
-          {/* Custom input field */}
-          {showCustomInput[String(questionIdx)] && (
-            <div className="mt-4">
-              <input
-                type="text"
-                value={customInputs[String(questionIdx)] || ''}
-                onChange={(e) => handleCustomInputChange(questionIdx, e.target.value)}
-                placeholder="Type your answer..."
-                className="neo-input"
-                autoFocus
-                disabled={disabled}
-              />
+              {q.multiSelect && (
+                <span className="text-xs text-muted-foreground font-mono">
+                  (select multiple)
+                </span>
+              )}
             </div>
-          )}
-        </div>
+
+            {/* Options grid */}
+            <div className="grid grid-cols-1 md:grid-cols-2 gap-3">
+              {q.options.map((opt, optIdx) => {
+                const isSelected = isOptionSelected(questionIdx, opt.label, q.multiSelect)
+
+                return (
+                  <button
+                    key={optIdx}
+                    onClick={() => handleOptionClick(questionIdx, opt.label, q.multiSelect)}
+                    disabled={disabled}
+                    className={`
+                      text-left p-4 rounded-lg border-2 transition-all duration-150
+                      ${
+                        isSelected
+                          ? 'bg-primary/10 border-primary'
+                          : 'bg-card border-border hover:border-primary/50 hover:bg-muted'
+                      }
+                      disabled:opacity-50 disabled:cursor-not-allowed
+                    `}
+                  >
+                    <div className="flex items-start gap-2">
+                      {/* Checkbox/Radio indicator */}
+                      <div
+                        className={`
+                          w-5 h-5 flex-shrink-0 mt-0.5 border-2 flex items-center justify-center
+                          ${q.multiSelect ? 'rounded' : 'rounded-full'}
+                          ${isSelected ? 'bg-primary border-primary text-primary-foreground' : 'border-border bg-background'}
+                        `}
+                      >
+                        {isSelected && <Check size={12} strokeWidth={3} />}
+                      </div>
+
+                      <div className="flex-1">
+                        <div className="font-bold text-foreground">
+                          {opt.label}
+                        </div>
+                        <div className="text-sm text-muted-foreground mt-1">
+                          {opt.description}
+                        </div>
+                      </div>
+                    </div>
+                  </button>
+                )
+              })}
+
+              {/* "Other" option */}
+              <button
+                onClick={() => handleOptionClick(questionIdx, 'Other', q.multiSelect)}
+                disabled={disabled}
+                className={`
+                  text-left p-4 rounded-lg border-2 transition-all duration-150
+                  ${
+                    showCustomInput[String(questionIdx)]
+                      ? 'bg-primary/10 border-primary'
+                      : 'bg-card border-border hover:border-primary/50 hover:bg-muted'
+                  }
+                  disabled:opacity-50 disabled:cursor-not-allowed
+                `}
+              >
+                <div className="flex items-start gap-2">
+                  <div
+                    className={`
+                      w-5 h-5 flex-shrink-0 mt-0.5 border-2 flex items-center justify-center
+                      ${q.multiSelect ? 'rounded' : 'rounded-full'}
+                      ${showCustomInput[String(questionIdx)] ? 'bg-primary border-primary text-primary-foreground' : 'border-border bg-background'}
+                    `}
+                  >
+                    {showCustomInput[String(questionIdx)] && <Check size={12} strokeWidth={3} />}
+                  </div>
+
+                  <div className="flex-1">
+                    <div className="font-bold text-foreground">Other</div>
+                    <div className="text-sm text-muted-foreground mt-1">
+                      Provide a custom answer
+                    </div>
+                  </div>
+                </div>
+              </button>
+            </div>
+
+            {/* Custom input field */}
+            {showCustomInput[String(questionIdx)] && (
+              <div className="mt-4">
+                <Input
+                  type="text"
+                  value={customInputs[String(questionIdx)] || ''}
+                  onChange={(e) => handleCustomInputChange(questionIdx, e.target.value)}
+                  placeholder="Type your answer..."
+                  autoFocus
+                  disabled={disabled}
+                />
+              </div>
+            )}
+          </CardContent>
+        </Card>
       ))}
 
       {/* Submit button */}
       <div className="flex justify-end">
-        <button
+        <Button
           onClick={handleSubmit}
           disabled={disabled || !allQuestionsAnswered}
-          className="neo-btn neo-btn-primary"
         >
           Continue
-        </button>
+        </Button>
       </div>
     </div>
   )

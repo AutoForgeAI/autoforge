@@ -4,6 +4,15 @@ import type { ProjectSummary } from '../lib/types'
 import { NewProjectModal } from './NewProjectModal'
 import { ConfirmDialog } from './ConfirmDialog'
 import { useDeleteProject } from '../hooks/useProjects'
+import { Button } from '@/components/ui/button'
+import { Badge } from '@/components/ui/badge'
+import {
+  DropdownMenu,
+  DropdownMenuContent,
+  DropdownMenuItem,
+  DropdownMenuSeparator,
+  DropdownMenuTrigger,
+} from '@/components/ui/dropdown-menu'
 
 interface ProjectSelectorProps {
   projects: ProjectSummary[]
@@ -32,8 +41,8 @@ export function ProjectSelector({
   }
 
   const handleDeleteClick = (e: React.MouseEvent, projectName: string) => {
-    // Prevent the click from selecting the project
     e.stopPropagation()
+    e.preventDefault()
     setProjectToDelete(projectName)
   }
 
@@ -42,13 +51,11 @@ export function ProjectSelector({
 
     try {
       await deleteProject.mutateAsync(projectToDelete)
-      // If the deleted project was selected, clear the selection
       if (selectedProject === projectToDelete) {
         onSelectProject(null)
       }
       setProjectToDelete(null)
     } catch (error) {
-      // Error is handled by the mutation, just close the dialog
       console.error('Failed to delete project:', error)
       setProjectToDelete(null)
     }
@@ -62,106 +69,86 @@ export function ProjectSelector({
 
   return (
     <div className="relative">
-      {/* Dropdown Trigger */}
-      <button
-        onClick={() => setIsOpen(!isOpen)}
-        className="neo-btn bg-[var(--color-neo-card)] text-[var(--color-neo-text)] min-w-[200px] justify-between"
-        disabled={isLoading}
-      >
-        {isLoading ? (
-          <Loader2 size={18} className="animate-spin" />
-        ) : selectedProject ? (
-          <>
-            <span className="flex items-center gap-2">
-              <FolderOpen size={18} />
-              {selectedProject}
-            </span>
-            {selectedProjectData && selectedProjectData.stats.total > 0 && (
-              <span className="neo-badge bg-[var(--color-neo-done)] ml-2">
-                {selectedProjectData.stats.percentage}%
-              </span>
-            )}
-          </>
-        ) : (
-          <span className="text-[var(--color-neo-text-secondary)]">
-            Select Project
-          </span>
-        )}
-        <ChevronDown size={18} className={`transition-transform ${isOpen ? 'rotate-180' : ''}`} />
-      </button>
-
-      {/* Dropdown Menu */}
-      {isOpen && (
-        <>
-          {/* Backdrop */}
-          <div
-            className="fixed inset-0 z-40"
-            onClick={() => setIsOpen(false)}
-          />
-
-          {/* Menu */}
-          <div className="absolute top-full left-0 mt-2 w-full neo-dropdown z-50 min-w-[280px]">
-            {projects.length > 0 ? (
-              <div className="max-h-[300px] overflow-auto">
-                {projects.map(project => (
-                  <div
-                    key={project.name}
-                    className={`flex items-center ${
-                      project.name === selectedProject
-                        ? 'bg-[var(--color-neo-pending)] text-[var(--color-neo-text-on-bright)]'
-                        : ''
-                    }`}
-                  >
-                    <button
-                      onClick={() => {
-                        onSelectProject(project.name)
-                        setIsOpen(false)
-                      }}
-                      className="flex-1 neo-dropdown-item flex items-center justify-between"
-                    >
-                      <span className="flex items-center gap-2">
-                        <FolderOpen size={16} />
-                        {project.name}
-                      </span>
-                      {project.stats.total > 0 && (
-                        <span className="text-sm font-mono">
-                          {project.stats.passing}/{project.stats.total}
-                        </span>
-                      )}
-                    </button>
-                    <button
-                      onClick={(e) => handleDeleteClick(e, project.name)}
-                      className="p-2 mr-2 text-[var(--color-neo-text-secondary)] hover:text-[var(--color-neo-danger)] hover:bg-[var(--color-neo-danger)]/10 transition-colors rounded"
-                      title={`Delete ${project.name}`}
-                    >
-                      <Trash2 size={16} />
-                    </button>
-                  </div>
-                ))}
-              </div>
+      <DropdownMenu open={isOpen} onOpenChange={setIsOpen}>
+        <DropdownMenuTrigger asChild>
+          <Button
+            variant="outline"
+            className="min-w-[200px] justify-between"
+            disabled={isLoading}
+          >
+            {isLoading ? (
+              <Loader2 size={18} className="animate-spin" />
+            ) : selectedProject ? (
+              <>
+                <span className="flex items-center gap-2">
+                  <FolderOpen size={18} />
+                  {selectedProject}
+                </span>
+                {selectedProjectData && selectedProjectData.stats.total > 0 && (
+                  <Badge className="ml-2">{selectedProjectData.stats.percentage}%</Badge>
+                )}
+              </>
             ) : (
-              <div className="p-4 text-center text-[var(--color-neo-text-secondary)]">
-                No projects yet
-              </div>
+              <span className="text-muted-foreground">Select Project</span>
             )}
+            <ChevronDown size={18} className={`transition-transform ${isOpen ? 'rotate-180' : ''}`} />
+          </Button>
+        </DropdownMenuTrigger>
 
-            {/* Divider */}
-            <div className="border-t-3 border-[var(--color-neo-border)]" />
+        <DropdownMenuContent align="start" className="w-[280px] p-0 flex flex-col">
+          {projects.length > 0 ? (
+            <div className="max-h-[300px] overflow-y-auto p-1">
+              {projects.map(project => (
+                <DropdownMenuItem
+                  key={project.name}
+                  className={`flex items-center justify-between cursor-pointer ${
+                    project.name === selectedProject ? 'bg-primary/10' : ''
+                  }`}
+                  onSelect={() => {
+                    onSelectProject(project.name)
+                  }}
+                >
+                  <span className="flex items-center gap-2 flex-1">
+                    <FolderOpen size={16} />
+                    {project.name}
+                    {project.stats.total > 0 && (
+                      <span className="text-sm font-mono text-muted-foreground ml-auto">
+                        {project.stats.passing}/{project.stats.total}
+                      </span>
+                    )}
+                  </span>
+                  <Button
+                    variant="ghost"
+                    size="icon-xs"
+                    onClick={(e: React.MouseEvent) => handleDeleteClick(e, project.name)}
+                    className="text-muted-foreground hover:text-destructive"
+                  >
+                    <Trash2 size={14} />
+                  </Button>
+                </DropdownMenuItem>
+              ))}
+            </div>
+          ) : (
+            <div className="p-4 text-center text-muted-foreground">
+              No projects yet
+            </div>
+          )}
 
-            {/* Create New */}
-            <button
-              onClick={() => {
+          <DropdownMenuSeparator className="my-0" />
+
+          <div className="p-1">
+            <DropdownMenuItem
+              onSelect={() => {
                 setShowNewProjectModal(true)
-                setIsOpen(false)
               }}
-              className="w-full neo-dropdown-item flex items-center gap-2 font-bold"
+              className="cursor-pointer font-semibold"
             >
               <Plus size={16} />
               New Project
-            </button>
+            </DropdownMenuItem>
           </div>
-        </>
-      )}
+        </DropdownMenuContent>
+      </DropdownMenu>
 
       {/* New Project Modal */}
       <NewProjectModal

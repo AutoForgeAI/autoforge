@@ -12,6 +12,9 @@ import { useAssistantChat } from '../hooks/useAssistantChat'
 import { ChatMessage as ChatMessageComponent } from './ChatMessage'
 import { ConversationHistory } from './ConversationHistory'
 import type { ChatMessage } from '../lib/types'
+import { isSubmitEnter } from '../lib/keyboard'
+import { Button } from '@/components/ui/button'
+import { Textarea } from '@/components/ui/textarea'
 
 interface AssistantChatProps {
   projectName: string
@@ -132,7 +135,7 @@ export function AssistantChat({
   }
 
   const handleKeyDown = (e: React.KeyboardEvent<HTMLTextAreaElement>) => {
-    if (e.key === 'Enter' && !e.shiftKey) {
+    if (isSubmitEnter(e)) {
       e.preventDefault()
       handleSend()
     }
@@ -167,28 +170,28 @@ export function AssistantChat({
   return (
     <div className="flex flex-col h-full">
       {/* Header with actions and connection status */}
-      <div className="flex items-center justify-between px-4 py-2 border-b-2 border-[var(--color-neo-border)] bg-[var(--color-neo-bg)]">
+      <div className="flex items-center justify-between px-4 py-2 border-b border-border bg-background">
         {/* Action buttons */}
         <div className="flex items-center gap-1 relative">
-          <button
+          <Button
+            variant="ghost"
+            size="icon"
             onClick={handleNewChat}
-            className="neo-btn neo-btn-ghost p-1.5 text-[var(--color-neo-text-secondary)] hover:text-[var(--color-neo-text)]"
+            className="h-8 w-8"
             title="New conversation"
             disabled={isLoading}
           >
             <Plus size={16} />
-          </button>
-          <button
+          </Button>
+          <Button
+            variant={showHistory ? 'secondary' : 'ghost'}
+            size="icon"
             onClick={() => setShowHistory(!showHistory)}
-            className={`neo-btn neo-btn-ghost p-1.5 ${
-              showHistory
-                ? 'text-[var(--color-neo-text)] bg-[var(--color-neo-pending)]'
-                : 'text-[var(--color-neo-text-secondary)] hover:text-[var(--color-neo-text)]'
-            }`}
+            className="h-8 w-8"
             title="Conversation history"
           >
             <History size={16} />
-          </button>
+          </Button>
 
           {/* History dropdown */}
           <ConversationHistory
@@ -204,34 +207,34 @@ export function AssistantChat({
         <div className="flex items-center gap-2">
           {connectionStatus === 'connected' ? (
             <>
-              <Wifi size={14} className="text-[var(--color-neo-done)]" />
-              <span className="text-xs text-[var(--color-neo-text-secondary)]">Connected</span>
+              <Wifi size={14} className="text-green-500" />
+              <span className="text-xs text-muted-foreground">Connected</span>
             </>
           ) : connectionStatus === 'connecting' ? (
             <>
-              <Loader2 size={14} className="text-[var(--color-neo-progress)] animate-spin" />
-              <span className="text-xs text-[var(--color-neo-text-secondary)]">Connecting...</span>
+              <Loader2 size={14} className="text-primary animate-spin" />
+              <span className="text-xs text-muted-foreground">Connecting...</span>
             </>
           ) : (
             <>
-              <WifiOff size={14} className="text-[var(--color-neo-danger)]" />
-              <span className="text-xs text-[var(--color-neo-text-secondary)]">Disconnected</span>
+              <WifiOff size={14} className="text-destructive" />
+              <span className="text-xs text-muted-foreground">Disconnected</span>
             </>
           )}
         </div>
       </div>
 
       {/* Messages area */}
-      <div className="flex-1 overflow-y-auto bg-[var(--color-neo-bg)]">
+      <div className="flex-1 overflow-y-auto bg-background">
         {isLoadingConversation ? (
-          <div className="flex items-center justify-center h-full text-[var(--color-neo-text-secondary)] text-sm">
+          <div className="flex items-center justify-center h-full text-muted-foreground text-sm">
             <div className="flex items-center gap-2">
               <Loader2 size={16} className="animate-spin" />
               <span>Loading conversation...</span>
             </div>
           </div>
         ) : displayMessages.length === 0 ? (
-          <div className="flex items-center justify-center h-full text-[var(--color-neo-text-secondary)] text-sm">
+          <div className="flex items-center justify-center h-full text-muted-foreground text-sm">
             {isLoading ? (
               <div className="flex items-center gap-2">
                 <Loader2 size={16} className="animate-spin" />
@@ -253,12 +256,12 @@ export function AssistantChat({
 
       {/* Loading indicator */}
       {isLoading && displayMessages.length > 0 && (
-        <div className="px-4 py-2 border-t-2 border-[var(--color-neo-border)] bg-[var(--color-neo-bg)]">
-          <div className="flex items-center gap-2 text-[var(--color-neo-text-secondary)] text-sm">
+        <div className="px-4 py-2 border-t border-border bg-background">
+          <div className="flex items-center gap-2 text-muted-foreground text-sm">
             <div className="flex gap-1">
-              <span className="w-2 h-2 bg-[var(--color-neo-progress)] rounded-full animate-bounce" style={{ animationDelay: '0ms' }} />
-              <span className="w-2 h-2 bg-[var(--color-neo-progress)] rounded-full animate-bounce" style={{ animationDelay: '150ms' }} />
-              <span className="w-2 h-2 bg-[var(--color-neo-progress)] rounded-full animate-bounce" style={{ animationDelay: '300ms' }} />
+              <span className="w-2 h-2 bg-primary rounded-full animate-bounce" style={{ animationDelay: '0ms' }} />
+              <span className="w-2 h-2 bg-primary rounded-full animate-bounce" style={{ animationDelay: '150ms' }} />
+              <span className="w-2 h-2 bg-primary rounded-full animate-bounce" style={{ animationDelay: '300ms' }} />
             </div>
             <span>Thinking...</span>
           </div>
@@ -266,33 +269,21 @@ export function AssistantChat({
       )}
 
       {/* Input area */}
-      <div className="border-t-3 border-[var(--color-neo-border)] p-4 bg-[var(--color-neo-card)]">
+      <div className="border-t border-border p-4 bg-card">
         <div className="flex gap-2">
-          <textarea
+          <Textarea
             ref={inputRef}
             value={inputValue}
             onChange={(e) => setInputValue(e.target.value)}
             onKeyDown={handleKeyDown}
             placeholder="Ask about the codebase..."
             disabled={isLoading || isLoadingConversation || connectionStatus !== 'connected'}
-            className="
-              flex-1
-              neo-input
-              resize-none
-              min-h-[44px]
-              max-h-[120px]
-              py-2.5
-            "
+            className="flex-1 resize-none min-h-[44px] max-h-[120px]"
             rows={1}
           />
-          <button
+          <Button
             onClick={handleSend}
             disabled={!inputValue.trim() || isLoading || isLoadingConversation || connectionStatus !== 'connected'}
-            className="
-              neo-btn neo-btn-primary
-              px-4
-              disabled:opacity-50 disabled:cursor-not-allowed
-            "
             title="Send message"
           >
             {isLoading ? (
@@ -300,9 +291,9 @@ export function AssistantChat({
             ) : (
               <Send size={18} />
             )}
-          </button>
+          </Button>
         </div>
-        <p className="text-xs text-[var(--color-neo-text-secondary)] mt-2">
+        <p className="text-xs text-muted-foreground mt-2">
           Press Enter to send, Shift+Enter for new line
         </p>
       </div>

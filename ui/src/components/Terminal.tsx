@@ -40,29 +40,29 @@ interface TerminalExitMessage {
 
 type TerminalServerMessage = TerminalOutputMessage | TerminalExitMessage
 
-// Neobrutalism theme colors for xterm
+// Clean terminal theme colors
 const TERMINAL_THEME = {
-  background: '#1a1a1a',
-  foreground: '#ffffff',
-  cursor: '#ff006e', // --color-neo-accent
-  cursorAccent: '#1a1a1a',
-  selectionBackground: 'rgba(255, 0, 110, 0.3)',
+  background: '#09090b', // zinc-950
+  foreground: '#fafafa', // zinc-50
+  cursor: '#3b82f6', // blue-500
+  cursorAccent: '#09090b',
+  selectionBackground: 'rgba(59, 130, 246, 0.3)',
   selectionForeground: '#ffffff',
-  black: '#1a1a1a',
-  red: '#ff5400',
-  green: '#70e000',
-  yellow: '#ffd60a',
-  blue: '#00b4d8',
-  magenta: '#ff006e',
-  cyan: '#00b4d8',
-  white: '#ffffff',
-  brightBlack: '#4a4a4a',
-  brightRed: '#ff7733',
-  brightGreen: '#8fff00',
-  brightYellow: '#ffe44d',
-  brightBlue: '#33c7e6',
-  brightMagenta: '#ff4d94',
-  brightCyan: '#33c7e6',
+  black: '#09090b',
+  red: '#ef4444',
+  green: '#22c55e',
+  yellow: '#eab308',
+  blue: '#3b82f6',
+  magenta: '#a855f7',
+  cyan: '#06b6d4',
+  white: '#fafafa',
+  brightBlack: '#52525b',
+  brightRed: '#f87171',
+  brightGreen: '#4ade80',
+  brightYellow: '#facc15',
+  brightBlue: '#60a5fa',
+  brightMagenta: '#c084fc',
+  brightCyan: '#22d3ee',
   brightWhite: '#ffffff',
 }
 
@@ -552,17 +552,17 @@ export function Terminal({ projectName, terminalId, isActive }: TerminalProps) {
   }, [projectName, terminalId, isActive])
 
   return (
-    <div className="relative h-full w-full bg-[#1a1a1a]">
+    <div className="relative h-full w-full bg-zinc-950">
       {/* Connection status indicator */}
       <div className="absolute top-2 right-2 z-10 flex items-center gap-2">
         <div
           className={`w-2 h-2 rounded-full ${
-            isConnected ? 'bg-neo-done' : 'bg-neo-danger'
+            isConnected ? 'bg-green-500' : 'bg-destructive'
           }`}
           title={isConnected ? 'Connected' : 'Disconnected'}
         />
         {!isConnected && !hasExited && (
-          <span className="text-xs font-mono text-gray-500">Connecting...</span>
+          <span className="text-xs font-mono text-muted-foreground">Connecting...</span>
         )}
         {hasExited && exitCode !== null && (
           <span className="text-xs font-mono text-yellow-500">
