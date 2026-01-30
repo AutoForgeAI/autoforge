@@ -57,6 +57,8 @@ def _run_command(cmd: list[str], cwd: Path, timeout: int = 60) -> tuple[int, str
             cwd=cwd,
             capture_output=True,
             text=True,
+            encoding="utf-8",  # Fix Windows CP1252 encoding issue (#138)
+            errors="replace",
             timeout=timeout,
         )
         duration_ms = int((time.time() - start) * 1000)
