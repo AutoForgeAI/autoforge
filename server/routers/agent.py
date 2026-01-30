@@ -4,6 +4,9 @@ Agent Router
 
 API endpoints for agent control (start/stop/pause/resume).
 Uses project registry for path lookups.
+
+Includes auto-resume functionality that automatically restarts
+crashed agents when the autoResume setting is enabled.
 """
 
 import re
@@ -12,6 +15,11 @@ from pathlib import Path
 from fastapi import APIRouter, HTTPException
 
 from ..schemas import AgentActionResponse, AgentStartRequest, AgentStatus
+from ..services.auto_resume_service import (
+    handle_agent_crash,
+    register_auto_resume,
+    unregister_auto_resume,
+)
 from ..services.process_manager import get_manager
 
 
@@ -115,6 +123,7 @@ async def start_agent(
 ):
     """Start the agent for a project."""
     manager = get_project_manager(project_name)
+    project_dir = _get_project_path(project_name)
 
     # Get defaults from global settings if not provided in request
     default_yolo, default_model, default_testing_ratio = _get_settings_defaults()
@@ -131,12 +140,30 @@ async def start_agent(
         testing_agent_ratio=testing_agent_ratio,
     )
 
-    # Notify scheduler of manual start (to prevent auto-stop during scheduled window)
-    if success:
+    # Setup auto-resume and notify scheduler if start was successful
+    if success and project_dir:
+        # Notify scheduler of manual start (to prevent auto-stop during scheduled window)
         from ..services.scheduler_service import get_scheduler
-        project_dir = _get_project_path(project_name)
-        if project_dir:
-            get_scheduler().notify_manual_start(project_name, project_dir)
+        get_scheduler().notify_manual_start(project_name, project_dir)
+
+        # Register for auto-resume if enabled
+        tracker = register_auto_resume(
+            project_name=project_name,
+            project_dir=project_dir,
+            yolo_mode=yolo_mode,
+            model=model,
+            max_concurrency=max_concurrency,
+            testing_agent_ratio=testing_agent_ratio,
+        )
+
+        if tracker:
+            # Create status callback for crash detection
+            async def on_crash_status_change(status: str):
+                if status == "crashed":
+                    await handle_agent_crash(project_name)
+
+            tracker.set_status_callback(on_crash_status_change)
+            manager.add_status_callback(on_crash_status_change)
 
     return AgentActionResponse(
         success=success,
@@ -149,6 +176,10 @@ async def start_agent(
 async def stop_agent(project_name: str):
     """Stop the agent for a project."""
     manager = get_project_manager(project_name)
+
+    # Unregister from auto-resume BEFORE stopping
+    # This prevents the crash handler from restarting after manual stop
+    unregister_auto_resume(project_name)
 
     success, message = await manager.stop()
 
@@ -226,6 +257,9 @@ async def resume_pickup(project_name: str):
 async def graceful_stop(project_name: str):
     """Stop the agent gracefully after current tasks complete."""
     manager = get_project_manager(project_name)
+
+    # Unregister from auto-resume - graceful stop is intentional
+    unregister_auto_resume(project_name)
 
     success, message = await manager.graceful_stop()
 

@@ -50,6 +50,7 @@ from .routers import (
 )
 from .schemas import SetupStatus
 from .services.assistant_chat_session import cleanup_all_sessions as cleanup_assistant_sessions
+from .services.auto_resume_service import cleanup_all_trackers
 from .services.dev_server_manager import (
     cleanup_all_devservers,
     cleanup_orphaned_devserver_locks,
@@ -87,6 +88,8 @@ async def lifespan(app: FastAPI):
 
     # Shutdown - cleanup scheduler first to stop triggering new starts
     await cleanup_scheduler()
+    # Cleanup auto-resume trackers to cancel pending restarts
+    cleanup_all_trackers()
     # Then cleanup all running agents, sessions, terminals, and dev servers
     await cleanup_all_managers()
     await cleanup_assistant_sessions()
