@@ -95,10 +95,10 @@ export function ActivitySidebar({ activities }: ActivitySidebarProps) {
           )}
         </div>
 
-        {/* Collapse tab on the right edge */}
+        {/* Collapse tab on the right edge - at top */}
         <button
           onClick={toggleCollapsed}
-          className="absolute right-0 top-1/2 -translate-y-1/2 translate-x-full bg-card border-2 border-l-0 border-border p-1.5 rounded-r-lg hover:bg-muted transition-colors"
+          className="absolute right-0 top-3 translate-x-full bg-card border-2 border-l-0 border-border p-1.5 rounded-r-lg hover:bg-muted transition-colors"
           title="Hide Activity"
         >
           <ChevronLeft size={16} />
