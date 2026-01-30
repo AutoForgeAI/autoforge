@@ -342,12 +342,23 @@ async def create_checkpoint(project_name: str, request: CheckpointRequest):
                 message=f"Failed to initialize git: {error.message if error else 'Unknown error'}",
             )
 
-    # Stage all changes
-    success, _, error = run_git_command(project_path, ["add", "-A"])
+    # Stage all changes (use "." to be more forgiving with nested repos)
+    success, output, error = run_git_command(project_path, ["add", "."])
     if not success:
+        # Check for nested repo issue
+        error_msg = error.message if error else output or 'Unknown error'
+        if "does not have a commit checked out" in error_msg:
+            # Extract the problematic directory name
+            import re
+            match = re.search(r"'([^']+)' does not have a commit checked out", error_msg)
+            nested_dir = match.group(1) if match else "a subdirectory"
+            return CheckpointResponse(
+                success=False,
+                message=f"Nested git repo '{nested_dir}' has no commit. Remove it, add to .gitignore, or initialize it as a submodule.",
+            )
         return CheckpointResponse(
             success=False,
-            message=f"Failed to stage changes: {error.message if error else 'Unknown error'}",
+            message=f"Failed to stage changes: {error_msg}",
         )
 
     # Check if there are any staged changes
