@@ -83,7 +83,7 @@ Use browser automation tools:
 
 #### If the feature PASSES:
 
-The feature still works correctly. Log the result and end your session:
+The feature still works correctly. Log the result:
 
 ```bash
 # Log the successful verification
@@ -91,6 +91,8 @@ echo "[Testing] Feature #{id} verified - still passing" >> claude-progress.txt
 ```
 
 **DO NOT** call feature_mark_passing again - it's already passing.
+
+**Session will auto-terminate** after you complete the logging step. No explicit exit action needed.
 
 #### If the feature FAILS (regression found):
 
@@ -183,7 +185,7 @@ All interaction tools have **built-in auto-wait** - no manual timeouts needed.
 4. Mark as passing only after thorough verification
 5. Commit the fix
 
-**You have one iteration.** Focus on testing ONE feature thoroughly.
+**Your session is scoped to ONE feature.** Complete all verification and any necessary fixes for that feature. You may iterate on fixes until it passes.
 
 ---
 
