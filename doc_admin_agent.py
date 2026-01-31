@@ -28,25 +28,19 @@ Usage:
 import argparse
 import asyncio
 import json
-import os
+import subprocess
 import sys
 from datetime import datetime
 from pathlib import Path
-from typing import Optional
 
 # Add parent directory to path for imports
 sys.path.insert(0, str(Path(__file__).parent))
 
-# Load environment variables from .env file
 from dotenv import load_dotenv
 
 load_dotenv()
 
-from anthropic import Anthropic
-
-# Use Haiku for cost-effective documentation tasks
-# claude-haiku-4-20250214 is the latest Haiku model
-DOC_ADMIN_MODEL = os.getenv("DOC_ADMIN_MODEL", "claude-haiku-4-20250214")
+from claude_agent_sdk import ClaudeAgentOptions, ClaudeSDKClient
 
 # Log file for tracking all documentation changes
 DOC_ADMIN_LOG = ".doc_admin_log.jsonl"
@@ -60,6 +54,20 @@ MANAGED_DOCS = [
     "docs/**/*.md",
 ]
 
+# Doc admin prompt - tells the agent what to do
+DOC_ADMIN_SYSTEM_PROMPT = """You are a Documentation Admin Agent - Maestro's assistant for keeping docs in sync.
+
+Your responsibilities:
+1. Assess documentation health and identify issues
+2. Keep CHANGELOG.md updated with recent commits
+3. Sync README.md and CLAUDE.md with actual code behavior
+4. Flag outdated documentation
+
+When assessing, provide structured feedback in JSON format.
+When updating docs, make precise edits - don't rewrite entire files unnecessarily.
+Focus on accuracy and keeping documentation in sync with the codebase.
+"""
+
 
 class DocAdminAgent:
     """Documentation Admin Agent - Maestro's assistant for keeping docs in sync."""
@@ -68,22 +76,12 @@ class DocAdminAgent:
         self.project_dir = project_dir
         self.log_file = project_dir / DOC_ADMIN_LOG
 
-        # Check for API key
-        if not os.getenv("ANTHROPIC_API_KEY"):
-            raise ValueError(
-                "ANTHROPIC_API_KEY not set. Please either:\n"
-                "  1. Set ANTHROPIC_API_KEY environment variable, or\n"
-                "  2. Create a .env file with ANTHROPIC_API_KEY=your_key"
-            )
-
-        self.client = Anthropic()
-
     def log_change(self, action: str, details: dict):
         """Append a change record to the running log."""
         record = {
             "timestamp": datetime.now().isoformat(),
             "action": action,
-            **details
+            **details,
         }
         with open(self.log_file, "a") as f:
             f.write(json.dumps(record) + "\n")
@@ -108,12 +106,11 @@ class DocAdminAgent:
 
         # Get recent git commits
         try:
-            import subprocess
             result = subprocess.run(
                 ["git", "log", "--oneline", "-20"],
                 cwd=self.project_dir,
                 capture_output=True,
-                text=True
+                text=True,
             )
             if result.returncode == 0:
                 context_parts.append(f"## Recent Commits\n```\n{result.stdout}\n```")
@@ -130,9 +127,47 @@ class DocAdminAgent:
         # Get change history
         history = self.get_change_history(10)
         if history:
-            context_parts.append(f"## Recent Doc Admin Changes\n```json\n{json.dumps(history, indent=2)}\n```")
+            context_parts.append(
+                f"## Recent Doc Admin Changes\n```json\n{json.dumps(history, indent=2)}\n```"
+            )
 
         return "\n\n".join(context_parts)
+
+    def _create_client(self, model: str = "haiku") -> ClaudeSDKClient:
+        """Create a Claude SDK client for the doc admin agent."""
+        options = ClaudeAgentOptions(
+            model=model,
+            cwd=str(self.project_dir),
+            system_prompt=DOC_ADMIN_SYSTEM_PROMPT,
+            allowed_tools=["Read", "Edit", "Write", "Glob", "Grep", "Bash"],
+            permission_mode="acceptEdits",  # Auto-accept doc edits
+        )
+        return ClaudeSDKClient(options)
+
+    async def _run_prompt(self, prompt: str, model: str = "haiku") -> str:
+        """Run a prompt through the Claude SDK and return the response."""
+        client = self._create_client(model)
+
+        response_text = ""
+        try:
+            await client.query(prompt)
+
+            async for msg in client.receive_response():
+                msg_type = type(msg).__name__
+                if msg_type == "AssistantMessage" and hasattr(msg, "content"):
+                    for block in msg.content:
+                        block_type = type(block).__name__
+                        if block_type == "TextBlock" and hasattr(block, "text"):
+                            response_text += block.text
+                            print(block.text, end="", flush=True)
+                        elif block_type == "ToolUseBlock" and hasattr(block, "name"):
+                            print(f"\n[Tool: {block.name}]", flush=True)
+
+            print()  # Newline after response
+        finally:
+            await client.close()
+
+        return response_text
 
     async def assess(self) -> dict:
         """
@@ -143,9 +178,7 @@ class DocAdminAgent:
 
         context = self._gather_context()
 
-        prompt = f"""You are a Documentation Admin Agent for the project at {self.project_dir}.
-
-Your job is to assess the current state of documentation and identify issues.
+        prompt = f"""Assess the current state of documentation for this project.
 
 {context}
 
@@ -163,20 +196,13 @@ Please provide a thorough assessment in JSON format:
 
 Be specific and actionable. Focus on documentation accuracy and completeness."""
 
-        response = self.client.messages.create(
-            model=DOC_ADMIN_MODEL,
-            max_tokens=2000,
-            messages=[{"role": "user", "content": prompt}]
-        )
-
-        # Parse the response
-        response_text = response.content[0].text
+        response_text = await self._run_prompt(prompt)
 
         # Try to extract JSON from response
         try:
-            # Find JSON in response
             import re
-            json_match = re.search(r'\{[\s\S]*\}', response_text)
+
+            json_match = re.search(r"\{[\s\S]*\}", response_text)
             if json_match:
                 assessment = json.loads(json_match.group())
             else:
@@ -185,29 +211,27 @@ Be specific and actionable. Focus on documentation accuracy and completeness."""
             assessment = {"raw_response": response_text}
 
         # Log the assessment
-        self.log_change("assessment", {
-            "result": assessment.get("overall_health", "unknown"),
-            "issues_count": len(assessment.get("issues", [])),
-        })
+        self.log_change(
+            "assessment",
+            {
+                "result": assessment.get("overall_health", "unknown"),
+                "issues_count": len(assessment.get("issues", [])),
+            },
+        )
 
         return assessment
 
-    async def update_changelog(self, since_commit: Optional[str] = None) -> bool:
+    async def update_changelog(self) -> bool:
         """Update CHANGELOG.md with recent changes."""
         print("[DocAdmin] Updating CHANGELOG.md...")
 
         # Get commits since last update
         try:
-            import subprocess
-            cmd = ["git", "log", "--oneline", "-30"]
-            if since_commit:
-                cmd.append(f"{since_commit}..HEAD")
-
             result = subprocess.run(
-                cmd,
+                ["git", "log", "--oneline", "-30"],
                 cwd=self.project_dir,
                 capture_output=True,
-                text=True
+                text=True,
             )
             commits = result.stdout if result.returncode == 0 else ""
         except Exception:
@@ -223,7 +247,7 @@ Be specific and actionable. Focus on documentation accuracy and completeness."""
         if changelog_path.exists():
             current_changelog = changelog_path.read_text()
 
-        prompt = f"""You are updating a CHANGELOG.md file.
+        prompt = f"""Update the CHANGELOG.md file based on recent commits.
 
 Recent commits:
 ```
@@ -235,30 +259,28 @@ Current CHANGELOG.md:
 {current_changelog[:3000]}
 ```
 
-Generate an updated CHANGELOG.md that:
-1. Adds a new section for today's date if there are meaningful changes
-2. Groups changes by type (Added, Changed, Fixed, etc.)
-3. Keeps the existing history intact
-4. Uses Keep a Changelog format (https://keepachangelog.com/)
+Tasks:
+1. Read the current CHANGELOG.md
+2. Add a new section for today's date if there are meaningful changes
+3. Group changes by type (Added, Changed, Fixed, etc.)
+4. Keep the existing history intact
+5. Use Keep a Changelog format (https://keepachangelog.com/)
+6. Use the Edit tool to update the file
 
-Return ONLY the updated markdown content, no explanation."""
+Only add entries for commits that represent meaningful user-facing changes."""
 
-        response = self.client.messages.create(
-            model=DOC_ADMIN_MODEL,
-            max_tokens=3000,
-            messages=[{"role": "user", "content": prompt}]
-        )
+        await self._run_prompt(prompt)
 
-        new_content = response.content[0].text.strip()
-
-        # Write updated changelog
-        if new_content and len(new_content) > 100:
-            changelog_path.write_text(new_content)
-            self.log_change("update_changelog", {
-                "commits_processed": len(commits.strip().split("\n")),
-            })
-            print("[DocAdmin] CHANGELOG.md updated")
-            return True
+        # Check if changelog was updated
+        if changelog_path.exists():
+            new_content = changelog_path.read_text()
+            if new_content != current_changelog:
+                self.log_change(
+                    "update_changelog",
+                    {"commits_processed": len(commits.strip().split("\n"))},
+                )
+                print("[DocAdmin] CHANGELOG.md updated")
+                return True
 
         return False
 
@@ -280,39 +302,29 @@ Return ONLY the updated markdown content, no explanation."""
 
             current_content = doc_path.read_text()
 
-            prompt = f"""You are reviewing {doc_name} for accuracy.
-
-Current {doc_name}:
-```markdown
-{current_content[:8000]}
-```
+            prompt = f"""Review {doc_name} for accuracy and update if needed.
 
 Recent project context:
 {context[:3000]}
 
-Check if {doc_name} accurately reflects the current state of the project.
-If updates are needed, provide the corrected content.
-If no updates needed, respond with "NO_CHANGES_NEEDED".
+Tasks:
+1. Read the current {doc_name}
+2. Check if it accurately reflects the current state of the project
+3. If updates are needed, use the Edit tool to make precise corrections
+4. Focus on:
+   - Accuracy of described features and behavior
+   - Correct command examples
+   - Up-to-date configuration options
 
-Focus on:
-- Accuracy of described features and behavior
-- Correct command examples
-- Up-to-date configuration options
+Only make changes if something is actually incorrect or outdated.
+If no changes needed, just say "No updates needed for {doc_name}"."""
 
-Return ONLY the updated markdown content or "NO_CHANGES_NEEDED"."""
+            await self._run_prompt(prompt)
 
-            response = self.client.messages.create(
-                model=DOC_ADMIN_MODEL,
-                max_tokens=4000,
-                messages=[{"role": "user", "content": prompt}]
-            )
-
-            result = response.content[0].text.strip()
-
-            if result != "NO_CHANGES_NEEDED" and len(result) > 200:
-                # Validate it looks like markdown
-                if result.startswith("#") or "```" in result:
-                    doc_path.write_text(result)
+            # Check if file was updated
+            if doc_path.exists():
+                new_content = doc_path.read_text()
+                if new_content != current_content:
                     updated[doc_name] = True
                     self.log_change("sync_doc", {"file": doc_name})
                     print(f"[DocAdmin] Updated {doc_name}")
@@ -321,10 +333,10 @@ Return ONLY the updated markdown content or "NO_CHANGES_NEEDED"."""
 
     async def run_cycle(self, full_assessment: bool = False):
         """Run a complete documentation maintenance cycle."""
-        print(f"\n{'='*60}")
+        print(f"\n{'=' * 60}")
         print(f"  DOC ADMIN AGENT - {self.project_dir.name}")
-        print(f"  Model: {DOC_ADMIN_MODEL}")
-        print(f"{'='*60}\n")
+        print("  Using Claude Code authentication")
+        print(f"{'=' * 60}\n")
 
         results = {
             "timestamp": datetime.now().isoformat(),
@@ -335,10 +347,12 @@ Return ONLY the updated markdown content or "NO_CHANGES_NEEDED"."""
         if full_assessment or not self.log_file.exists():
             results["assessment"] = await self.assess()
             print(f"\nAssessment: {results['assessment'].get('overall_health', 'unknown')}")
-            if results['assessment'].get('issues'):
+            if results["assessment"].get("issues"):
                 print(f"Issues found: {len(results['assessment']['issues'])}")
-                for issue in results['assessment']['issues'][:5]:
-                    print(f"  - [{issue.get('priority', '?')}] {issue.get('file', '?')}: {issue.get('issue', '?')}")
+                for issue in results["assessment"]["issues"][:5]:
+                    print(
+                        f"  - [{issue.get('priority', '?')}] {issue.get('file', '?')}: {issue.get('issue', '?')}"
+                    )
 
         # Update changelog
         results["changelog_updated"] = await self.update_changelog()
@@ -357,7 +371,9 @@ async def main():
     parser.add_argument("--update", action="store_true", help="Run update cycle")
     parser.add_argument("--changelog", action="store_true", help="Update changelog only")
     parser.add_argument("--sync", action="store_true", help="Sync docs only")
-    parser.add_argument("--watch", action="store_true", help="Watch mode (not implemented yet)")
+    parser.add_argument(
+        "--watch", action="store_true", help="Watch mode (not implemented yet)"
+    )
 
     args = parser.parse_args()
 
