@@ -1,10 +1,10 @@
 {
-  "version": "2026.1.0.12",
+  "version": "2026.1.0.13",
   "edition": "Chance Edition",
   "year": 2026,
   "major": 1,
   "minor": 0,
-  "patch": 12,
+  "patch": 13,
   "buildDate": "2026-01-30",
   "description": "Autonomous coding agent with multi-model support and enhanced orchestration"
 }

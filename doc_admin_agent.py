@@ -37,10 +37,16 @@ from typing import Optional
 # Add parent directory to path for imports
 sys.path.insert(0, str(Path(__file__).parent))
 
+# Load environment variables from .env file
+from dotenv import load_dotenv
+
+load_dotenv()
+
 from anthropic import Anthropic
 
 # Use Haiku for cost-effective documentation tasks
-DOC_ADMIN_MODEL = os.getenv("DOC_ADMIN_MODEL", "claude-3-5-haiku-20241022")
+# claude-haiku-4-20250214 is the latest Haiku model
+DOC_ADMIN_MODEL = os.getenv("DOC_ADMIN_MODEL", "claude-haiku-4-20250214")
 
 # Log file for tracking all documentation changes
 DOC_ADMIN_LOG = ".doc_admin_log.jsonl"
@@ -61,6 +67,15 @@ class DocAdminAgent:
     def __init__(self, project_dir: Path):
         self.project_dir = project_dir
         self.log_file = project_dir / DOC_ADMIN_LOG
+
+        # Check for API key
+        if not os.getenv("ANTHROPIC_API_KEY"):
+            raise ValueError(
+                "ANTHROPIC_API_KEY not set. Please either:\n"
+                "  1. Set ANTHROPIC_API_KEY environment variable, or\n"
+                "  2. Create a .env file with ANTHROPIC_API_KEY=your_key"
+            )
+
         self.client = Anthropic()
 
     def log_change(self, action: str, details: dict):
