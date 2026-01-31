@@ -114,11 +114,12 @@ class ReactAnalyzer(BaseAnalyzer):
                 config_files.append(config_name)
 
         # Detect entry point (check all common extensions)
+        # Note: app/layout.ts not included - Next.js only supports .js, .jsx, .tsx for layouts
         for entry in [
             "src/main.tsx", "src/main.ts", "src/main.jsx", "src/main.js",
             "src/index.tsx", "src/index.ts", "src/index.jsx", "src/index.js",
             "pages/_app.tsx", "pages/_app.ts", "pages/_app.jsx", "pages/_app.js",
-            "app/layout.tsx", "app/layout.ts", "app/layout.jsx", "app/layout.js",
+            "app/layout.tsx", "app/layout.jsx", "app/layout.js",
         ]:
             if (self.project_dir / entry).exists():
                 entry_point = entry
@@ -180,6 +181,7 @@ class ReactAnalyzer(BaseAnalyzer):
     def _extract_app_router_routes(self, app_dir: Path) -> list[RouteInfo]:
         """Extract routes from Next.js App Router."""
         routes: list[RouteInfo] = []
+        seen_paths: set[str] = set()
 
         # Check all page file extensions: .tsx, .jsx, .ts, .js
         for pattern in ("page.tsx", "page.jsx", "page.ts", "page.js"):
@@ -194,6 +196,11 @@ class ReactAnalyzer(BaseAnalyzer):
                 if route_path == "/.":
                     route_path = "/"
                 route_path = route_path.replace("//", "/")
+
+                # Skip if we've already seen this route (deduplication)
+                if route_path in seen_paths:
+                    continue
+                seen_paths.add(route_path)
 
                 routes.append({
                     "path": route_path,
@@ -294,7 +301,7 @@ class ReactAnalyzer(BaseAnalyzer):
         content = self._read_file_safe(route_file)
         methods = []
         if content:
-            for method in ["GET", "POST", "PUT", "PATCH", "DELETE"]:
+            for method in ["GET", "POST", "PUT", "PATCH", "DELETE", "HEAD", "OPTIONS"]:
                 if (f"export async function {method}" in content or
                     f"export function {method}" in content or
                     f"export const {method}" in content):
@@ -325,15 +332,14 @@ class ReactAnalyzer(BaseAnalyzer):
         )
 
         # Pattern for React Router <Route> elements
+        # Note: No IGNORECASE - JSX/TSX is case-sensitive, Route must be capitalized
         route_pattern = re.compile(
-            r'<Route\s+[^>]*path=["\']([^"\']+)["\'][^>]*>',
-            re.IGNORECASE
+            r'<Route\s+[^>]*path=["\']([^"\']+)["\'][^>]*>'
         )
 
         # Pattern for createBrowserRouter routes
         browser_router_pattern = re.compile(
-            r'{\s*path:\s*["\']([^"\']+)["\']',
-            re.IGNORECASE
+            r'{\s*path:\s*["\']([^"\']+)["\']'
         )
 
         for file in route_files:

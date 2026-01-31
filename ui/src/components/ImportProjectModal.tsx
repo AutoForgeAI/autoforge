@@ -273,7 +273,7 @@ export function ImportProjectModal({
   // Analyzing step
   if (step === 'analyzing' || state.step === 'analyzing') {
     return (
-      <div className="neo-modal-backdrop" onClick={handleClose}>
+      <div className="neo-modal-backdrop" role="dialog" aria-modal="true" onClick={handleClose}>
         <div
           className="neo-modal w-full max-w-lg"
           onClick={(e) => e.stopPropagation()}
@@ -305,7 +305,7 @@ export function ImportProjectModal({
   // Error state (check both local and hook state for consistency)
   if (step === 'error' || state.step === 'error') {
     return (
-      <div className="neo-modal-backdrop" onClick={handleClose}>
+      <div className="neo-modal-backdrop" role="dialog" aria-modal="true" onClick={handleClose}>
         <div
           className="neo-modal w-full max-w-lg"
           onClick={(e) => e.stopPropagation()}
@@ -324,7 +324,9 @@ export function ImportProjectModal({
               <AlertCircle size={32} className="text-[var(--color-neo-error-text)]" />
             </div>
             <h3 className="font-bold text-lg mb-2">Analysis Failed</h3>
-            <p className="text-[var(--color-neo-error-text)] mb-4">{state.error}</p>
+            <p className="text-[var(--color-neo-error-text)] mb-4">
+              {state.error || 'An unexpected error occurred. Please try again.'}
+            </p>
             <button onClick={handleBack} className="neo-btn neo-btn-secondary">
               <ArrowLeft size={16} />
               Try Again
@@ -339,7 +341,7 @@ export function ImportProjectModal({
   if (step === 'detected' && state.analyzeResult) {
     const result = state.analyzeResult
     return (
-      <div className="neo-modal-backdrop" onClick={handleClose}>
+      <div className="neo-modal-backdrop" role="dialog" aria-modal="true" onClick={handleClose}>
         <div
           className="neo-modal w-full max-w-2xl max-h-[85vh] flex flex-col"
           onClick={(e) => e.stopPropagation()}
@@ -451,7 +453,7 @@ export function ImportProjectModal({
     })
 
     return (
-      <div className="neo-modal-backdrop" onClick={handleClose}>
+      <div className="neo-modal-backdrop" role="dialog" aria-modal="true" onClick={handleClose}>
         <div
           className="neo-modal w-full max-w-3xl max-h-[85vh] flex flex-col"
           onClick={(e) => e.stopPropagation()}
@@ -517,6 +519,15 @@ export function ImportProjectModal({
                         <div
                           key={`${feature.category}-${feature.name}`}
                           onClick={() => toggleFeature(feature)}
+                          onKeyDown={(e) => {
+                            if (e.key === 'Enter' || e.key === ' ') {
+                              e.preventDefault()
+                              toggleFeature(feature)
+                            }
+                          }}
+                          role="checkbox"
+                          aria-checked={isSelected}
+                          tabIndex={0}
                           className={`
                             flex items-start gap-3 p-3 cursor-pointer transition-all
                             border-2 border-[var(--color-neo-border)]
@@ -578,7 +589,7 @@ export function ImportProjectModal({
   // Register project step
   if (step === 'register') {
     return (
-      <div className="neo-modal-backdrop" onClick={handleClose}>
+      <div className="neo-modal-backdrop" role="dialog" aria-modal="true" onClick={handleClose}>
         <div
           className="neo-modal w-full max-w-lg"
           onClick={(e) => e.stopPropagation()}
@@ -664,7 +675,7 @@ export function ImportProjectModal({
   // Complete step
   if (step === 'complete') {
     return (
-      <div className="neo-modal-backdrop" onClick={handleClose}>
+      <div className="neo-modal-backdrop" role="dialog" aria-modal="true" onClick={handleClose}>
         <div
           className="neo-modal w-full max-w-lg"
           onClick={(e) => e.stopPropagation()}
