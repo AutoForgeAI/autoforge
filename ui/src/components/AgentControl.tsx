@@ -261,31 +261,29 @@ export function AgentControl({ projectName, status, agentStatusResponse, default
           <Clock size={18} />
         </Button>
 
-        {/* Doc Admin button - only show when running */}
-        {isRunning && (
-          <TooltipProvider>
-            <Tooltip>
-              <TooltipTrigger asChild>
-                <Button
-                  variant="outline"
-                  size="sm"
-                  onClick={() => runDocAdmin.mutate()}
-                  disabled={runDocAdmin.isPending}
-                  title="Run documentation admin"
-                >
-                  {runDocAdmin.isPending ? (
-                    <Loader2 size={18} className="animate-spin" />
-                  ) : (
-                    <FileText size={18} />
-                  )}
-                </Button>
-              </TooltipTrigger>
-              <TooltipContent>
-                Update documentation (CHANGELOG, README, etc.)
-              </TooltipContent>
-            </Tooltip>
-          </TooltipProvider>
-        )}
+        {/* Doc Admin button - always available */}
+        <TooltipProvider>
+          <Tooltip>
+            <TooltipTrigger asChild>
+              <Button
+                variant="outline"
+                size="sm"
+                onClick={() => runDocAdmin.mutate()}
+                disabled={runDocAdmin.isPending || isLoadingStatus}
+                title="Run documentation admin"
+              >
+                {runDocAdmin.isPending ? (
+                  <Loader2 size={18} className="animate-spin" />
+                ) : (
+                  <FileText size={18} />
+                )}
+              </Button>
+            </TooltipTrigger>
+            <TooltipContent>
+              Update documentation (CHANGELOG, README, etc.)
+            </TooltipContent>
+          </Tooltip>
+        </TooltipProvider>
       </div>
 
       {/* Schedule Modal */}

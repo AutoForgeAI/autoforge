@@ -282,17 +282,54 @@ async def run_doc_admin(project_name: str):
     """Manually trigger the documentation admin agent.
 
     This spawns a doc-admin agent to assess and update project documentation.
-    Only one doc-admin agent runs at a time.
+    Works whether the main agent is running or not.
     """
+    import subprocess
+    import sys
+
     manager = get_project_manager(project_name)
 
-    if not manager.orchestrator:
-        raise HTTPException(status_code=400, detail="Agent not running - start the agent first")
+    # If orchestrator is running, use it (maintains single doc-admin constraint)
+    if manager.orchestrator:
+        success, message = manager.orchestrator.run_doc_admin()
+        return AgentActionResponse(
+            success=success,
+            status=manager.status,
+            message=message,
+        )
 
-    success, message = manager.orchestrator.run_doc_admin()
+    # If not running, spawn doc-admin directly
+    project_dir = _get_project_path(project_name)
+    if not project_dir:
+        raise HTTPException(status_code=404, detail=f"Project not found: {project_name}")
 
-    return AgentActionResponse(
-        success=success,
-        status=manager.status,
-        message=message,
-    )
+    root_dir = Path(__file__).parent.parent.parent
+    cmd = [
+        sys.executable, "-u",
+        str(root_dir / "autonomous_agent_demo.py"),
+        "--project-dir", str(project_dir),
+        "--agent-type", "doc-admin",
+        "--max-iterations", "1",
+        "--model", "haiku",
+    ]
+
+    try:
+        # Fire and forget - don't wait for completion
+        subprocess.Popen(
+            cmd,
+            stdin=subprocess.DEVNULL,
+            stdout=subprocess.DEVNULL,
+            stderr=subprocess.DEVNULL,
+            cwd=str(root_dir),
+        )
+        return AgentActionResponse(
+            success=True,
+            status=manager.status,
+            message="Started doc-admin agent",
+        )
+    except Exception as e:
+        return AgentActionResponse(
+            success=False,
+            status=manager.status,
+            message=f"Failed to start doc-admin agent: {e}",
+        )
