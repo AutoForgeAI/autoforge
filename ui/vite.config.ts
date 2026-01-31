@@ -39,6 +39,19 @@ export default defineConfig({
   },
   server: {
     proxy: {
+      // WebSocket endpoints must be listed BEFORE /api to match first
+      '/api/spec/ws': {
+        target: `ws://127.0.0.1:${apiPort}`,
+        ws: true,
+      },
+      '/api/assistant/ws': {
+        target: `ws://127.0.0.1:${apiPort}`,
+        ws: true,
+      },
+      '/api/expand/ws': {
+        target: `ws://127.0.0.1:${apiPort}`,
+        ws: true,
+      },
       '/api': {
         target: `http://127.0.0.1:${apiPort}`,
         changeOrigin: true,
