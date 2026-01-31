@@ -275,3 +275,24 @@ async def graceful_stop(project_name: str):
         status=manager.status,
         message=message,
     )
+
+
+@router.post("/run-doc-admin", response_model=AgentActionResponse)
+async def run_doc_admin(project_name: str):
+    """Manually trigger the documentation admin agent.
+
+    This spawns a doc-admin agent to assess and update project documentation.
+    Only one doc-admin agent runs at a time.
+    """
+    manager = get_project_manager(project_name)
+
+    if not manager.orchestrator:
+        raise HTTPException(status_code=400, detail="Agent not running - start the agent first")
+
+    success, message = manager.orchestrator.run_doc_admin()
+
+    return AgentActionResponse(
+        success=success,
+        status=manager.status,
+        message=message,
+    )

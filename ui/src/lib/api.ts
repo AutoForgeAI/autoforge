@@ -310,6 +310,12 @@ export async function gracefulStopAgent(projectName: string): Promise<AgentActio
   })
 }
 
+export async function runDocAdmin(projectName: string): Promise<AgentActionResponse> {
+  return fetchJSON(`/projects/${encodeURIComponent(projectName)}/agent/run-doc-admin`, {
+    method: 'POST',
+  })
+}
+
 // ============================================================================
 // Spec Creation API
 // ============================================================================

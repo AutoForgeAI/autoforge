@@ -189,6 +189,11 @@ class ParallelOrchestrator:
         # Track feature failures to prevent infinite retry loops
         self._failure_counts: dict[int, int] = {}
 
+        # Doc-admin agent tracking
+        self._features_since_doc_admin = 0
+        self._doc_admin_interval = self._load_doc_admin_interval_setting()
+        self._doc_admin_running = False
+
         # Session tracking for logging/debugging
         self.session_start_time: datetime = None
 
@@ -214,6 +219,23 @@ class ParallelOrchestrator:
         except Exception as e:
             debug_log.log("SETTINGS", f"Failed to load pauseOnError setting: {e}")
             return True  # Default to True (safe default)
+
+    def _load_doc_admin_interval_setting(self) -> int:
+        """Load the docAdminInterval setting (features between doc-admin runs).
+
+        Returns 0 to disable automatic doc-admin, or a positive integer for the interval.
+        Default is 10 features.
+        """
+        try:
+            from settings import SettingsManager
+            manager = SettingsManager(project_path=self.project_dir)
+            interval = manager.get("docAdminInterval")
+            if interval is None:
+                return 10  # Default: run after every 10 features
+            return max(0, int(interval))  # 0 = disabled
+        except Exception as e:
+            debug_log.log("SETTINGS", f"Failed to load docAdminInterval setting: {e}")
+            return 10  # Default to 10
 
     def _get_random_passing_feature(self) -> int | None:
         """Get a random passing feature for regression testing (no claim needed).
@@ -652,6 +674,73 @@ class ParallelOrchestrator:
             total_testing_agents=testing_count)
         return True, f"Started testing agent for feature #{feature_id}"
 
+    def _spawn_doc_admin_agent(self) -> tuple[bool, str]:
+        """Spawn a doc-admin agent subprocess to maintain documentation.
+
+        This runs as a background task and doesn't block other agents.
+        Only one doc-admin agent runs at a time.
+        """
+        if self._doc_admin_running:
+            return False, "Doc-admin agent already running"
+
+        debug_log.log("DOC_ADMIN", "Spawning doc-admin agent")
+
+        cmd = [
+            sys.executable,
+            "-u",
+            str(AUTOCODER_ROOT / "autonomous_agent_demo.py"),
+            "--project-dir", str(self.project_dir),
+            "--max-iterations", "1",
+            "--agent-type", "doc-admin",
+        ]
+        # Use haiku for cost-effective documentation maintenance
+        cmd.extend(["--model", "haiku"])
+
+        try:
+            popen_kwargs = {
+                "stdin": subprocess.DEVNULL,
+                "stdout": subprocess.PIPE,
+                "stderr": subprocess.STDOUT,
+                "text": True,
+                "cwd": str(AUTOCODER_ROOT),
+                "env": {**os.environ, "PYTHONUNBUFFERED": "1"},
+            }
+            if sys.platform == "win32":
+                popen_kwargs["creationflags"] = subprocess.CREATE_NO_WINDOW
+
+            proc = subprocess.Popen(cmd, **popen_kwargs)
+        except Exception as e:
+            debug_log.log("DOC_ADMIN", f"FAILED to spawn doc-admin agent: {e}")
+            return False, f"Failed to start doc-admin agent: {e}"
+
+        self._doc_admin_running = True
+
+        # Start output reader thread (fire and forget - no feature tracking)
+        def read_doc_admin_output():
+            try:
+                for line in proc.stdout:
+                    line = line.rstrip()
+                    if line:
+                        print(f"[doc-admin] {line}", flush=True)
+                proc.wait()
+            finally:
+                self._doc_admin_running = False
+                status = "completed" if proc.returncode == 0 else "failed"
+                debug_log.log("DOC_ADMIN", f"Doc-admin agent {status}", return_code=proc.returncode)
+                print(f"[doc-admin] Agent {status}", flush=True)
+
+        threading.Thread(target=read_doc_admin_output, daemon=True).start()
+
+        print("[doc-admin] Started documentation maintenance agent", flush=True)
+        return True, "Started doc-admin agent"
+
+    def run_doc_admin(self) -> tuple[bool, str]:
+        """Public method to manually trigger doc-admin agent.
+
+        Can be called from API endpoint for on-demand documentation updates.
+        """
+        return self._spawn_doc_admin_agent()
+
     async def _run_initializer(self) -> bool:
         """Run initializer agent as blocking subprocess.
 
@@ -884,6 +973,13 @@ class ParallelOrchestrator:
             self.on_status(feature_id, status)
         # CRITICAL: This print triggers the WebSocket to emit agent_update with state='error' or 'success'
         print(f"Feature #{feature_id} {status}", flush=True)
+
+        # Trigger doc-admin agent after N successful features
+        if return_code == 0 and self._doc_admin_interval > 0:
+            self._features_since_doc_admin += 1
+            if self._features_since_doc_admin >= self._doc_admin_interval:
+                self._features_since_doc_admin = 0
+                self._spawn_doc_admin_agent()
 
         # Signal main loop that an agent slot is available
         self._signal_agent_completed()

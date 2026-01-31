@@ -42,6 +42,7 @@ BUILT_IN_DEFAULTS: dict[str, Any] = {
     "autoResume": True,
     "pauseOnError": True,
     "testingAgentRatio": 1,
+    "docAdminInterval": 10,  # Run doc-admin after every N features (0 = disabled)
 
     # Testing settings
     "testingDirectory": "",  # Empty means use project directory

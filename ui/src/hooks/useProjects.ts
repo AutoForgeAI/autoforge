@@ -233,6 +233,12 @@ export function useGracefulStopAgent(projectName: string) {
   })
 }
 
+export function useRunDocAdmin(projectName: string) {
+  return useMutation({
+    mutationFn: () => api.runDocAdmin(projectName),
+  })
+}
+
 // ============================================================================
 // Setup
 // ============================================================================

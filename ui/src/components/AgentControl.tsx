@@ -1,5 +1,5 @@
 import { useState, useEffect, useRef, useCallback } from 'react'
-import { Play, Square, Loader2, GitBranch, Clock, PauseCircle, PlayCircle } from 'lucide-react'
+import { Play, Square, Loader2, GitBranch, Clock, PauseCircle, PlayCircle, FileText } from 'lucide-react'
 import {
   useStartAgent,
   useStopAgent,
@@ -7,6 +7,7 @@ import {
   useUpdateProjectSettings,
   usePausePickup,
   useResumePickup,
+  useRunDocAdmin,
 } from '../hooks/useProjects'
 import { useNextScheduledRun } from '../hooks/useSchedules'
 import { formatNextRun, formatEndTime } from '../lib/timeUtils'
@@ -77,6 +78,7 @@ export function AgentControl({ projectName, status, agentStatusResponse, default
   const stopAgent = useStopAgent(projectName)
   const pausePickup = usePausePickup(projectName)
   const resumePickup = useResumePickup(projectName)
+  const runDocAdmin = useRunDocAdmin(projectName)
   const { data: nextRun } = useNextScheduledRun(projectName)
 
   const [showScheduleModal, setShowScheduleModal] = useState(false)
@@ -258,6 +260,32 @@ export function AgentControl({ projectName, status, agentStatusResponse, default
         >
           <Clock size={18} />
         </Button>
+
+        {/* Doc Admin button - only show when running */}
+        {isRunning && (
+          <TooltipProvider>
+            <Tooltip>
+              <TooltipTrigger asChild>
+                <Button
+                  variant="outline"
+                  size="sm"
+                  onClick={() => runDocAdmin.mutate()}
+                  disabled={runDocAdmin.isPending}
+                  title="Run documentation admin"
+                >
+                  {runDocAdmin.isPending ? (
+                    <Loader2 size={18} className="animate-spin" />
+                  ) : (
+                    <FileText size={18} />
+                  )}
+                </Button>
+              </TooltipTrigger>
+              <TooltipContent>
+                Update documentation (CHANGELOG, README, etc.)
+              </TooltipContent>
+            </Tooltip>
+          </TooltipProvider>
+        )}
       </div>
 
       {/* Schedule Modal */}
