@@ -16,7 +16,8 @@ import json
 import os
 import shutil
 import subprocess
-from datetime import datetime
+import time
+from datetime import datetime, timezone
 from pathlib import Path
 from typing import Any, TypedDict, cast
 
@@ -49,7 +50,6 @@ def _run_command(cmd: list[str], cwd: Path, timeout: int = 60) -> tuple[int, str
     Returns:
         (exit_code, combined_output, duration_ms)
     """
-    import time
     start = time.time()
 
     try:
@@ -289,8 +289,28 @@ def run_custom_script(
     except OSError:
         pass
 
+    # Determine shell command based on platform and script extension
+    if os.name == "nt":  # Windows
+        ext = script_full_path.suffix.lower()
+        if ext in (".bat", ".cmd"):
+            shell_cmd = ["cmd.exe", "/c", str(script_full_path)]
+        elif ext == ".ps1":
+            shell_cmd = ["powershell.exe", "-ExecutionPolicy", "Bypass", "-File", str(script_full_path)]
+        elif shutil.which("bash"):
+            # Git Bash or WSL available
+            shell_cmd = ["bash", str(script_full_path)]
+        else:
+            return {
+                "name": "custom_script",
+                "passed": False,
+                "output": f"Cannot run {script_full_path.suffix} script on Windows without bash. Install Git Bash or use .bat/.ps1 script.",
+                "duration_ms": 0,
+            }
+    else:  # POSIX (Linux, macOS)
+        shell_cmd = ["bash", str(script_full_path)]
+
     exit_code, output, duration_ms = _run_command(
-        ["bash", str(script_full_path)],
+        shell_cmd,
         project_dir,
         timeout=300,  # 5 minutes for custom scripts
     )
@@ -365,7 +385,7 @@ def verify_quality(
 
     return {
         "passed": all_passed,
-        "timestamp": datetime.utcnow().isoformat(),
+        "timestamp": datetime.now(timezone.utc).isoformat(),
         "checks": checks,
         "summary": summary,
     }
