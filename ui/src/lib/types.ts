@@ -10,12 +10,22 @@ export interface ProjectStats {
   percentage: number
 }
 
+export interface ProjectArtifacts {
+  has_code: boolean        // Has src/, lib/, or config files
+  has_claude_md: boolean   // Has CLAUDE.md
+  has_features_db: boolean // Has features.db with features
+  has_git: boolean         // Has .git directory
+  feature_count: number    // Number of features in database
+  code_indicators: string[] // List of detected code files/dirs
+}
+
 export interface ProjectSummary {
   name: string
   path: string
   has_spec: boolean
   stats: ProjectStats
   default_concurrency: number
+  artifacts?: ProjectArtifacts | null // Detected artifacts for existing projects
 }
 
 export interface ProjectDetail extends ProjectSummary {
@@ -1109,4 +1119,54 @@ export interface NextRunResponse {
   next_end: string | null    // ISO datetime in UTC (latest end if overlapping)
   is_currently_running: boolean
   active_schedule_count: number
+}
+
+// ============================================================================
+// Worktree Types (Git Worktree Integration)
+// ============================================================================
+
+export interface WorktreeStatus {
+  exists: boolean
+  worktreePath: string | null
+  branch: string | null
+  commitsAhead: number
+  hasChanges: boolean
+  mainBranch: string
+}
+
+export interface WorktreeDiffFile {
+  status: 'added' | 'modified' | 'deleted' | 'renamed' | 'unknown'
+  path: string
+}
+
+export interface WorktreeDiff {
+  files: WorktreeDiffFile[]
+  summary: string | null
+  mainBranch: string
+}
+
+export interface WorktreeCreateRequest {
+  fromBranch?: string
+}
+
+export interface WorktreeMergeRequest {
+  commitMessage?: string
+  deleteAfter?: boolean
+}
+
+export interface WorktreeActionResponse {
+  success: boolean
+  message: string
+}
+
+// Git repo initialization options for new project creation
+export type GitRepoOption = 'new' | 'existing' | 'clone' | 'none'
+
+export interface GitCloneRequest {
+  url: string
+  branch?: string
+}
+
+export interface GitInitRequest {
+  initialBranch?: string
 }

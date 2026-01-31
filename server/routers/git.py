@@ -648,3 +648,245 @@ async def remove_git_remote(project_name: str, remote_name: str):
         }
 
     return {"success": True, "message": f"Removed remote '{remote_name}'"}
+
+
+# =============================================================================
+# Worktree Endpoints
+# =============================================================================
+
+
+class WorktreeCreateRequest(BaseModel):
+    """Request to create a worktree."""
+
+    fromBranch: str | None = None
+
+
+class WorktreeMergeRequest(BaseModel):
+    """Request to merge worktree changes."""
+
+    commitMessage: str | None = None
+    deleteAfter: bool = True
+
+
+class WorktreeActionResponse(BaseModel):
+    """Response from worktree actions."""
+
+    success: bool
+    message: str
+
+
+@router.get("/worktree/{project_name}/status")
+async def get_worktree_status(project_name: str):
+    """
+    Get the worktree status for a project.
+
+    Args:
+        project_name: The project name.
+
+    Returns:
+        Worktree status information.
+    """
+    import sys
+
+    root_dir = Path(__file__).parent.parent.parent
+    if str(root_dir) not in sys.path:
+        sys.path.insert(0, str(root_dir))
+
+    from registry import get_project_path
+    from server.services.worktree_manager import get_worktree_manager
+
+    project_path = get_project_path(project_name)
+    if project_path is None:
+        raise HTTPException(status_code=404, detail=f"Project not found: {project_name}")
+
+    if not project_path.exists():
+        raise HTTPException(status_code=404, detail=f"Project path does not exist: {project_path}")
+
+    manager = get_worktree_manager(project_name, project_path)
+    return manager.get_status()
+
+
+@router.get("/worktree/{project_name}/diff")
+async def get_worktree_diff(project_name: str):
+    """
+    Get the diff between worktree and main branch.
+
+    Args:
+        project_name: The project name.
+
+    Returns:
+        Diff information.
+    """
+    import sys
+
+    root_dir = Path(__file__).parent.parent.parent
+    if str(root_dir) not in sys.path:
+        sys.path.insert(0, str(root_dir))
+
+    from registry import get_project_path
+    from server.services.worktree_manager import get_worktree_manager
+
+    project_path = get_project_path(project_name)
+    if project_path is None:
+        raise HTTPException(status_code=404, detail=f"Project not found: {project_name}")
+
+    if not project_path.exists():
+        raise HTTPException(status_code=404, detail=f"Project path does not exist: {project_path}")
+
+    manager = get_worktree_manager(project_name, project_path)
+    return manager.get_diff()
+
+
+@router.post("/worktree/{project_name}/create", response_model=WorktreeActionResponse)
+async def create_worktree(project_name: str, request: WorktreeCreateRequest | None = None):
+    """
+    Create a worktree for the project.
+
+    Args:
+        project_name: The project name.
+        request: Optional request with fromBranch parameter.
+
+    Returns:
+        Success status and message.
+    """
+    import sys
+
+    root_dir = Path(__file__).parent.parent.parent
+    if str(root_dir) not in sys.path:
+        sys.path.insert(0, str(root_dir))
+
+    from registry import get_project_path, set_project_worktree_path
+    from server.services.worktree_manager import get_worktree_manager
+
+    project_path = get_project_path(project_name)
+    if project_path is None:
+        raise HTTPException(status_code=404, detail=f"Project not found: {project_name}")
+
+    if not project_path.exists():
+        raise HTTPException(status_code=404, detail=f"Project path does not exist: {project_path}")
+
+    manager = get_worktree_manager(project_name, project_path)
+    from_branch = request.fromBranch if request else None
+    success, message = manager.create(from_branch=from_branch)
+
+    if success:
+        # Store worktree path in registry
+        set_project_worktree_path(project_name, manager.worktree_path)
+
+    return WorktreeActionResponse(success=success, message=message)
+
+
+@router.post("/worktree/{project_name}/merge", response_model=WorktreeActionResponse)
+async def merge_worktree(project_name: str, request: WorktreeMergeRequest | None = None):
+    """
+    Merge worktree changes back to main branch.
+
+    Args:
+        project_name: The project name.
+        request: Optional request with merge options.
+
+    Returns:
+        Success status and message.
+    """
+    import sys
+
+    root_dir = Path(__file__).parent.parent.parent
+    if str(root_dir) not in sys.path:
+        sys.path.insert(0, str(root_dir))
+
+    from registry import clear_project_worktree_path, get_project_path
+    from server.services.worktree_manager import get_worktree_manager
+
+    project_path = get_project_path(project_name)
+    if project_path is None:
+        raise HTTPException(status_code=404, detail=f"Project not found: {project_name}")
+
+    if not project_path.exists():
+        raise HTTPException(status_code=404, detail=f"Project path does not exist: {project_path}")
+
+    manager = get_worktree_manager(project_name, project_path)
+    commit_message = request.commitMessage if request else None
+    delete_after = request.deleteAfter if request else True
+
+    success, message = manager.merge_to_main(
+        commit_message=commit_message,
+        delete_after=delete_after
+    )
+
+    if success and delete_after:
+        # Clear worktree path from registry
+        clear_project_worktree_path(project_name)
+
+    return WorktreeActionResponse(success=success, message=message)
+
+
+@router.post("/worktree/{project_name}/stage", response_model=WorktreeActionResponse)
+async def stage_worktree_changes(project_name: str):
+    """
+    Stage worktree changes in main project without committing.
+
+    Allows user to review changes before committing.
+
+    Args:
+        project_name: The project name.
+
+    Returns:
+        Success status and message.
+    """
+    import sys
+
+    root_dir = Path(__file__).parent.parent.parent
+    if str(root_dir) not in sys.path:
+        sys.path.insert(0, str(root_dir))
+
+    from registry import get_project_path
+    from server.services.worktree_manager import get_worktree_manager
+
+    project_path = get_project_path(project_name)
+    if project_path is None:
+        raise HTTPException(status_code=404, detail=f"Project not found: {project_name}")
+
+    if not project_path.exists():
+        raise HTTPException(status_code=404, detail=f"Project path does not exist: {project_path}")
+
+    manager = get_worktree_manager(project_name, project_path)
+    success, message = manager.stage_changes()
+
+    return WorktreeActionResponse(success=success, message=message)
+
+
+@router.delete("/worktree/{project_name}", response_model=WorktreeActionResponse)
+async def discard_worktree(project_name: str):
+    """
+    Discard worktree changes and remove the worktree.
+
+    Args:
+        project_name: The project name.
+
+    Returns:
+        Success status and message.
+    """
+    import sys
+
+    root_dir = Path(__file__).parent.parent.parent
+    if str(root_dir) not in sys.path:
+        sys.path.insert(0, str(root_dir))
+
+    from registry import clear_project_worktree_path, get_project_path
+    from server.services.worktree_manager import get_worktree_manager
+
+    project_path = get_project_path(project_name)
+    if project_path is None:
+        raise HTTPException(status_code=404, detail=f"Project not found: {project_name}")
+
+    if not project_path.exists():
+        raise HTTPException(status_code=404, detail=f"Project path does not exist: {project_path}")
+
+    manager = get_worktree_manager(project_name, project_path)
+    success, message = manager.discard()
+
+    if success:
+        # Clear worktree path from registry
+        clear_project_worktree_path(project_name)
+
+    return WorktreeActionResponse(success=success, message=message)

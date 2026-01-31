@@ -510,3 +510,45 @@ async def get_home_directory():
         "path": home.as_posix(),
         "display_path": str(home),
     }
+
+
+@router.get("/check-git")
+async def check_git_repo(path: str = Query(..., description="Path to check for git repository")):
+    """
+    Check if a path is a git repository.
+
+    Args:
+        path: The filesystem path to check.
+
+    Returns:
+        Dictionary with isRepo boolean and branch name if applicable.
+    """
+    import subprocess
+
+    try:
+        check_path = Path(path)
+        if not check_path.exists():
+            return {"isRepo": False, "branch": None}
+
+        # Check if it's a git repo by looking for .git
+        git_dir = check_path / ".git"
+        if not git_dir.exists():
+            return {"isRepo": False, "branch": None}
+
+        # Get current branch
+        try:
+            result = subprocess.run(
+                ["git", "rev-parse", "--abbrev-ref", "HEAD"],
+                cwd=str(check_path),
+                capture_output=True,
+                text=True,
+                timeout=5,
+            )
+            branch = result.stdout.strip() if result.returncode == 0 else None
+        except Exception:
+            branch = None
+
+        return {"isRepo": True, "branch": branch}
+    except Exception as e:
+        logger.error(f"Error checking git repo at {path}: {e}")
+        return {"isRepo": False, "branch": None, "error": str(e)}

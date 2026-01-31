@@ -695,6 +695,61 @@ export async function removeGitRemote(
 }
 
 // ============================================================================
+// Worktree API (Git Worktree Integration)
+// ============================================================================
+
+import type {
+  WorktreeStatus,
+  WorktreeDiff,
+  WorktreeActionResponse,
+} from './types'
+
+export async function getWorktreeStatus(projectName: string): Promise<WorktreeStatus> {
+  return fetchJSON(`/git/worktree/${encodeURIComponent(projectName)}/status`)
+}
+
+export async function getWorktreeDiff(projectName: string): Promise<WorktreeDiff> {
+  return fetchJSON(`/git/worktree/${encodeURIComponent(projectName)}/diff`)
+}
+
+export async function createWorktree(
+  projectName: string,
+  fromBranch?: string
+): Promise<WorktreeActionResponse> {
+  return fetchJSON(`/git/worktree/${encodeURIComponent(projectName)}/create`, {
+    method: 'POST',
+    body: JSON.stringify({ fromBranch }),
+  })
+}
+
+export async function mergeWorktree(
+  projectName: string,
+  commitMessage?: string,
+  deleteAfter: boolean = true
+): Promise<WorktreeActionResponse> {
+  return fetchJSON(`/git/worktree/${encodeURIComponent(projectName)}/merge`, {
+    method: 'POST',
+    body: JSON.stringify({ commitMessage, deleteAfter }),
+  })
+}
+
+export async function stageWorktreeChanges(
+  projectName: string
+): Promise<WorktreeActionResponse> {
+  return fetchJSON(`/git/worktree/${encodeURIComponent(projectName)}/stage`, {
+    method: 'POST',
+  })
+}
+
+export async function discardWorktree(
+  projectName: string
+): Promise<WorktreeActionResponse> {
+  return fetchJSON(`/git/worktree/${encodeURIComponent(projectName)}`, {
+    method: 'DELETE',
+  })
+}
+
+// ============================================================================
 // Usage API (Chance Edition Phase 3)
 // ============================================================================
 

@@ -14,6 +14,7 @@ from pathlib import Path
 from fastapi import APIRouter, HTTPException
 
 from ..schemas import (
+    ProjectArtifacts,
     ProjectCreate,
     ProjectDetail,
     ProjectPrompts,
@@ -109,6 +110,58 @@ def get_project_stats(project_dir: Path) -> ProjectStats:
     )
 
 
+def detect_project_artifacts(project_dir: Path) -> ProjectArtifacts:
+    """Detect artifacts indicating an existing project."""
+    code_indicators: list[str] = []
+
+    # Check for common code directories
+    code_dirs = ["src", "lib", "app", "components", "pages", "api", "server", "client"]
+    for dirname in code_dirs:
+        if (project_dir / dirname).is_dir():
+            code_indicators.append(f"{dirname}/")
+
+    # Check for common project config files
+    config_files = [
+        "package.json", "pyproject.toml", "Cargo.toml", "go.mod",
+        "pom.xml", "build.gradle", "setup.py", "requirements.txt",
+        "tsconfig.json", "vite.config.ts", "next.config.js",
+    ]
+    for filename in config_files:
+        if (project_dir / filename).exists():
+            code_indicators.append(filename)
+
+    # Check for CLAUDE.md
+    has_claude_md = (project_dir / "CLAUDE.md").exists()
+
+    # Check for .git
+    has_git = (project_dir / ".git").is_dir()
+
+    # Check for features.db with features
+    has_features_db = False
+    feature_count = 0
+    features_db_path = project_dir / "features.db"
+    if features_db_path.exists():
+        has_features_db = True
+        try:
+            import sqlite3
+            conn = sqlite3.connect(str(features_db_path))
+            cursor = conn.cursor()
+            cursor.execute("SELECT COUNT(*) FROM features")
+            feature_count = cursor.fetchone()[0]
+            conn.close()
+        except Exception:
+            pass  # Database might be locked or corrupted
+
+    return ProjectArtifacts(
+        has_code=len(code_indicators) > 0,
+        has_claude_md=has_claude_md,
+        has_features_db=has_features_db,
+        has_git=has_git,
+        feature_count=feature_count,
+        code_indicators=code_indicators[:10],  # Limit to first 10
+    )
+
+
 @router.get("", response_model=list[ProjectSummary])
 async def list_projects():
     """List all registered projects."""
@@ -130,12 +183,18 @@ async def list_projects():
         has_spec = _check_spec_exists(project_dir)
         stats = get_project_stats(project_dir)
 
+        # Detect artifacts for projects without spec (helps UI decide setup flow)
+        artifacts = None
+        if not has_spec:
+            artifacts = detect_project_artifacts(project_dir)
+
         result.append(ProjectSummary(
             name=name,
             path=info["path"],
             has_spec=has_spec,
             stats=stats,
             default_concurrency=info.get("default_concurrency", 3),
+            artifacts=artifacts,
         ))
 
     return result

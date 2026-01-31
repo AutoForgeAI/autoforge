@@ -57,6 +57,9 @@ class Feature(Base):
     # Dependencies: list of feature IDs that must be completed before this feature
     # NULL/empty = no dependencies (backwards compatible)
     dependencies = Column(JSON, nullable=True, default=None)
+    # Task-level graceful shutdown support
+    resume_notes = Column(Text, nullable=True, default=None)
+    partial_complete = Column(Boolean, nullable=False, default=False)
 
     def to_dict(self) -> dict:
         """Convert feature to dictionary for JSON serialization."""
@@ -247,6 +250,29 @@ def _migrate_add_testing_columns(engine) -> None:
     pass
 
 
+def _migrate_add_graceful_shutdown_columns(engine) -> None:
+    """Add resume_notes and partial_complete columns for graceful shutdown support.
+
+    These columns support task-level graceful shutdown:
+    - resume_notes: Text field to store state when agent stops mid-feature
+    - partial_complete: Boolean indicating feature is partially done
+    """
+    with engine.connect() as conn:
+        # Check existing columns
+        result = conn.execute(text("PRAGMA table_info(features)"))
+        columns = [row[1] for row in result.fetchall()]
+
+        # Add resume_notes column if missing
+        if "resume_notes" not in columns:
+            conn.execute(text("ALTER TABLE features ADD COLUMN resume_notes TEXT DEFAULT NULL"))
+
+        # Add partial_complete column if missing
+        if "partial_complete" not in columns:
+            conn.execute(text("ALTER TABLE features ADD COLUMN partial_complete BOOLEAN DEFAULT 0"))
+
+        conn.commit()
+
+
 def _is_network_path(path: Path) -> bool:
     """Detect if path is on a network filesystem.
 
@@ -372,6 +398,7 @@ def create_database(project_dir: Path) -> tuple:
     _migrate_fix_null_boolean_fields(engine)
     _migrate_add_dependencies_column(engine)
     _migrate_add_testing_columns(engine)
+    _migrate_add_graceful_shutdown_columns(engine)
 
     # Migrate to add schedules tables
     _migrate_add_schedules_tables(engine)

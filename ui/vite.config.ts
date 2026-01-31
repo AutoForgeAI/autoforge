@@ -43,14 +43,24 @@ export default defineConfig({
       '/api/spec/ws': {
         target: `ws://127.0.0.1:${apiPort}`,
         ws: true,
+        // Handle connection errors gracefully during restarts
+        configure: (proxy) => {
+          proxy.on('error', () => {}) // Silently handle - browser will auto-reconnect
+        },
       },
       '/api/assistant/ws': {
         target: `ws://127.0.0.1:${apiPort}`,
         ws: true,
+        configure: (proxy) => {
+          proxy.on('error', () => {})
+        },
       },
       '/api/expand/ws': {
         target: `ws://127.0.0.1:${apiPort}`,
         ws: true,
+        configure: (proxy) => {
+          proxy.on('error', () => {})
+        },
       },
       '/api': {
         target: `http://127.0.0.1:${apiPort}`,
@@ -59,6 +69,9 @@ export default defineConfig({
       '/ws': {
         target: `ws://127.0.0.1:${apiPort}`,
         ws: true,
+        configure: (proxy) => {
+          proxy.on('error', () => {})
+        },
       },
     },
   },

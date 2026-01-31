@@ -100,6 +100,7 @@ class Project(Base):
     path = Column(String, nullable=False)  # POSIX format for cross-platform
     created_at = Column(DateTime, nullable=False)
     default_concurrency = Column(Integer, nullable=False, default=3)
+    worktree_path = Column(String, nullable=True)  # Path to active worktree, if any
 
 
 class Settings(Base):
@@ -162,6 +163,7 @@ def _get_engine():
                 )
                 Base.metadata.create_all(bind=_engine)
                 _migrate_add_default_concurrency(_engine)
+                _migrate_add_worktree_path(_engine)
                 _SessionLocal = sessionmaker(autocommit=False, autoflush=False, bind=_engine)
                 logger.debug("Initialized registry database at: %s", db_path)
 
@@ -179,6 +181,19 @@ def _migrate_add_default_concurrency(engine) -> None:
             ))
             conn.commit()
             logger.info("Migrated projects table: added default_concurrency column")
+
+
+def _migrate_add_worktree_path(engine) -> None:
+    """Add worktree_path column if missing (for existing databases)."""
+    with engine.connect() as conn:
+        result = conn.execute(text("PRAGMA table_info(projects)"))
+        columns = [row[1] for row in result.fetchall()]
+        if "worktree_path" not in columns:
+            conn.execute(text(
+                "ALTER TABLE projects ADD COLUMN worktree_path TEXT DEFAULT NULL"
+            ))
+            conn.commit()
+            logger.info("Migrated projects table: added worktree_path column")
 
 
 @contextmanager
@@ -440,6 +455,71 @@ def set_project_concurrency(name: str, concurrency: int) -> bool:
 
     logger.info("Set project '%s' default_concurrency to %d", name, concurrency)
     return True
+
+
+def get_project_worktree_path(name: str) -> Path | None:
+    """
+    Get project's active worktree path.
+
+    Args:
+        name: The project name.
+
+    Returns:
+        The worktree path, or None if not set or project not found.
+    """
+    _, SessionLocal = _get_engine()
+    session = SessionLocal()
+    try:
+        project = session.query(Project).filter(Project.name == name).first()
+        if project is None:
+            return None
+        worktree_path = getattr(project, 'worktree_path', None)
+        if worktree_path:
+            return Path(worktree_path)
+        return None
+    finally:
+        session.close()
+
+
+def set_project_worktree_path(name: str, worktree_path: Path | None) -> bool:
+    """
+    Set project's active worktree path.
+
+    Args:
+        name: The project name.
+        worktree_path: The worktree path, or None to clear.
+
+    Returns:
+        True if updated, False if project wasn't found.
+    """
+    with _get_session() as session:
+        project = session.query(Project).filter(Project.name == name).first()
+        if not project:
+            return False
+
+        if worktree_path is None:
+            project.worktree_path = None
+        else:
+            project.worktree_path = str(Path(worktree_path).resolve().as_posix())
+
+    if worktree_path:
+        logger.info("Set project '%s' worktree_path to %s", name, worktree_path)
+    else:
+        logger.info("Cleared project '%s' worktree_path", name)
+    return True
+
+
+def clear_project_worktree_path(name: str) -> bool:
+    """
+    Clear project's active worktree path.
+
+    Args:
+        name: The project name.
+
+    Returns:
+        True if updated, False if project wasn't found.
+    """
+    return set_project_worktree_path(name, None)
 
 
 # =============================================================================

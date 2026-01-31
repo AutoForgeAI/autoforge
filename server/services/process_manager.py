@@ -23,6 +23,7 @@ import psutil
 sys.path.insert(0, str(Path(__file__).parent.parent.parent))
 from auth import AUTH_ERROR_HELP_SERVER as AUTH_ERROR_HELP  # noqa: E402
 from auth import is_auth_error
+from server.logging_config import log_agent_output
 from server.utils.process_utils import kill_process_tree
 
 logger = logging.getLogger(__name__)
@@ -85,6 +86,7 @@ class AgentProcessManager:
         self.parallel_mode: bool = False  # Parallel execution mode
         self.max_concurrency: int | None = None  # Max concurrent agents
         self.testing_agent_ratio: int = 1  # Regression testing agents (0-3)
+        self.worktree_path: Path | None = None  # Worktree path if using git worktree
 
         # Support multiple callbacks (for multiple WebSocket clients)
         self._output_callbacks: Set[Callable[[str], Awaitable[None]]] = set()
@@ -227,7 +229,10 @@ class AgentProcessManager:
         self.lock_file.unlink(missing_ok=True)
 
     async def _broadcast_output(self, line: str) -> None:
-        """Broadcast output line to all registered callbacks."""
+        """Broadcast output line to all registered callbacks and log to file."""
+        # Log to agent log file
+        log_agent_output(line, self.project_name)
+
         with self._callbacks_lock:
             callbacks = list(self._output_callbacks)
 
@@ -323,13 +328,34 @@ class AgentProcessManager:
         self.max_concurrency = max_concurrency or 1
         self.testing_agent_ratio = testing_agent_ratio
 
+        # Create worktree for agent work if the project is a git repo
+        work_dir = self.project_dir
+        try:
+            from server.services.worktree_manager import get_worktree_manager, is_git_repo
+            if is_git_repo(self.project_dir):
+                manager = get_worktree_manager(self.project_name, self.project_dir)
+                if not manager.exists():
+                    success, msg = manager.create()
+                    if success:
+                        work_dir = manager.worktree_path
+                        self.worktree_path = work_dir
+                        logger.info(f"Created worktree for {self.project_name} at {work_dir}")
+                    else:
+                        logger.warning(f"Failed to create worktree: {msg}, using project dir")
+                else:
+                    work_dir = manager.worktree_path
+                    self.worktree_path = work_dir
+                    logger.info(f"Using existing worktree for {self.project_name} at {work_dir}")
+        except Exception as e:
+            logger.warning(f"Worktree setup failed, using project dir: {e}")
+
         # Build command - unified orchestrator with --concurrency
         cmd = [
             sys.executable,
             "-u",  # Force unbuffered stdout/stderr for real-time output
             str(self.root_dir / "autonomous_agent_demo.py"),
             "--project-dir",
-            str(self.project_dir.resolve()),
+            str(work_dir.resolve()),
         ]
 
         # Add --model flag if model is specified
@@ -348,7 +374,7 @@ class AgentProcessManager:
 
         try:
             # Start subprocess with piped stdout/stderr
-            # Use project_dir as cwd so Claude SDK sandbox allows access to project files
+            # Use work_dir as cwd so Claude SDK sandbox allows access to project files
             # stdin=DEVNULL prevents blocking if Claude CLI or child process tries to read stdin
             # CREATE_NO_WINDOW on Windows prevents console window pop-ups
             # PYTHONUNBUFFERED ensures output isn't delayed
@@ -356,7 +382,7 @@ class AgentProcessManager:
                 "stdin": subprocess.DEVNULL,
                 "stdout": subprocess.PIPE,
                 "stderr": subprocess.STDOUT,
-                "cwd": str(self.project_dir),
+                "cwd": str(work_dir),
                 "env": {**os.environ, "PYTHONUNBUFFERED": "1"},
             }
             if sys.platform == "win32":

@@ -28,6 +28,7 @@ import { KeyboardShortcutsHelp } from './components/KeyboardShortcutsHelp'
 import { ThemeSelector } from './components/ThemeSelector'
 import { ResetProjectModal } from './components/ResetProjectModal'
 import { ProjectSetupRequired } from './components/ProjectSetupRequired'
+import { ExistingProjectSetup } from './components/ExistingProjectSetup'
 import { GitStatusBar } from './components/GitStatusBar'
 import { ActiveSettingsDisplay } from './components/ActiveSettingsDisplay'
 import { ServerStatusBanner } from './components/ServerStatusBanner'
@@ -35,7 +36,7 @@ import { ServerStatusBanner } from './components/ServerStatusBanner'
 import { PRWorkflowPanel } from './components/PRWorkflowPanel'
 import { DeployPanel } from './components/DeployPanel'
 import { VersionBadgeDetailed } from './components/VersionBadge'
-import { getDependencyGraph } from './lib/api'
+import { getDependencyGraph, runDocAdmin } from './lib/api'
 import { Loader2, Settings, Moon, Sun, RotateCcw } from 'lucide-react'
 import type { Feature } from './lib/types'
 import { Button } from '@/components/ui/button'
@@ -418,15 +419,38 @@ function App() {
             </p>
           </div>
         ) : !hasSpec ? (
-          <ProjectSetupRequired
-            projectName={selectedProject}
-            projectPath={selectedProjectData?.path}
-            onCreateWithClaude={() => setShowSpecChat(true)}
-            onEditManually={() => {
-              // Open debug panel for the user to see the project path
-              setDebugOpen(true)
-            }}
-          />
+          // Check if this is an existing project with code artifacts
+          selectedProjectData?.artifacts && (
+            selectedProjectData.artifacts.has_code ||
+            selectedProjectData.artifacts.has_claude_md ||
+            selectedProjectData.artifacts.has_features_db
+          ) ? (
+            <ExistingProjectSetup
+              projectName={selectedProject}
+              projectPath={selectedProjectData?.path}
+              artifacts={selectedProjectData.artifacts}
+              onExpandProject={() => setShowExpandProject(true)}
+              onCreateSpec={() => setShowSpecChat(true)}
+              onDocAdmin={async () => {
+                // Run doc-admin agent
+                try {
+                  await runDocAdmin(selectedProject)
+                } catch (error) {
+                  console.error('Failed to start doc-admin:', error)
+                }
+              }}
+            />
+          ) : (
+            <ProjectSetupRequired
+              projectName={selectedProject}
+              projectPath={selectedProjectData?.path}
+              onCreateWithClaude={() => setShowSpecChat(true)}
+              onEditManually={() => {
+                // Open debug panel for the user to see the project path
+                setDebugOpen(true)
+              }}
+            />
+          )
         ) : (
           <div className="space-y-8">
             {/* Progress Dashboard */}
@@ -462,11 +486,9 @@ function App() {
               />
             )}
 
-            {/* PR Workflow and Deploy Panels - side by side on larger screens */}
-            <div className="grid grid-cols-1 lg:grid-cols-2 gap-4">
-              <PRWorkflowPanel projectName={selectedProject} />
-              <DeployPanel projectName={selectedProject} />
-            </div>
+            {/* PR Workflow Panel - Deploy panel hidden until worktree integration complete */}
+            <PRWorkflowPanel projectName={selectedProject} />
+            {/* <DeployPanel projectName={selectedProject} /> */}
 
             {/* Initializing Features State - show when agent is running but no features yet */}
             {features &&

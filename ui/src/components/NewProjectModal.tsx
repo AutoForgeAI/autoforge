@@ -4,17 +4,19 @@
  * Multi-step modal for creating new projects:
  * 1. Enter project name
  * 2. Select project folder
- * 3. Choose spec method (Claude or manual)
- * 4a. If Claude: Show SpecCreationChat
- * 4b. If manual: Create project and close
+ * 3. Git repository setup (new/existing/clone/none)
+ * 4. Choose spec method (Claude or manual)
+ * 5a. If Claude: Show SpecCreationChat
+ * 5b. If manual: Create project and close
  */
 
 import { useState } from 'react'
-import { Bot, FileEdit, ArrowRight, ArrowLeft, Loader2, CheckCircle2, Folder } from 'lucide-react'
+import { Bot, FileEdit, ArrowRight, ArrowLeft, Loader2, CheckCircle2, Folder, GitBranch, Check } from 'lucide-react'
 import { useCreateProject } from '../hooks/useProjects'
 import { SpecCreationChat } from './SpecCreationChat'
 import { FolderBrowser } from './FolderBrowser'
-import { startAgent } from '../lib/api'
+import { startAgent, getGitStatus, initGitRepo } from '../lib/api'
+import type { GitRepoOption } from '../lib/types'
 import {
   Dialog,
   DialogContent,
@@ -32,7 +34,7 @@ import { Card, CardContent } from '@/components/ui/card'
 
 type InitializerStatus = 'idle' | 'starting' | 'error'
 
-type Step = 'name' | 'folder' | 'method' | 'chat' | 'complete'
+type Step = 'name' | 'folder' | 'git' | 'method' | 'chat' | 'complete'
 type SpecMethod = 'claude' | 'manual'
 
 interface NewProjectModalProps {
@@ -56,6 +58,9 @@ export function NewProjectModal({
   const [initializerStatus, setInitializerStatus] = useState<InitializerStatus>('idle')
   const [initializerError, setInitializerError] = useState<string | null>(null)
   const [yoloModeSelected, setYoloModeSelected] = useState(false)
+  const [gitOption, setGitOption] = useState<GitRepoOption | null>(null)
+  const [isExistingRepo, setIsExistingRepo] = useState(false)
+  const [gitSetupPending, setGitSetupPending] = useState(false)
 
   // Suppress unused variable warning - specMethod may be used in future
   void _specMethod
@@ -88,13 +93,85 @@ export function NewProjectModal({
     changeStep('folder')
   }
 
-  const handleFolderSelect = (path: string) => {
+  const handleFolderSelect = async (path: string) => {
     setProjectPath(path)
-    changeStep('method')
+    setError(null)
+
+    // Check if folder is already a git repo
+    try {
+      // We need to temporarily use a placeholder project name to check git status
+      // The folder might already be a git repo
+      const response = await fetch(`/api/filesystem/check-git?path=${encodeURIComponent(path)}`)
+      if (response.ok) {
+        const data = await response.json()
+        if (data.isRepo) {
+          setIsExistingRepo(true)
+          setGitOption('existing')
+        } else {
+          setIsExistingRepo(false)
+          setGitOption(null)
+        }
+      }
+    } catch {
+      // Ignore errors, assume not a git repo
+      setIsExistingRepo(false)
+      setGitOption(null)
+    }
+
+    changeStep('git')
   }
 
   const handleFolderCancel = () => {
     changeStep('name')
+  }
+
+  const handleGitSelect = async (option: GitRepoOption) => {
+    setGitOption(option)
+    setError(null)
+
+    if (option === 'existing' || option === 'none') {
+      // No git setup needed, proceed to method
+      changeStep('method')
+      return
+    }
+
+    if (option === 'new') {
+      // Initialize git repo in the project directory
+      setGitSetupPending(true)
+      try {
+        // Create project first to register it
+        await createProject.mutateAsync({
+          name: projectName.trim(),
+          path: projectPath!,
+          specMethod: 'manual', // We'll update this in method step
+        })
+
+        // Initialize git
+        const result = await initGitRepo(projectName.trim(), { initialBranch: 'main' })
+        if (!result.success) {
+          setError(result.message || 'Failed to initialize git repository')
+          setGitSetupPending(false)
+          return
+        }
+
+        setGitSetupPending(false)
+        changeStep('method')
+      } catch (err) {
+        setError(err instanceof Error ? err.message : 'Failed to initialize git')
+        setGitSetupPending(false)
+      }
+      return
+    }
+
+    // Clone option would need additional UI for URL input
+    // For now, proceed to method
+    changeStep('method')
+  }
+
+  const handleGitBack = () => {
+    changeStep('folder')
+    setGitOption(null)
+    setIsExistingRepo(false)
   }
 
   const handleMethodSelect = async (method: SpecMethod) => {
@@ -106,33 +183,50 @@ export function NewProjectModal({
       return
     }
 
+    // Check if project was already created (in git step with 'new' option)
+    const projectAlreadyCreated = gitOption === 'new'
+
     if (method === 'manual') {
-      // Create project immediately with manual method
-      try {
-        const project = await createProject.mutateAsync({
-          name: projectName.trim(),
-          path: projectPath,
-          specMethod: 'manual',
-        })
+      if (projectAlreadyCreated) {
+        // Project already exists, just navigate
         changeStep('complete')
         setTimeout(() => {
-          onProjectCreated(project.name)
+          onProjectCreated(projectName.trim())
           handleClose()
         }, 1500)
-      } catch (err: unknown) {
-        setError(err instanceof Error ? err.message : 'Failed to create project')
+      } else {
+        // Create project immediately with manual method
+        try {
+          const project = await createProject.mutateAsync({
+            name: projectName.trim(),
+            path: projectPath,
+            specMethod: 'manual',
+          })
+          changeStep('complete')
+          setTimeout(() => {
+            onProjectCreated(project.name)
+            handleClose()
+          }, 1500)
+        } catch (err: unknown) {
+          setError(err instanceof Error ? err.message : 'Failed to create project')
+        }
       }
     } else {
-      // Create project then show chat
-      try {
-        await createProject.mutateAsync({
-          name: projectName.trim(),
-          path: projectPath,
-          specMethod: 'claude',
-        })
+      if (projectAlreadyCreated) {
+        // Project already exists, just show chat
         changeStep('chat')
-      } catch (err: unknown) {
-        setError(err instanceof Error ? err.message : 'Failed to create project')
+      } else {
+        // Create project then show chat
+        try {
+          await createProject.mutateAsync({
+            name: projectName.trim(),
+            path: projectPath,
+            specMethod: 'claude',
+          })
+          changeStep('chat')
+        } catch (err: unknown) {
+          setError(err instanceof Error ? err.message : 'Failed to create project')
+        }
       }
     }
   }
@@ -187,13 +281,20 @@ export function NewProjectModal({
     setInitializerStatus('idle')
     setInitializerError(null)
     setYoloModeSelected(false)
+    setGitOption(null)
+    setIsExistingRepo(false)
+    setGitSetupPending(false)
     onClose()
   }
 
   const handleBack = () => {
     if (step === 'method') {
-      changeStep('folder')
+      changeStep('git')
       setSpecMethod(null)
+    } else if (step === 'git') {
+      changeStep('folder')
+      setGitOption(null)
+      setIsExistingRepo(false)
     } else if (step === 'folder') {
       changeStep('name')
       setProjectPath(null)
@@ -253,6 +354,7 @@ export function NewProjectModal({
         <DialogHeader>
           <DialogTitle>
             {step === 'name' && 'Create New Project'}
+            {step === 'git' && 'Git Repository'}
             {step === 'method' && 'Choose Setup Method'}
             {step === 'complete' && 'Project Created!'}
           </DialogTitle>
@@ -292,7 +394,112 @@ export function NewProjectModal({
           </form>
         )}
 
-        {/* Step 2: Spec Method */}
+        {/* Step 2: Git Repository */}
+        {step === 'git' && (
+          <div className="space-y-4">
+            <DialogDescription>
+              Set up version control for your project.
+            </DialogDescription>
+
+            <div className="space-y-3">
+              {/* Existing repo (auto-detected) */}
+              {isExistingRepo && (
+                <Card
+                  className="cursor-pointer hover:border-primary transition-colors border-primary"
+                  onClick={() => !gitSetupPending && handleGitSelect('existing')}
+                >
+                  <CardContent className="p-4">
+                    <div className="flex items-start gap-4">
+                      <div className="p-2 bg-primary/10 rounded-lg">
+                        <Check size={24} className="text-primary" />
+                      </div>
+                      <div className="flex-1">
+                        <div className="flex items-center gap-2">
+                          <span className="font-semibold">Use Existing Repository</span>
+                          <Badge variant="secondary">Detected</Badge>
+                        </div>
+                        <p className="text-sm text-muted-foreground mt-1">
+                          This folder is already a git repository. Autocoder will work in a separate branch.
+                        </p>
+                      </div>
+                    </div>
+                  </CardContent>
+                </Card>
+              )}
+
+              {/* New repo */}
+              {!isExistingRepo && (
+                <Card
+                  className="cursor-pointer hover:border-primary transition-colors"
+                  onClick={() => !gitSetupPending && handleGitSelect('new')}
+                >
+                  <CardContent className="p-4">
+                    <div className="flex items-start gap-4">
+                      <div className="p-2 bg-primary/10 rounded-lg">
+                        <GitBranch size={24} className="text-primary" />
+                      </div>
+                      <div className="flex-1">
+                        <div className="flex items-center gap-2">
+                          <span className="font-semibold">Initialize New Repository</span>
+                          <Badge>Recommended</Badge>
+                        </div>
+                        <p className="text-sm text-muted-foreground mt-1">
+                          Create a new git repository. Autocoder will work in a separate branch for safety.
+                        </p>
+                      </div>
+                    </div>
+                  </CardContent>
+                </Card>
+              )}
+
+              {/* No git */}
+              <Card
+                className="cursor-pointer hover:border-primary transition-colors"
+                onClick={() => !gitSetupPending && handleGitSelect('none')}
+              >
+                <CardContent className="p-4">
+                  <div className="flex items-start gap-4">
+                    <div className="p-2 bg-secondary rounded-lg">
+                      <Folder size={24} className="text-secondary-foreground" />
+                    </div>
+                    <div className="flex-1">
+                      <span className="font-semibold">Skip Git Setup</span>
+                      <p className="text-sm text-muted-foreground mt-1">
+                        Work without version control. Changes will be made directly to the folder.
+                      </p>
+                    </div>
+                  </div>
+                </CardContent>
+              </Card>
+            </div>
+
+            {error && (
+              <Alert variant="destructive">
+                <AlertDescription>{error}</AlertDescription>
+              </Alert>
+            )}
+
+            {gitSetupPending && (
+              <div className="flex items-center justify-center gap-2 text-muted-foreground">
+                <Loader2 size={16} className="animate-spin" />
+                <span>Initializing repository...</span>
+              </div>
+            )}
+
+            <DialogFooter className="sm:justify-start">
+              <Button
+                variant="ghost"
+                onClick={handleGitBack}
+                disabled={gitSetupPending}
+              >
+                <ArrowLeft size={16} />
+                Back
+              </Button>
+            </DialogFooter>
+          </div>
+        )}
+
+        {/* Step 3: Spec Method */}
         {step === 'method' && (
           <div className="space-y-4">
             <DialogDescription>

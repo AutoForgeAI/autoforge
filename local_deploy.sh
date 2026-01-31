@@ -59,13 +59,22 @@ show_help() {
 
 stop_processes() {
     echo -e "${YELLOW}Stopping all running AutoCoder processes...${NC}"
-    # Kill Vite, Uvicorn, and Python launcher processes
-    pkill -9 -f "vite" 2>/dev/null
+
+    # Graceful shutdown first (SIGTERM) - gives processes time to close WebSockets cleanly
+    pkill -TERM -f "uvicorn" 2>/dev/null
+    pkill -TERM -f "vite" 2>/dev/null
+    pkill -TERM -f "start_ui.py" 2>/dev/null
+    pkill -TERM -f "start_ui.sh" 2>/dev/null
+
+    # Wait for graceful shutdown
+    sleep 2
+
+    # Force kill any remaining processes (SIGKILL)
     pkill -9 -f "uvicorn" 2>/dev/null
+    pkill -9 -f "vite" 2>/dev/null
     pkill -9 -f "start_ui.py" 2>/dev/null
     pkill -9 -f "start_ui.sh" 2>/dev/null
-    # Don't kill ourselves
-    # pkill -9 -f "local_deploy.sh" 2>/dev/null
+
     sleep 1
     echo -e "${GREEN}All processes stopped.${NC}"
 }

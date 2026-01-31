@@ -29,12 +29,13 @@ export function GracefulShutdownDialog({
 
   const isLoading = stopAgent.isPending || gracefulStopAgent.isPending
 
-  // Auto-close when all agents complete (during graceful shutdown)
+  // Reset mutation state when dialog opens (for fresh start each time)
   useEffect(() => {
-    if (isOpen && activeAgentCount === 0 && gracefulStopAgent.isSuccess) {
-      onClose()
+    if (isOpen) {
+      stopAgent.reset()
+      gracefulStopAgent.reset()
     }
-  }, [isOpen, activeAgentCount, gracefulStopAgent.isSuccess, onClose])
+  }, [isOpen]) // eslint-disable-line react-hooks/exhaustive-deps
 
   const handleImmediateStop = async () => {
     await stopAgent.mutateAsync()
@@ -43,8 +44,7 @@ export function GracefulShutdownDialog({
 
   const handleGracefulStop = async () => {
     await gracefulStopAgent.mutateAsync()
-    // Don't close immediately - let it stay open so user can see progress
-    // The dialog will auto-close when agents complete
+    onClose() // Close immediately - progress shown in main UI
   }
 
   return (

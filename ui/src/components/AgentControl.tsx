@@ -1,5 +1,5 @@
 import { useState, useEffect, useRef, useCallback } from 'react'
-import { Play, Square, Loader2, GitBranch, Clock, PauseCircle, PlayCircle, FileText } from 'lucide-react'
+import { Play, Square, Loader2, GitBranch, Clock, PauseCircle, PlayCircle, FileText, GitMerge, Trash2 } from 'lucide-react'
 import {
   useStartAgent,
   useStopAgent,
@@ -10,6 +10,7 @@ import {
   useRunDocAdmin,
 } from '../hooks/useProjects'
 import { useNextScheduledRun } from '../hooks/useSchedules'
+import { useWorktreeStatus, useMergeWorktree, useDiscardWorktree } from '../hooks/useWorktree'
 import { formatNextRun, formatEndTime } from '../lib/timeUtils'
 import { ScheduleModal } from './ScheduleModal'
 import { GracefulShutdownDialog } from './GracefulShutdownDialog'
@@ -22,6 +23,16 @@ import {
   TooltipProvider,
   TooltipTrigger,
 } from '@/components/ui/tooltip'
+import {
+  AlertDialog,
+  AlertDialogAction,
+  AlertDialogCancel,
+  AlertDialogContent,
+  AlertDialogDescription,
+  AlertDialogFooter,
+  AlertDialogHeader,
+  AlertDialogTitle,
+} from '@/components/ui/alert-dialog'
 
 interface AgentControlProps {
   projectName: string
@@ -83,6 +94,16 @@ export function AgentControl({ projectName, status, agentStatusResponse, default
 
   const [showScheduleModal, setShowScheduleModal] = useState(false)
   const [showShutdownDialog, setShowShutdownDialog] = useState(false)
+  const [showDiscardDialog, setShowDiscardDialog] = useState(false)
+
+  // Worktree status and actions
+  const { data: worktreeStatus } = useWorktreeStatus(projectName)
+  const mergeWorktree = useMergeWorktree(projectName)
+  const discardWorktree = useDiscardWorktree(projectName)
+
+  const hasWorktree = worktreeStatus?.exists ?? false
+  const worktreeBranch = worktreeStatus?.branch
+  const worktreeCommitsAhead = worktreeStatus?.commitsAhead ?? 0
 
   const isLoading = startAgent.isPending || stopAgent.isPending
   const isPausePickupLoading = pausePickup.isPending || resumePickup.isPending
@@ -216,6 +237,67 @@ export function AgentControl({ projectName, status, agentStatusResponse, default
           </Badge>
         )}
 
+        {/* Worktree status badge - show when worktree exists */}
+        {hasWorktree && worktreeBranch && (
+          <Badge variant="outline" className="gap-1 border-blue-500 text-blue-600">
+            <GitBranch size={14} />
+            {worktreeBranch}
+            {worktreeCommitsAhead > 0 && ` (+${worktreeCommitsAhead})`}
+          </Badge>
+        )}
+
+        {/* Worktree merge button - show when stopped and worktree has commits */}
+        {isStopped && hasWorktree && worktreeCommitsAhead > 0 && (
+          <TooltipProvider>
+            <Tooltip>
+              <TooltipTrigger asChild>
+                <Button
+                  variant="outline"
+                  size="sm"
+                  onClick={() => mergeWorktree.mutate({ deleteAfter: true })}
+                  disabled={mergeWorktree.isPending}
+                  className="border-green-500 text-green-600 hover:bg-green-50"
+                >
+                  {mergeWorktree.isPending ? (
+                    <Loader2 size={18} className="animate-spin" />
+                  ) : (
+                    <GitMerge size={18} />
+                  )}
+                </Button>
+              </TooltipTrigger>
+              <TooltipContent>
+                Merge {worktreeCommitsAhead} commit{worktreeCommitsAhead > 1 ? 's' : ''} to main branch
+              </TooltipContent>
+            </Tooltip>
+          </TooltipProvider>
+        )}
+
+        {/* Worktree discard button - show when stopped and worktree exists */}
+        {isStopped && hasWorktree && (
+          <TooltipProvider>
+            <Tooltip>
+              <TooltipTrigger asChild>
+                <Button
+                  variant="outline"
+                  size="sm"
+                  onClick={() => setShowDiscardDialog(true)}
+                  disabled={discardWorktree.isPending}
+                  className="border-red-500 text-red-600 hover:bg-red-50"
+                >
+                  {discardWorktree.isPending ? (
+                    <Loader2 size={18} className="animate-spin" />
+                  ) : (
+                    <Trash2 size={18} />
+                  )}
+                </Button>
+              </TooltipTrigger>
+              <TooltipContent>
+                Discard worktree changes
+              </TooltipContent>
+            </Tooltip>
+          </TooltipProvider>
+        )}
+
         {/* Start/Stop button */}
         {isLoadingStatus ? (
           <Button disabled variant="outline" size="sm">
@@ -300,6 +382,32 @@ export function AgentControl({ projectName, status, agentStatusResponse, default
         onClose={() => setShowShutdownDialog(false)}
         activeAgentCount={activeAgentCount}
       />
+
+      {/* Discard Worktree Confirmation Dialog */}
+      <AlertDialog open={showDiscardDialog} onOpenChange={setShowDiscardDialog}>
+        <AlertDialogContent>
+          <AlertDialogHeader>
+            <AlertDialogTitle>Discard Worktree Changes?</AlertDialogTitle>
+            <AlertDialogDescription>
+              This will permanently delete all changes made in the worktree branch
+              {worktreeCommitsAhead > 0 && ` (${worktreeCommitsAhead} commit${worktreeCommitsAhead > 1 ? 's' : ''})`}.
+              This action cannot be undone.
+            </AlertDialogDescription>
+          </AlertDialogHeader>
+          <AlertDialogFooter>
+            <AlertDialogCancel>Cancel</AlertDialogCancel>
+            <AlertDialogAction
+              onClick={() => {
+                discardWorktree.mutate()
+                setShowDiscardDialog(false)
+              }}
+              className="bg-destructive text-destructive-foreground hover:bg-destructive/90"
+            >
+              Discard Changes
+            </AlertDialogAction>
+          </AlertDialogFooter>
+        </AlertDialogContent>
+      </AlertDialog>
     </>
   )
 }

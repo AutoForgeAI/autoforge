@@ -7,6 +7,7 @@ Provides REST API, WebSocket, and static file serving.
 """
 
 import asyncio
+import logging
 import os
 import shutil
 import sys
@@ -21,6 +22,12 @@ from dotenv import load_dotenv
 
 # Load environment variables from .env file if present
 load_dotenv()
+
+# Initialize logging before anything else
+from .logging_config import get_log_files, setup_logging, tail_log
+
+log_dir = setup_logging()
+logger = logging.getLogger(__name__)
 
 from fastapi import FastAPI, HTTPException, Request, WebSocket
 from fastapi.middleware.cors import CORSMiddleware
@@ -197,6 +204,54 @@ async def websocket_endpoint(websocket: WebSocket, project_name: str):
 async def health_check():
     """Health check endpoint."""
     return {"status": "healthy"}
+
+
+@app.get("/api/logs")
+async def get_logs(log_type: str = "server", lines: int = 100):
+    """
+    Get recent log entries.
+
+    Args:
+        log_type: "server", "error", or "agent"
+        lines: Number of lines to return (max 1000)
+    """
+    if log_type not in ("server", "error", "agent"):
+        raise HTTPException(status_code=400, detail="Invalid log type. Use 'server', 'error', or 'agent'")
+
+    lines = min(lines, 1000)  # Cap at 1000 lines
+    log_lines = tail_log(log_type, lines)
+
+    log_files = get_log_files()
+    return {
+        "log_type": log_type,
+        "lines": log_lines,
+        "count": len(log_lines),
+        "log_file": str(log_files.get(log_type, "")),
+        "log_directory": str(log_files.get("directory", "")),
+    }
+
+
+@app.get("/api/logs/files")
+async def get_log_file_info():
+    """Get information about log files."""
+    log_files = get_log_files()
+    result = {"directory": str(log_files["directory"]), "files": {}}
+
+    for name, path in log_files.items():
+        if name == "directory":
+            continue
+        if path.exists():
+            stat = path.stat()
+            result["files"][name] = {
+                "path": str(path),
+                "size_bytes": stat.st_size,
+                "size_human": f"{stat.st_size / 1024:.1f} KB" if stat.st_size < 1024 * 1024 else f"{stat.st_size / (1024 * 1024):.1f} MB",
+                "modified": stat.st_mtime,
+            }
+        else:
+            result["files"][name] = {"path": str(path), "exists": False}
+
+    return result
 
 
 @app.get("/api/setup/status", response_model=SetupStatus)

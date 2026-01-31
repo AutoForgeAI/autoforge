@@ -39,6 +39,16 @@ class ProjectStats(BaseModel):
     percentage: float = 0.0
 
 
+class ProjectArtifacts(BaseModel):
+    """Detected artifacts indicating an existing project."""
+    has_code: bool = False  # Has src/, lib/, or package.json/pyproject.toml/etc.
+    has_claude_md: bool = False  # Has CLAUDE.md
+    has_features_db: bool = False  # Has features.db with features
+    has_git: bool = False  # Has .git directory
+    feature_count: int = 0  # Number of features in database
+    code_indicators: list[str] = []  # List of detected code files/dirs
+
+
 class ProjectSummary(BaseModel):
     """Summary of a project for list view."""
     name: str
@@ -46,6 +56,7 @@ class ProjectSummary(BaseModel):
     has_spec: bool
     stats: ProjectStats
     default_concurrency: int = 3
+    artifacts: ProjectArtifacts | None = None  # Detected artifacts for existing projects
 
 
 class ProjectDetail(BaseModel):
