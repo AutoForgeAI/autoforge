@@ -150,6 +150,7 @@ export interface AgentStatusResponse {
   max_concurrency: number | null
   testing_agent_ratio: number  // Regression testing agents (0-3)
   pickup_paused: boolean  // True when pickup is paused (no new features claimed)
+  paused_by_feature: number | null  // Feature ID that caused the pause (if pauseOnError)
   graceful_shutdown: boolean  // True when graceful shutdown is in progress
   active_agent_count: number  // Number of currently active agents (coding + testing)
 }

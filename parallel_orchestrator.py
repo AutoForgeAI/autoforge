@@ -187,6 +187,7 @@ class ParallelOrchestrator:
         self._pickup_paused = False
         self._graceful_shutdown = False
         self._pause_on_error = self._load_pause_on_error_setting()
+        self._paused_by_feature: int | None = None  # Track which feature caused pause
         self._control_file = self.project_dir / ".agent.control"
         self._status_file = self.project_dir / ".agent.orchestrator_status"
 
@@ -1091,8 +1092,9 @@ class ParallelOrchestrator:
             # Pause pickup on error if enabled
             if self._pause_on_error and not self._pickup_paused:
                 self._pickup_paused = True
+                self._paused_by_feature = feature_id
                 print(f"[pauseOnError] Feature #{feature_id} failed - pausing new feature pickup", flush=True)
-                print("[pauseOnError] Running agents will complete. Use resume-pickup to continue.", flush=True)
+                print("[pauseOnError] Running agents will complete. Click Resume in UI to continue.", flush=True)
                 debug_log.log("PAUSE_ON_ERROR", f"Paused pickup due to feature #{feature_id} failure")
                 self._write_orchestrator_status()
 
@@ -1486,6 +1488,7 @@ class ParallelOrchestrator:
 
             status = {
                 "pickup_paused": self._pickup_paused,
+                "paused_by_feature": self._paused_by_feature,  # Which feature caused pause
                 "graceful_shutdown": self._graceful_shutdown,
                 "coding_agent_count": coding_count,
                 "testing_agent_count": testing_count,
@@ -1526,6 +1529,7 @@ class ParallelOrchestrator:
                 self._write_orchestrator_status()
             elif command == "resume_pickup":
                 self._pickup_paused = False
+                self._paused_by_feature = None  # Clear the pause reason
                 self._graceful_shutdown = False
                 print("[CONTROL] Pickup resumed", flush=True)
                 debug_log.log("CONTROL", "Pickup resumed via control file")

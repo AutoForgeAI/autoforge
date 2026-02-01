@@ -111,6 +111,7 @@ async def get_agent_status(project_name: str):
         max_concurrency=manager.max_concurrency,
         testing_agent_ratio=manager.testing_agent_ratio,
         pickup_paused=status_dict.get("pickup_paused", False),
+        paused_by_feature=status_dict.get("paused_by_feature"),
         graceful_shutdown=status_dict.get("graceful_shutdown", False),
         active_agent_count=status_dict.get("active_agent_count", 0),
     )

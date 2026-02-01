@@ -113,6 +113,7 @@ export function AgentControl({ projectName, status, agentStatusResponse, default
 
   // Get orchestrator state from response
   const pickupPaused = agentStatusResponse?.pickup_paused ?? false
+  const pausedByFeature = agentStatusResponse?.paused_by_feature ?? null
   const gracefulShutdown = agentStatusResponse?.graceful_shutdown ?? false
   const activeAgentCount = agentStatusResponse?.active_agent_count ?? 0
 
@@ -176,11 +177,13 @@ export function AgentControl({ projectName, status, agentStatusResponse, default
           </Badge>
         )}
 
-        {/* Pickup paused badge */}
+        {/* Pickup paused badge - shows which feature caused the pause */}
         {isRunning && pickupPaused && !gracefulShutdown && (
           <Badge variant="outline" className="gap-1 border-amber-500 text-amber-600">
             <PauseCircle size={14} />
-            Pickup Paused
+            {pausedByFeature
+              ? `Paused (Feature #${pausedByFeature} failed)`
+              : 'Pickup Paused'}
           </Badge>
         )}
 
@@ -215,7 +218,7 @@ export function AgentControl({ projectName, status, agentStatusResponse, default
               </TooltipTrigger>
               <TooltipContent>
                 {pickupPaused
-                  ? 'Resume claiming new features'
+                  ? `Click to resume${pausedByFeature ? ` (paused due to Feature #${pausedByFeature} failure)` : ''}`
                   : 'Pause claiming new features (running agents continue)'}
               </TooltipContent>
             </Tooltip>

@@ -234,6 +234,7 @@ class AgentStatus(BaseModel):
     max_concurrency: int | None = None
     testing_agent_ratio: int = 1  # Regression testing agents (0-3)
     pickup_paused: bool = False  # True when pickup is paused (no new features claimed)
+    paused_by_feature: int | None = None  # Feature ID that caused the pause (if pauseOnError)
     graceful_shutdown: bool = False  # True when graceful shutdown is in progress
     active_agent_count: int = 0  # Number of currently active agents (coding + testing)
 
