@@ -16,7 +16,13 @@ A running list of ideas and improvements to implement when time permits.
 
 ## UI/UX Improvements
 
-*(Add ideas here)*
+### 🟡 Streaming Visibility in Spec Chat
+- Show activity during "Claude is thinking..." phase in spec/expand chat sessions
+- Display tool calls (file reads, searches) as they happen
+- Stream partial text response as it's generated
+- Similar to how Claude Code shows activity during processing
+- Helps users understand what's happening instead of staring at a blank "thinking" indicator
+- Could show: files being read, tools being called, partial responses streaming in
 
 ---
 
