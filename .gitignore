@@ -182,18 +182,17 @@ deployments.db
 worktrees/
 
 # ===================
-# Autocoder-on-Itself Project Files
+# Autocoder Temp/Working Files
 # ===================
-# When autocoder works on its own codebase, these project files are created.
-# Actual work happens in the feature branch (worktree), not main.
-
-# Spec and prompt files (project-specific)
-prompts/
-app_spec.txt
+# Temporary files created during agent runs - not project config
 
 # Feature generation temp files
 features_batch.json
 generate_features.py
 
-# Reference docs (manually managed)
+# Reference docs (manually managed, not part of core)
 Reference_Docs_Prompts_CMDs/
+
+# NOTE: prompts/ is NOT ignored - it's core project config that defines
+# what to build. It must be committed before worktree creation so the
+# feature branch has access to the spec.
