@@ -24,6 +24,26 @@ A running list of ideas and improvements to implement when time permits.
 - Helps users understand what's happening instead of staring at a blank "thinking" indicator
 - Could show: files being read, tools being called, partial responses streaming in
 
+### 🔴 New Project Onboarding Flow
+- Add a help/onboarding popup when arriving at project screen after spec creation
+- Quick overview: "Hit play to start agent, click cog for settings, etc."
+- Explain what each button does for first-time users
+- Could be dismissible with "Don't show again" option
+- Reduce confusion about "what do I do now?" after spec creation
+
+### 🔴 Settings UX Improvements
+- **Default to project settings instead of app settings** - Users often modify app settings thinking they're changing project settings
+- Consider separating project vs app settings more clearly in the UI
+- Maybe two separate buttons/tabs: "Project Settings" and "App Settings"
+- Visual distinction to make it obvious which scope you're editing
+- Current settings button always opens app settings first, causing confusion
+
+### 🟡 Dev Server Auto-Start Clarity
+- Clarify whether dev server needs to be started manually or automatically
+- Option in project settings: "Auto-start dev server when agent starts"
+- Show tooltip explaining the dev server button's purpose
+- Consider auto-starting dev server for web projects by default
+
 ---
 
 ## Agent & Orchestrator

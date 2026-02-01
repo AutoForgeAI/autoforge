@@ -292,6 +292,19 @@ class WorktreeManager:
             if not success:
                 return False, f"Failed to create worktree: {error or output}"
 
+            # Copy prompts folder from main project to worktree if it exists
+            # This ensures spec files (which may be untracked) are available in worktree
+            prompts_src = self.project_dir / "prompts"
+            prompts_dst = self.worktree_path / "prompts"
+            if prompts_src.exists() and prompts_src.is_dir():
+                try:
+                    if prompts_dst.exists():
+                        shutil.rmtree(prompts_dst)
+                    shutil.copytree(prompts_src, prompts_dst)
+                    logger.info(f"Copied prompts folder to worktree: {prompts_dst}")
+                except Exception as e:
+                    logger.warning(f"Failed to copy prompts folder to worktree: {e}")
+
             logger.info(f"Created worktree at {self.worktree_path} on branch {branch_name}")
             return True, f"Created worktree at {self.worktree_path}"
 
