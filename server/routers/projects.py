@@ -13,6 +13,15 @@ from pathlib import Path
 
 from fastapi import APIRouter, HTTPException
 
+# Add parent directory to path for shared module imports
+sys.path.insert(0, str(Path(__file__).parent.parent.parent))
+from paths import (
+    get_autocoder_dir,
+    get_database_path,
+    get_lock_file,
+    get_prompts_dir,
+)
+
 from ..schemas import (
     ProjectArtifacts,
     ProjectCreate,
@@ -136,10 +145,10 @@ def detect_project_artifacts(project_dir: Path) -> ProjectArtifacts:
     # Check for .git
     has_git = (project_dir / ".git").is_dir()
 
-    # Check for features.db with features
+    # Check for features.db with features (in .autocoder/)
     has_features_db = False
     feature_count = 0
-    features_db_path = project_dir / "features.db"
+    features_db_path = get_database_path(project_dir)
     if features_db_path.exists():
         has_features_db = True
         try:
@@ -328,7 +337,7 @@ async def delete_project(name: str, delete_files: bool = False):
         raise HTTPException(status_code=404, detail=f"Project '{name}' not found")
 
     # Check if agent is running
-    lock_file = project_dir / ".agent.lock"
+    lock_file = get_lock_file(project_dir)
     if lock_file.exists():
         raise HTTPException(
             status_code=409,
@@ -457,7 +466,7 @@ async def reset_project(name: str, full_reset: bool = False):
         raise HTTPException(status_code=404, detail="Project directory not found")
 
     # Check if agent is running
-    lock_file = project_dir / ".agent.lock"
+    lock_file = get_lock_file(project_dir)
     if lock_file.exists():
         raise HTTPException(
             status_code=409,
@@ -473,8 +482,9 @@ async def reset_project(name: str, full_reset: bool = False):
     dispose_assistant_engine(project_dir)
 
     deleted_files: list[str] = []
+    autocoder_dir = get_autocoder_dir(project_dir)
 
-    # Files to delete in quick reset
+    # Files to delete in quick reset (all in .autocoder/)
     quick_reset_files = [
         "features.db",
         "features.db-wal",  # WAL mode journal file
@@ -482,26 +492,24 @@ async def reset_project(name: str, full_reset: bool = False):
         "assistant.db",
         "assistant.db-wal",
         "assistant.db-shm",
-        ".claude_settings.json",
-        ".claude_assistant_settings.json",
     ]
 
     for filename in quick_reset_files:
-        file_path = project_dir / filename
+        file_path = autocoder_dir / filename
         if file_path.exists():
             try:
                 file_path.unlink()
-                deleted_files.append(filename)
+                deleted_files.append(f".autocoder/{filename}")
             except Exception as e:
                 raise HTTPException(status_code=500, detail=f"Failed to delete {filename}: {e}")
 
     # Full reset: also delete prompts directory
     if full_reset:
-        prompts_dir = project_dir / "prompts"
+        prompts_dir = get_prompts_dir(project_dir)
         if prompts_dir.exists():
             try:
                 shutil.rmtree(prompts_dir)
-                deleted_files.append("prompts/")
+                deleted_files.append(".autocoder/prompts/")
             except Exception as e:
                 raise HTTPException(status_code=500, detail=f"Failed to delete prompts/: {e}")
 

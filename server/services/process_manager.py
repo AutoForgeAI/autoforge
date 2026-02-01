@@ -23,6 +23,7 @@ import psutil
 sys.path.insert(0, str(Path(__file__).parent.parent.parent))
 from auth import AUTH_ERROR_HELP_SERVER as AUTH_ERROR_HELP  # noqa: E402
 from auth import is_auth_error
+from paths import get_control_file, get_lock_file, get_status_file
 from server.logging_config import log_agent_output
 from server.utils.process_utils import kill_process_tree
 
@@ -93,8 +94,8 @@ class AgentProcessManager:
         self._status_callbacks: Set[Callable[[str], Awaitable[None]]] = set()
         self._callbacks_lock = threading.Lock()
 
-        # Lock file to prevent multiple instances (stored in project directory)
-        self.lock_file = self.project_dir / ".agent.lock"
+        # Lock file to prevent multiple instances (stored in .autocoder/)
+        self.lock_file = get_lock_file(self.project_dir)
 
     @property
     def status(self) -> Literal["stopped", "running", "paused", "crashed"]:
@@ -504,7 +505,7 @@ class AgentProcessManager:
             return False, "Agent is not running"
 
         try:
-            control_file = self.project_dir / ".agent.control"
+            control_file = get_control_file(self.project_dir)
             control_file.write_text("pause_pickup")
             logger.info(f"Wrote pause_pickup to {control_file}")
             return True, "Pickup pause requested - running agents will complete"
@@ -525,7 +526,7 @@ class AgentProcessManager:
             return False, "Agent is not running"
 
         try:
-            control_file = self.project_dir / ".agent.control"
+            control_file = get_control_file(self.project_dir)
             control_file.write_text("resume_pickup")
             logger.info(f"Wrote resume_pickup to {control_file}")
             return True, "Pickup resume requested"
@@ -547,7 +548,7 @@ class AgentProcessManager:
             return False, "Agent is not running"
 
         try:
-            control_file = self.project_dir / ".agent.control"
+            control_file = get_control_file(self.project_dir)
             control_file.write_text("graceful_shutdown")
             logger.info(f"Wrote graceful_shutdown to {control_file}")
             return True, "Graceful shutdown requested - will stop when all agents complete"
@@ -580,11 +581,11 @@ class AgentProcessManager:
     def _read_orchestrator_status(self) -> dict:
         """Read orchestrator status from the status file.
 
-        The orchestrator writes its status to .agent.orchestrator_status as JSON.
+        The orchestrator writes its status to .autocoder/.agent.orchestrator_status as JSON.
         Returns default values if file doesn't exist or can't be read.
         """
         import json
-        status_file = self.project_dir / ".agent.orchestrator_status"
+        status_file = get_status_file(self.project_dir)
 
         try:
             if status_file.exists():
@@ -685,7 +686,7 @@ def cleanup_orphaned_locks() -> int:
             if not project_path.exists():
                 continue
 
-            lock_file = project_path / ".agent.lock"
+            lock_file = get_lock_file(project_path)
             if not lock_file.exists():
                 continue
 

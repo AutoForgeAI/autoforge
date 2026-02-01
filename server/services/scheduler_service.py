@@ -18,6 +18,7 @@ from apscheduler.triggers.cron import CronTrigger
 
 # Add parent directory for imports
 sys.path.insert(0, str(Path(__file__).parent.parent.parent))
+from paths import get_database_path
 
 logger = logging.getLogger(__name__)
 
@@ -93,7 +94,7 @@ class SchedulerService:
         """Load schedules for a single project. Returns count of schedules loaded."""
         from api.database import Schedule, create_database
 
-        db_path = project_dir / "features.db"
+        db_path = get_database_path(project_dir)
         if not db_path.exists():
             return 0
 
@@ -568,7 +569,7 @@ class SchedulerService:
         """Check if a project should be started on server startup."""
         from api.database import Schedule, ScheduleOverride, create_database
 
-        db_path = project_dir / "features.db"
+        db_path = get_database_path(project_dir)
         if not db_path.exists():
             return
 

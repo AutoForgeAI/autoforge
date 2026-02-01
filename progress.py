@@ -13,8 +13,9 @@ import urllib.request
 from datetime import datetime, timezone
 from pathlib import Path
 
+from paths import get_app_spec_path, get_database_path, get_progress_cache
+
 WEBHOOK_URL = os.environ.get("PROGRESS_N8N_WEBHOOK_URL")
-PROGRESS_CACHE_FILE = ".progress_cache"
 
 
 def get_expected_feature_count(project_dir: Path) -> int | None:
@@ -26,7 +27,7 @@ def get_expected_feature_count(project_dir: Path) -> int | None:
     """
     import re
 
-    spec_file = project_dir / "prompts" / "app_spec.txt"
+    spec_file = get_app_spec_path(project_dir)
     if not spec_file.exists():
         return None
 
@@ -48,9 +49,7 @@ def get_actual_feature_count(project_dir: Path) -> int:
     Returns:
         The count of features, or 0 if database doesn't exist.
     """
-    import sqlite3
-
-    db_file = project_dir / "features.db"
+    db_file = get_database_path(project_dir)
     if not db_file.exists():
         return 0
 
@@ -116,7 +115,7 @@ def has_features(project_dir: Path) -> bool:
         return True
 
     # Check SQLite database
-    db_file = project_dir / "features.db"
+    db_file = get_database_path(project_dir)
     if not db_file.exists():
         return False
 
@@ -142,7 +141,7 @@ def count_passing_tests(project_dir: Path) -> tuple[int, int, int]:
     Returns:
         (passing_count, in_progress_count, total_count)
     """
-    db_file = project_dir / "features.db"
+    db_file = get_database_path(project_dir)
     if not db_file.exists():
         return 0, 0, 0
 
@@ -192,7 +191,7 @@ def get_all_passing_features(project_dir: Path) -> list[dict]:
     Returns:
         List of dicts with id, category, name for each passing feature
     """
-    db_file = project_dir / "features.db"
+    db_file = get_database_path(project_dir)
     if not db_file.exists():
         return []
 
@@ -217,7 +216,7 @@ def send_progress_webhook(passing: int, total: int, project_dir: Path) -> None:
     if not WEBHOOK_URL:
         return  # Webhook not configured
 
-    cache_file = project_dir / PROGRESS_CACHE_FILE
+    cache_file = get_progress_cache(project_dir)
     previous = 0
     previous_passing_ids = set()
 

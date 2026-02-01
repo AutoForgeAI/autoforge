@@ -11,6 +11,7 @@ import json
 import logging
 import os
 import shutil
+import sys
 import threading
 from datetime import datetime
 from pathlib import Path
@@ -18,6 +19,9 @@ from typing import AsyncGenerator, Optional
 
 from claude_agent_sdk import ClaudeAgentOptions, ClaudeSDKClient
 from dotenv import load_dotenv
+
+sys.path.insert(0, str(Path(__file__).parent.parent.parent))
+from paths import get_prompts_dir
 
 from ..schemas import ImageAttachment
 
@@ -126,7 +130,7 @@ class SpecChatSession:
         # Delete app_spec.txt so Claude can create it fresh
         # The SDK requires reading existing files before writing, but app_spec.txt is created new
         # Note: We keep initializer_prompt.md so Claude can read and update the template
-        prompts_dir = self.project_dir / "prompts"
+        prompts_dir = get_prompts_dir(self.project_dir)
         app_spec_path = prompts_dir / "app_spec.txt"
         if app_spec_path.exists():
             app_spec_path.unlink()

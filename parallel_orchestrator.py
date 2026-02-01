@@ -29,6 +29,7 @@ from typing import Callable, Literal
 
 from api.database import Feature, create_database
 from api.dependency_resolver import are_dependencies_satisfied, compute_scheduling_scores
+from paths import get_control_file, get_status_file
 from progress import get_actual_feature_count, get_expected_feature_count, needs_initialization
 from server.utils.process_utils import kill_process_tree
 
@@ -188,8 +189,8 @@ class ParallelOrchestrator:
         self._graceful_shutdown = False
         self._pause_on_error = self._load_pause_on_error_setting()
         self._paused_by_feature: int | None = None  # Track which feature caused pause
-        self._control_file = self.project_dir / ".agent.control"
-        self._status_file = self.project_dir / ".agent.orchestrator_status"
+        self._control_file = get_control_file(self.project_dir)
+        self._status_file = get_status_file(self.project_dir)
 
         # Track feature failures to prevent infinite retry loops
         self._failure_counts: dict[int, int] = {}

@@ -5,20 +5,22 @@ Prompt Loading Utilities
 Functions for loading prompt templates with project-specific support.
 
 Fallback chain:
-1. Project-specific: {project_dir}/prompts/{name}.md
+1. Project-specific: {project_dir}/.autocoder/prompts/{name}.md
 2. Base template: .claude/templates/{name}.template.md
 """
 
 import shutil
 from pathlib import Path
 
+from paths import get_prompts_dir
+
 # Base templates location (generic templates)
 TEMPLATES_DIR = Path(__file__).parent / ".claude" / "templates"
 
 
 def get_project_prompts_dir(project_dir: Path) -> Path:
-    """Get the prompts directory for a specific project."""
-    return project_dir / "prompts"
+    """Get the prompts directory for a specific project (.autocoder/prompts/)."""
+    return get_prompts_dir(project_dir)
 
 
 def load_prompt(name: str, project_dir: Path | None = None) -> str:
