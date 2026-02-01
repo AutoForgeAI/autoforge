@@ -154,3 +154,29 @@ Pipfile.lock
 .temp/
 tmpclaude-*-cwd
 ui/test-results/
+
+# ===================
+# Autocoder Runtime Files
+# ===================
+# These are created when autocoder runs and should not be committed
+
+# Orchestrator state files
+.agent.control
+.agent.orchestrator_status
+.progress_cache
+
+# SQLite databases (features, deployments, etc.)
+features.db
+features.db-shm
+features.db-wal
+deployments.db
+
+# Project-specific autocoder config (when running on itself)
+.autocoder/
+
+# Claude settings
+.claude_settings.json
+
+# Worktree directory (agent work isolation)
+# Note: ~/.autocoder/worktrees/ is outside repo, but just in case
+worktrees/
