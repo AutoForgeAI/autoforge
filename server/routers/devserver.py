@@ -7,8 +7,8 @@ Uses project registry for path lookups and project_config for command detection.
 """
 
 import logging
-import sys
 import shlex
+import sys
 from pathlib import Path
 
 from fastapi import APIRouter, HTTPException
@@ -73,7 +73,20 @@ def get_project_dir(project_name: str) -> Path:
 
     return project_dir
 
-ALLOWED_RUNNERS = {"npm", "pnpm", "yarn", "uvicorn", "python", "python3"}
+ALLOWED_RUNNERS = {
+    "npm", "pnpm", "yarn", "npx",
+    "uvicorn", "python", "python3",
+    "flask", "poetry",
+    "cargo", "go",
+}
+
+ALLOWED_NPM_SCRIPTS = {"dev", "start", "serve", "develop", "server", "preview"}
+
+# Allowed Python -m modules for dev servers
+ALLOWED_PYTHON_MODULES = {"uvicorn", "flask", "gunicorn", "http.server"}
+
+BLOCKED_SHELLS = {"sh", "bash", "zsh", "cmd", "powershell", "pwsh", "cmd.exe"}
+
 
 def validate_custom_command_strict(cmd: str) -> None:
     """
@@ -90,46 +103,85 @@ def validate_custom_command_strict(cmd: str) -> None:
     base = Path(argv[0]).name.lower()
 
     # Block direct shells / interpreters commonly used for command injection
-    if base in {"sh", "bash", "zsh", "cmd", "powershell", "pwsh"}:
+    if base in BLOCKED_SHELLS:
         raise ValueError(f"custom_command runner not allowed: {base}")
 
     if base not in ALLOWED_RUNNERS:
-        raise ValueError(f"custom_command runner not allowed: {base}")
+        raise ValueError(
+            f"custom_command runner not allowed: {base}. "
+            f"Allowed: {', '.join(sorted(ALLOWED_RUNNERS))}"
+        )
 
-    # Block one-liner execution
+    # Block one-liner execution for python
     lowered = [a.lower() for a in argv]
     if base in {"python", "python3"}:
         if "-c" in lowered:
             raise ValueError("python -c is not allowed")
-        # Only allow: python -m uvicorn ...
-        if len(argv) < 3 or argv[1:3] != ["-m", "uvicorn"]:
-            raise ValueError("Only 'python -m uvicorn ...' is allowed")
+        if len(argv) >= 3 and argv[1] == "-m":
+            # Allow: python -m <allowed_module> ...
+            if argv[2] not in ALLOWED_PYTHON_MODULES:
+                raise ValueError(
+                    f"python -m {argv[2]} is not allowed. "
+                    f"Allowed modules: {', '.join(sorted(ALLOWED_PYTHON_MODULES))}"
+                )
+        elif len(argv) >= 2 and argv[1].endswith(".py"):
+            # Allow: python manage.py runserver, python app.py, etc.
+            pass
+        else:
+            raise ValueError(
+                "Python commands must use 'python -m <module> ...' or 'python <script>.py ...'"
+            )
+
+    if base == "flask":
+        # Allow: flask run [--host ...] [--port ...]
+        if len(argv) < 2 or argv[1] != "run":
+            raise ValueError("flask custom_command must be 'flask run [options]'")
+
+    if base == "poetry":
+        # Allow: poetry run <subcmd> ...
+        if len(argv) < 3 or argv[1] != "run":
+            raise ValueError("poetry custom_command must be 'poetry run <command> ...'")
 
     if base == "uvicorn":
         if len(argv) < 2 or ":" not in argv[1]:
             raise ValueError("uvicorn must specify an app like module:app")
 
         allowed_flags = {"--host", "--port", "--reload", "--log-level", "--workers"}
-        i = 2
-        while i < len(argv):
-            a = argv[i]
-            if a.startswith("-") and a not in allowed_flags:
-                raise ValueError(f"uvicorn flag not allowed: {a}")
-            i += 1
+        for a in argv[2:]:
+            if a.startswith("-"):
+                # Handle --flag=value syntax
+                flag_key = a.split("=", 1)[0]
+                if flag_key not in allowed_flags:
+                    raise ValueError(f"uvicorn flag not allowed: {flag_key}")
 
     if base in {"npm", "pnpm", "yarn"}:
-        # Allow only dev/start scripts (no arbitrary exec)
+        # Allow only known safe scripts (no arbitrary exec)
         if base == "npm":
-            if len(argv) < 3 or argv[1] != "run" or argv[2] not in {"dev", "start"}:
-                raise ValueError("npm custom_command must be 'npm run dev' or 'npm run start'")
+            if len(argv) < 3 or argv[1] != "run" or argv[2] not in ALLOWED_NPM_SCRIPTS:
+                raise ValueError(
+                    f"npm custom_command must be 'npm run <script>' where script is one of: "
+                    f"{', '.join(sorted(ALLOWED_NPM_SCRIPTS))}"
+                )
         elif base == "pnpm":
-            ok = (len(argv) >= 2 and argv[1] in {"dev", "start"}) or (len(argv) >= 3 and argv[1] == "run" and argv[2] in {"dev", "start"})
+            ok = (
+                (len(argv) >= 2 and argv[1] in ALLOWED_NPM_SCRIPTS)
+                or (len(argv) >= 3 and argv[1] == "run" and argv[2] in ALLOWED_NPM_SCRIPTS)
+            )
             if not ok:
-                raise ValueError("pnpm custom_command must be 'pnpm dev/start' or 'pnpm run dev/start'")
+                raise ValueError(
+                    f"pnpm custom_command must use a known script: "
+                    f"{', '.join(sorted(ALLOWED_NPM_SCRIPTS))}"
+                )
         elif base == "yarn":
-            ok = (len(argv) >= 2 and argv[1] in {"dev", "start"}) or (len(argv) >= 3 and argv[1] == "run" and argv[2] in {"dev", "start"})
+            ok = (
+                (len(argv) >= 2 and argv[1] in ALLOWED_NPM_SCRIPTS)
+                or (len(argv) >= 3 and argv[1] == "run" and argv[2] in ALLOWED_NPM_SCRIPTS)
+            )
             if not ok:
-                raise ValueError("yarn custom_command must be 'yarn dev/start' or 'yarn run dev/start'")
+                raise ValueError(
+                    f"yarn custom_command must use a known script: "
+                    f"{', '.join(sorted(ALLOWED_NPM_SCRIPTS))}"
+                )
 
 
 def get_project_devserver_manager(project_name: str):
@@ -243,7 +295,7 @@ async def start_devserver(
             status_code=400,
             detail="Direct command execution is disabled. Use /config to set a safe custom_command."
         )
-    
+
     command = get_dev_command(project_dir)
 
     if not command:
@@ -254,6 +306,13 @@ async def start_devserver(
 
     # Validate command against security allowlist before execution
     validate_dev_command(command, project_dir)
+
+    # Defense-in-depth: also run strict structural validation at execution time
+    # (catches config file tampering that bypasses the /config endpoint)
+    try:
+        validate_custom_command_strict(command)
+    except ValueError as e:
+        raise HTTPException(status_code=400, detail=str(e))
 
     # Now command is definitely str and validated
     success, message = await manager.start(command)
@@ -346,12 +405,17 @@ async def update_devserver_config(
         except ValueError as e:
             raise HTTPException(status_code=400, detail=str(e))
     else:
-        # Validate command against security allowlist before persisting
+        # Strict structural validation first (most specific errors)
+        try:
+            validate_custom_command_strict(update.custom_command)
+        except ValueError as e:
+            raise HTTPException(status_code=400, detail=str(e))
+
+        # Then validate against security allowlist
         validate_dev_command(update.custom_command, project_dir)
 
         # Set the custom command
         try:
-            validate_custom_command_strict(update.custom_command)
             set_dev_command(project_dir, update.custom_command)
         except ValueError as e:
             raise HTTPException(status_code=400, detail=str(e))

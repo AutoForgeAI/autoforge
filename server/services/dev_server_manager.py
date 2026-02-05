@@ -14,18 +14,17 @@ This is a simplified version of AgentProcessManager, tailored for dev servers:
 import asyncio
 import logging
 import re
+import shlex
 import subprocess
 import sys
 import threading
-import shlex
-from datetime import datetime
+from datetime import datetime, timezone
 from pathlib import Path
 from typing import Awaitable, Callable, Literal, Set
 
 import psutil
 
 from registry import list_registered_projects
-from security import extract_commands, get_effective_commands, is_command_allowed
 from server.utils.process_utils import kill_process_tree
 
 logger = logging.getLogger(__name__)
@@ -310,9 +309,16 @@ class DevServerProcessManager:
             return False, "Empty dev server command"
 
         # SECURITY: block shell operators/metacharacters (defense-in-depth)
-        dangerous_ops = ["&&", "||", ";", "|", "`", "$("]
+        # NOTE: On Windows, .cmd/.bat files are executed via cmd.exe even with
+        # shell=False (CPython limitation), so metacharacter blocking is critical.
+        # Single & is a cmd.exe command separator, ^ is cmd escape, % enables
+        # environment variable expansion, > < enable redirection.
+        dangerous_ops = ["&&", "||", ";", "|", "`", "$(", "&", ">", "<", "^", "%"]
         if any(op in command for op in dangerous_ops):
             return False, "Shell operators are not allowed in dev server command"
+        # Block newline injection (cmd.exe interprets newlines as command separators)
+        if "\n" in command or "\r" in command:
+            return False, "Newlines are not allowed in dev server command"
 
         # Parse into argv and execute without shell
         argv = shlex.split(command, posix=(sys.platform != "win32"))
@@ -349,7 +355,7 @@ class DevServerProcessManager:
                 )
 
             self._command = command
-            self.started_at = datetime.utcnow()
+            self.started_at = datetime.now(timezone.utc)
             self._detected_url = None
 
             # Create lock once we have a PID
@@ -364,12 +370,10 @@ class DevServerProcessManager:
         except FileNotFoundError:
             self.status = "stopped"
             self.process = None
-            self._remove_lock()
             return False, f"Command not found: {argv[0]}"
         except Exception as e:
             self.status = "stopped"
             self.process = None
-            self._remove_lock()
             return False, f"Failed to start dev server: {e}"
 
     async def stop(self) -> tuple[bool, str]:
