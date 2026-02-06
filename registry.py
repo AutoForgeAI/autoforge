@@ -667,7 +667,7 @@ API_PROVIDERS: dict[str, dict[str, Any]] = {
     },
     "glm": {
         "name": "GLM (Zhipu AI)",
-        "base_url": "https://api.z.ai/api/anthropic",
+        "base_url": "https://api.z.ai/api/coding/paas/v4",
         "requires_auth": True,
         "auth_env_var": "ANTHROPIC_AUTH_TOKEN",
         "models": [
@@ -769,8 +769,8 @@ def get_effective_sdk_env() -> dict[str, str]:
     if base_url:
         sdk_env["ANTHROPIC_BASE_URL"] = base_url
 
-    # Auth token
-    auth_token = all_settings.get("api_auth_token")
+    # Auth token - per-provider key first, then global fallback
+    auth_token = all_settings.get(f"api_auth_token.{provider_id}") or all_settings.get("api_auth_token")
     if auth_token:
         sdk_env[auth_env_var] = auth_token
 
