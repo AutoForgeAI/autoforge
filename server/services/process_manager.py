@@ -361,6 +361,9 @@ class AgentProcessManager:
         if not self._check_lock():
             return False, "Another agent instance is already running for this project"
 
+        # Clean up features stuck from a previous crash/stop
+        self._cleanup_stale_features()
+
         # Store for status queries
         self.yolo_mode = yolo_mode
         self.model = model
