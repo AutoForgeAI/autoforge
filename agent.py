@@ -34,6 +34,7 @@ from prompts import (
     get_batch_feature_prompt,
     get_coding_prompt,
     get_initializer_prompt,
+    get_research_prompt,
     get_single_feature_prompt,
     get_testing_prompt,
 )
@@ -144,6 +145,7 @@ async def run_autonomous_agent(
     agent_type: Optional[str] = None,
     testing_feature_id: Optional[int] = None,
     testing_feature_ids: Optional[list[int]] = None,
+    testing_mode: str = "full",
 ) -> None:
     """
     Run the autonomous agent loop.
@@ -155,9 +157,10 @@ async def run_autonomous_agent(
         yolo_mode: If True, skip browser testing in coding agent prompts
         feature_id: If set, work only on this specific feature (used by orchestrator for coding agents)
         feature_ids: If set, work on these features in batch (used by orchestrator for batch mode)
-        agent_type: Type of agent: "initializer", "coding", "testing", or None (auto-detect)
+        agent_type: Type of agent: "initializer", "coding", "testing", "research", or None (auto-detect)
         testing_feature_id: For testing agents, the pre-claimed feature ID to test (legacy single mode)
         testing_feature_ids: For testing agents, list of feature IDs to batch test
+        testing_mode: Testing mode - "full" or "smart"
     """
     print("\n" + "=" * 70)
     print("  AUTONOMOUS CODING AGENT")
@@ -203,10 +206,20 @@ async def run_autonomous_agent(
         print("=" * 70)
         print()
         # Copy the app spec into the project directory for the agent to read
-        copy_spec_to_project(project_dir)
+        # Use force=True to ensure newer spec from .autoforge/prompts/ overwrites old root spec
+        # (important after research-to-spec conversion on existing projects)
+        copy_spec_to_project(project_dir, force=True)
     elif agent_type == "testing":
         print("Running as TESTING agent (regression testing)")
         print_progress_summary(project_dir)
+    elif agent_type == "research":
+        print("Running as RESEARCH agent (codebase analysis)")
+        print()
+        print("=" * 70)
+        print("  NOTE: Research phase analyzes existing codebase.")
+        print("  The agent is mapping code structure and patterns.")
+        print("=" * 70)
+        print()
     else:
         print("Running as CODING agent")
         print_progress_summary(project_dir)
@@ -221,7 +234,9 @@ async def run_autonomous_agent(
 
         # Check if all features are already complete (before starting a new session)
         # Skip this check if running as initializer (needs to create features first)
-        if not is_initializer and iteration == 1:
+        # Skip this check if running as research agent (analyzes codebase regardless of features)
+        is_research = agent_type == "research"
+        if not is_initializer and not is_research and iteration == 1:
             passing, in_progress, total = count_passing_tests(project_dir)
             if total > 0 and passing == total:
                 print("\n" + "=" * 70)
@@ -250,13 +265,37 @@ async def run_autonomous_agent(
             agent_id = f"feature-{feature_id}"
         else:
             agent_id = None
-        client = create_client(project_dir, model, yolo_mode=yolo_mode, agent_id=agent_id, agent_type=agent_type)
+
+        # Get feature category for smart testing mode
+        feature_category = None
+        if feature_id and testing_mode == "smart":
+            try:
+                from api.database import Feature, get_session
+                session = get_session(str(project_dir))
+                feature = session.query(Feature).filter(Feature.id == feature_id).first()
+                if feature:
+                    feature_category = feature.category
+                    print(f"   Feature category: {feature_category} (for smart testing)")
+                session.close()
+            except Exception as e:
+                print(f"   Warning: Could not get feature category: {e}")
+
+        client = create_client(
+            project_dir, model,
+            yolo_mode=yolo_mode,
+            agent_id=agent_id,
+            agent_type=agent_type,
+            testing_mode=testing_mode,
+            feature_category=feature_category,
+        )
 
         # Choose prompt based on agent type
         if agent_type == "initializer":
             prompt = get_initializer_prompt(project_dir)
         elif agent_type == "testing":
             prompt = get_testing_prompt(project_dir, testing_feature_id, testing_feature_ids)
+        elif agent_type == "research":
+            prompt = get_research_prompt(project_dir)
         elif feature_ids and len(feature_ids) > 1:
             # Batch mode (used by orchestrator for multi-feature coding agents)
             prompt = get_batch_feature_prompt(feature_ids, project_dir, yolo_mode)

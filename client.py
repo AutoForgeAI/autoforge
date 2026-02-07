@@ -205,6 +205,16 @@ CODING_AGENT_TOOLS = [
     "mcp__features__feature_clear_in_progress",
 ]
 
+# Research MCP tools for codebase analysis
+RESEARCH_MCP_TOOLS = [
+    "mcp__research__research_scan_files",
+    "mcp__research__research_detect_stack",
+    "mcp__research__research_add_finding",
+    "mcp__research__research_get_context",
+    "mcp__research__research_finalize",
+    "mcp__research__research_get_stats",
+]
+
 TESTING_AGENT_TOOLS = [
     "mcp__features__feature_get_stats",
     "mcp__features__feature_get_by_id",
@@ -278,12 +288,45 @@ BUILTIN_TOOLS = [
 ]
 
 
+def should_use_playwright(testing_mode: str, feature_category: str | None, yolo_mode: bool) -> bool:
+    """
+    Determine if Playwright tools should be included based on testing mode and feature category.
+
+    Args:
+        testing_mode: Testing mode - "full" or "smart"
+        feature_category: Category of the feature (e.g., "API", "UI", "Database")
+        yolo_mode: Whether YOLO mode is enabled (overrides everything)
+
+    Returns:
+        True if Playwright tools should be included, False otherwise
+    """
+    # YOLO mode always disables Playwright
+    if yolo_mode:
+        return False
+
+    # "smart" mode only uses Playwright for UI features
+    if testing_mode == "smart":
+        if feature_category:
+            category_lower = feature_category.lower()
+            # Exclude for API/backend features
+            api_keywords = ["api", "backend", "database", "db", "server", "endpoint", "service"]
+            if any(kw in category_lower for kw in api_keywords):
+                return False
+        # Default: use Playwright (for UI features or unknown categories)
+        return True
+
+    # "full" mode (default) always uses Playwright
+    return True
+
+
 def create_client(
     project_dir: Path,
     model: str,
     yolo_mode: bool = False,
     agent_id: str | None = None,
     agent_type: str = "coding",
+    testing_mode: str = "full",
+    feature_category: str | None = None,
 ):
     """
     Create a Claude Agent SDK client with multi-layered security.
@@ -294,8 +337,12 @@ def create_client(
         yolo_mode: If True, skip Playwright MCP server for rapid prototyping
         agent_id: Optional unique identifier for browser isolation in parallel mode.
                   When provided, each agent gets its own browser profile.
-        agent_type: One of "coding", "testing", or "initializer". Controls which
-                    MCP tools are exposed and the max_turns limit.
+        agent_type: One of "coding", "testing", "initializer", or "research". Controls which
+                    MCP tools are exposed and the max_turns limit. Research agents use
+                    the research MCP server instead of feature/playwright servers.
+        testing_mode: Testing mode - "full" (always Playwright), "smart" (UI only),
+                      "minimal" (no Playwright), "off" (no testing)
+        feature_category: Category of the feature being worked on (for smart mode)
 
     Returns:
         Configured ClaudeSDKClient (from claude_agent_sdk)
@@ -309,6 +356,9 @@ def create_client(
     Note: Authentication is handled by start.bat/start.sh before this runs.
     The Claude SDK auto-detects credentials from the Claude CLI configuration
     """
+    # Determine if Playwright should be used (for smart testing mode)
+    use_playwright = should_use_playwright(testing_mode, feature_category, yolo_mode)
+
     # Select the feature MCP tools appropriate for this agent type
     feature_tools_map = {
         "coding": CODING_AGENT_TOOLS,
@@ -320,39 +370,54 @@ def create_client(
     # Select max_turns based on agent type:
     #   - coding/initializer: 300 turns (complex multi-step implementation)
     #   - testing: 100 turns (focused verification of a single feature)
+    #   - research: 300 turns (comprehensive codebase analysis)
     max_turns_map = {
         "coding": 300,
         "testing": 100,
         "initializer": 300,
+        "research": 300,
     }
     max_turns = max_turns_map.get(agent_type, 300)
 
-    # Build allowed tools list based on mode and agent type.
-    # In YOLO mode, exclude Playwright tools for faster prototyping.
-    allowed_tools = [*BUILTIN_TOOLS, *feature_tools]
-    if not yolo_mode:
-        allowed_tools.extend(PLAYWRIGHT_TOOLS)
+    # Build allowed tools list based on agent type and mode
+    if agent_type == "research":
+        # Research agent uses research MCP tools for codebase analysis
+        allowed_tools = [*BUILTIN_TOOLS, *RESEARCH_MCP_TOOLS]
+    else:
+        # Coding/testing/initializer agents use feature MCP tools
+        allowed_tools = [*BUILTIN_TOOLS, *feature_tools]
+        if use_playwright:
+            allowed_tools.extend(PLAYWRIGHT_TOOLS)
 
-    # Build permissions list.
-    # We permit ALL feature MCP tools at the security layer (so the MCP server
-    # can respond if called), but the LLM only *sees* the agent-type-specific
-    # subset via allowed_tools above.
-    permissions_list = [
-        # Allow all file operations within the project directory
-        "Read(./**)",
-        "Write(./**)",
-        "Edit(./**)",
-        "Glob(./**)",
-        "Grep(./**)",
-        # Bash permission granted here, but actual commands are validated
-        # by the bash_security_hook (see security.py for allowed commands)
-        "Bash(*)",
-        # Allow web tools for looking up framework/library documentation
-        "WebFetch(*)",
-        "WebSearch(*)",
-        # Allow Feature MCP tools for feature management
-        *ALL_FEATURE_MCP_TOOLS,
-    ]
+    # Build permissions list based on agent type
+    if agent_type == "research":
+        # Research agent: file operations + research MCP tools (no feature/playwright)
+        permissions_list = [
+            "Read(./**)",
+            "Write(./**)",
+            "Edit(./**)",
+            "Glob(./**)",
+            "Grep(./**)",
+            "Bash(*)",
+            "WebFetch(*)",
+            "WebSearch(*)",
+            *RESEARCH_MCP_TOOLS,
+        ]
+    else:
+        # Coding/testing/initializer: file operations + feature MCP tools + optionally Playwright
+        permissions_list = [
+            "Read(./**)",
+            "Write(./**)",
+            "Edit(./**)",
+            "Glob(./**)",
+            "Grep(./**)",
+            "Bash(*)",
+            "WebFetch(*)",
+            "WebSearch(*)",
+            *ALL_FEATURE_MCP_TOOLS,
+        ]
+        if use_playwright:
+            permissions_list.extend(PLAYWRIGHT_TOOLS)
 
     # Add extra read paths from environment variable (read-only access)
     # Paths are validated, canonicalized, and checked against sensitive blocklist
@@ -362,10 +427,6 @@ def create_client(
         permissions_list.append(f"Read({path}/**)")
         permissions_list.append(f"Glob({path}/**)")
         permissions_list.append(f"Grep({path}/**)")
-
-    if not yolo_mode:
-        # Allow Playwright MCP tools for browser automation (standard mode only)
-        permissions_list.extend(PLAYWRIGHT_TOOLS)
 
     # Create comprehensive security settings
     # Note: Using relative paths ("./**") restricts access to project directory
@@ -394,8 +455,13 @@ def create_client(
     if extra_read_paths:
         print(f"   - Extra read paths (validated): {', '.join(str(p) for p in extra_read_paths)}")
     print("   - Bash commands restricted to allowlist (see security.py)")
-    if yolo_mode:
-        print("   - MCP servers: features (database) - YOLO MODE (no Playwright)")
+    if agent_type == "research":
+        print("   - MCP servers: research (codebase analysis)")
+    elif not use_playwright:
+        reason = "YOLO MODE" if yolo_mode else f"testing_mode={testing_mode}"
+        if testing_mode == "smart" and feature_category:
+            reason += f", category={feature_category}"
+        print(f"   - MCP servers: features (database) - NO Playwright ({reason})")
     else:
         print("   - MCP servers: playwright (browser), features (database)")
     print("   - Project settings enabled (skills, commands, CLAUDE.md)")
@@ -408,21 +474,37 @@ def create_client(
     else:
         print("   - Warning: System 'claude' CLI not found, using bundled CLI")
 
-    # Build MCP servers config - features is always included, playwright only in standard mode
-    mcp_servers = {
-        "features": {
-            "command": sys.executable,  # Use the same Python that's running this script
-            "args": ["-m", "mcp_server.feature_mcp"],
-            "env": {
-                # Only specify variables the MCP server needs
-                # (subprocess inherits parent environment automatically)
-                "PROJECT_DIR": str(project_dir.resolve()),
-                "PYTHONPATH": str(Path(__file__).parent.resolve()),
+    # Build MCP servers config based on agent type
+    if agent_type == "research":
+        # Research agent uses research MCP server for codebase analysis
+        mcp_servers = {
+            "research": {
+                "command": sys.executable,  # Use the same Python that's running this script
+                "args": ["-m", "mcp_server.research_mcp"],
+                "env": {
+                    # Only specify variables the MCP server needs
+                    # (subprocess inherits parent environment automatically)
+                    "PROJECT_DIR": str(project_dir.resolve()),
+                    "PYTHONPATH": str(Path(__file__).parent.resolve()),
+                },
             },
-        },
-    }
-    if not yolo_mode:
-        # Include Playwright MCP server for browser automation (standard mode only)
+        }
+    else:
+        # Coding agent uses feature MCP server, optionally with Playwright
+        mcp_servers = {
+            "features": {
+                "command": sys.executable,  # Use the same Python that's running this script
+                "args": ["-m", "mcp_server.feature_mcp"],
+                "env": {
+                    # Only specify variables the MCP server needs
+                    # (subprocess inherits parent environment automatically)
+                    "PROJECT_DIR": str(project_dir.resolve()),
+                    "PYTHONPATH": str(Path(__file__).parent.resolve()),
+                },
+            },
+        }
+    if agent_type != "research" and use_playwright:
+        # Include Playwright MCP server for browser automation
         # Browser and headless mode configurable via environment variables
         browser = get_playwright_browser()
         playwright_args = [

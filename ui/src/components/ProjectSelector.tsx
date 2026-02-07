@@ -1,7 +1,8 @@
 import { useState } from 'react'
-import { ChevronDown, Plus, FolderOpen, Loader2, Trash2 } from 'lucide-react'
+import { ChevronDown, Plus, FolderOpen, Loader2, Trash2, FolderSearch } from 'lucide-react'
 import type { ProjectSummary } from '../lib/types'
 import { NewProjectModal } from './NewProjectModal'
+import { AnalyzeCodebaseModal } from './research/AnalyzeCodebaseModal'
 import { ConfirmDialog } from './ConfirmDialog'
 import { useDeleteProject } from '../hooks/useProjects'
 import { Button } from '@/components/ui/button'
@@ -20,6 +21,7 @@ interface ProjectSelectorProps {
   onSelectProject: (name: string | null) => void
   isLoading: boolean
   onSpecCreatingChange?: (isCreating: boolean) => void
+  onStartAnalysis?: (projectName: string, projectDir: string) => void
 }
 
 export function ProjectSelector({
@@ -28,9 +30,11 @@ export function ProjectSelector({
   onSelectProject,
   isLoading,
   onSpecCreatingChange,
+  onStartAnalysis,
 }: ProjectSelectorProps) {
   const [isOpen, setIsOpen] = useState(false)
   const [showNewProjectModal, setShowNewProjectModal] = useState(false)
+  const [showAnalyzeModal, setShowAnalyzeModal] = useState(false)
   const [projectToDelete, setProjectToDelete] = useState<string | null>(null)
 
   const deleteProject = useDeleteProject()
@@ -136,7 +140,7 @@ export function ProjectSelector({
 
           <DropdownMenuSeparator className="my-0" />
 
-          <div className="p-1">
+          <div className="p-1 space-y-1">
             <DropdownMenuItem
               onSelect={() => {
                 setShowNewProjectModal(true)
@@ -145,6 +149,15 @@ export function ProjectSelector({
             >
               <Plus size={16} />
               New Project
+            </DropdownMenuItem>
+            <DropdownMenuItem
+              onSelect={() => {
+                setShowAnalyzeModal(true)
+              }}
+              className="cursor-pointer"
+            >
+              <FolderSearch size={16} />
+              Analyze Existing Codebase
             </DropdownMenuItem>
           </div>
         </DropdownMenuContent>
@@ -169,6 +182,17 @@ export function ProjectSelector({
         isLoading={deleteProject.isPending}
         onConfirm={handleConfirmDelete}
         onCancel={handleCancelDelete}
+      />
+
+      {/* Analyze Codebase Modal */}
+      <AnalyzeCodebaseModal
+        isOpen={showAnalyzeModal}
+        onClose={() => setShowAnalyzeModal(false)}
+        onStartAnalysis={(projectName, projectDir) => {
+          setShowAnalyzeModal(false)
+          // Notify parent to navigate to research progress view
+          onStartAnalysis?.(projectName, projectDir)
+        }}
       />
     </div>
   )

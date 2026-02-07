@@ -33,6 +33,9 @@ import type {
   ScheduleUpdate,
   ScheduleListResponse,
   NextRunResponse,
+  BranchListResponse,
+  CheckoutResponse,
+  CreateBranchResponse,
 } from './types'
 
 const API_BASE = '/api'
@@ -127,6 +130,17 @@ export async function resetProject(
   return fetchJSON(`/projects/${encodeURIComponent(name)}/reset${params}`, {
     method: 'POST',
   })
+}
+
+export interface HasFeaturesResponse {
+  has_features: boolean
+  feature_count: number
+  passing_count: number
+  in_progress_count: number
+}
+
+export async function checkHasFeatures(name: string): Promise<HasFeaturesResponse> {
+  return fetchJSON(`/projects/${encodeURIComponent(name)}/has-features`)
 }
 
 // ============================================================================
@@ -530,4 +544,84 @@ export async function deleteSchedule(
 
 export async function getNextScheduledRun(projectName: string): Promise<NextRunResponse> {
   return fetchJSON(`/projects/${encodeURIComponent(projectName)}/schedules/next`)
+}
+
+// ============================================================================
+// Git API
+// ============================================================================
+
+export async function listBranches(projectName: string): Promise<BranchListResponse> {
+  return fetchJSON(`/projects/${encodeURIComponent(projectName)}/git/branches`)
+}
+
+export async function checkoutBranch(
+  projectName: string,
+  branch: string
+): Promise<CheckoutResponse> {
+  return fetchJSON(`/projects/${encodeURIComponent(projectName)}/git/checkout`, {
+    method: 'POST',
+    body: JSON.stringify({ branch }),
+  })
+}
+
+export async function createBranch(
+  projectName: string,
+  branchName: string,
+  fromBranch?: string
+): Promise<CreateBranchResponse> {
+  return fetchJSON(`/projects/${encodeURIComponent(projectName)}/git/create-branch`, {
+    method: 'POST',
+    body: JSON.stringify({
+      branch_name: branchName,
+      from_branch: fromBranch,
+    }),
+  })
+}
+
+// ============================================================================
+// Research Agent API
+// ============================================================================
+
+export interface ResearchStatusResponse {
+  status: 'stopped' | 'running' | 'paused' | 'crashed'
+  pid: number | null
+  started_at: string | null
+  model: string | null
+  phase: string | null
+  files_scanned: number
+  findings_count: number
+  finalized: boolean
+  finalized_at: string | null
+}
+
+export interface ResearchActionResponse {
+  success: boolean
+  status: string
+  message: string
+}
+
+export async function getResearchStatus(projectName: string): Promise<ResearchStatusResponse> {
+  return fetchJSON(`/projects/${encodeURIComponent(projectName)}/agent/research/status`)
+}
+
+export async function startResearchAgent(
+  projectName: string,
+  options: {
+    model?: string
+    projectDir?: string
+  } = {}
+): Promise<ResearchActionResponse> {
+  return fetchJSON(`/projects/${encodeURIComponent(projectName)}/agent/start-research`, {
+    method: 'POST',
+    body: JSON.stringify({
+      model: options.model,
+      project_dir: options.projectDir,
+    }),
+  })
+}
+
+export async function stopResearchAgent(projectName: string): Promise<ResearchActionResponse> {
+  return fetchJSON(`/projects/${encodeURIComponent(projectName)}/agent/research/stop`, {
+    method: 'POST',
+  })
 }

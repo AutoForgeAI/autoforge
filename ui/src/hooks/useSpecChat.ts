@@ -10,6 +10,7 @@ type ConnectionStatus = 'disconnected' | 'connecting' | 'connected' | 'error'
 
 interface UseSpecChatOptions {
   projectName: string
+  fromResearch?: boolean  // True when coming from research results (existing codebase)
   onComplete?: (specPath: string) => void
   onError?: (error: string) => void
 }
@@ -33,6 +34,7 @@ function generateId(): string {
 
 export function useSpecChat({
   projectName,
+  fromResearch,
   // onComplete intentionally not used - user clicks "Continue to Project" button instead
   onError,
 }: UseSpecChatOptions): UseSpecChatReturn {
@@ -358,14 +360,14 @@ export function useSpecChat({
     const checkAndSend = () => {
       if (wsRef.current?.readyState === WebSocket.OPEN) {
         setIsLoading(true)
-        wsRef.current.send(JSON.stringify({ type: 'start' }))
+        wsRef.current.send(JSON.stringify({ type: 'start', from_research: fromResearch ?? false }))
       } else if (wsRef.current?.readyState === WebSocket.CONNECTING) {
         setTimeout(checkAndSend, 100)
       }
     }
 
     setTimeout(checkAndSend, 100)
-  }, [connect])
+  }, [connect, fromResearch])
 
   const sendMessage = useCallback((content: string, attachments?: ImageAttachment[]) => {
     if (!wsRef.current || wsRef.current.readyState !== WebSocket.OPEN) {

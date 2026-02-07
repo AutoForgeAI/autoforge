@@ -12,6 +12,8 @@ import type {
   AgentLogEntry,
   OrchestratorStatus,
   OrchestratorEvent,
+  ResearchPhase,
+  ResearchLogEntry,
 } from '../lib/types'
 
 // Activity item for the feed
@@ -27,6 +29,17 @@ interface CelebrationTrigger {
   agentName: AgentMascot | 'Unknown'
   featureName: string
   featureId: number
+}
+
+// Research agent state
+interface ResearchState {
+  phase: ResearchPhase
+  filesScanned: number
+  findingsCount: number
+  finalized: boolean
+  currentTool: string | null
+  filesWritten: string[]
+  logs: ResearchLogEntry[]
 }
 
 interface WebSocketState {
@@ -52,11 +65,14 @@ interface WebSocketState {
   celebration: CelebrationTrigger | null
   // Orchestrator state for Mission Control
   orchestratorStatus: OrchestratorStatus | null
+  // Research agent state
+  researchState: ResearchState | null
 }
 
 const MAX_LOGS = 100 // Keep last 100 log lines
 const MAX_ACTIVITY = 20 // Keep last 20 activity items
 const MAX_AGENT_LOGS = 500 // Keep last 500 log lines per agent
+const MAX_RESEARCH_LOGS = 100 // Keep last 100 research log entries
 
 export function useProjectWebSocket(projectName: string | null) {
   const [state, setState] = useState<WebSocketState>({
@@ -73,11 +89,13 @@ export function useProjectWebSocket(projectName: string | null) {
     celebrationQueue: [],
     celebration: null,
     orchestratorStatus: null,
+    researchState: null,
   })
 
   const wsRef = useRef<WebSocket | null>(null)
   const reconnectTimeoutRef = useRef<number | null>(null)
   const reconnectAttempts = useRef(0)
+  const lastPongTime = useRef<number>(Date.now())
 
   const connect = useCallback(() => {
     if (!projectName) return
@@ -94,6 +112,7 @@ export function useProjectWebSocket(projectName: string | null) {
       ws.onopen = () => {
         setState(prev => ({ ...prev, isConnected: true }))
         reconnectAttempts.current = 0
+        lastPongTime.current = Date.now()  // Reset pong time on new connection
       }
 
       ws.onmessage = (event) => {
@@ -327,7 +346,33 @@ export function useProjectWebSocket(projectName: string | null) {
               break
 
             case 'pong':
-              // Heartbeat response
+              // Heartbeat response - update last successful pong time
+              lastPongTime.current = Date.now()
+              break
+
+            case 'research_update':
+              setState(prev => {
+                const newLogEntry: ResearchLogEntry = {
+                  message: message.message,
+                  timestamp: message.timestamp,
+                  eventType: message.eventType,
+                }
+
+                const existingLogs = prev.researchState?.logs ?? []
+
+                return {
+                  ...prev,
+                  researchState: {
+                    phase: message.phase,
+                    filesScanned: message.filesScanned,
+                    findingsCount: message.findingsCount,
+                    finalized: message.finalized,
+                    currentTool: message.currentTool,
+                    filesWritten: message.filesWritten,
+                    logs: [...existingLogs.slice(-MAX_RESEARCH_LOGS + 1), newLogEntry],
+                  },
+                }
+              })
               break
           }
         } catch {
@@ -363,7 +408,20 @@ export function useProjectWebSocket(projectName: string | null) {
   // Send ping to keep connection alive
   const sendPing = useCallback(() => {
     if (wsRef.current?.readyState === WebSocket.OPEN) {
-      wsRef.current.send(JSON.stringify({ type: 'ping' }))
+      try {
+        // Check if connection is stale (no pong for > 90 seconds)
+        const timeSinceLastPong = Date.now() - lastPongTime.current
+        if (timeSinceLastPong > 90000) {
+          console.warn('WebSocket connection stale, forcing reconnect')
+          wsRef.current.close()
+          return
+        }
+
+        wsRef.current.send(JSON.stringify({ type: 'ping' }))
+      } catch (e) {
+        console.error('Failed to send ping, closing connection', e)
+        wsRef.current?.close()
+      }
     }
   }, [])
 
@@ -398,6 +456,7 @@ export function useProjectWebSocket(projectName: string | null) {
       celebrationQueue: [],
       celebration: null,
       orchestratorStatus: null,
+      researchState: null,
     })
 
     if (!projectName) {
@@ -411,11 +470,28 @@ export function useProjectWebSocket(projectName: string | null) {
 
     connect()
 
-    // Ping every 30 seconds
+    // Ping every 30 seconds (increased frequency to handle background tab throttling)
     const pingInterval = setInterval(sendPing, 30000)
+
+    // Handle visibility change - reconnect when tab becomes visible
+    // Browsers heavily throttle timers in background tabs, causing ping failures
+    const handleVisibilityChange = () => {
+      if (document.visibilityState === 'visible') {
+        // Tab became visible - send ping immediately
+        sendPing()
+
+        // If not connected, try to reconnect
+        if (!wsRef.current || wsRef.current.readyState !== WebSocket.OPEN) {
+          connect()
+        }
+      }
+    }
+
+    document.addEventListener('visibilitychange', handleVisibilityChange)
 
     return () => {
       clearInterval(pingInterval)
+      document.removeEventListener('visibilitychange', handleVisibilityChange)
       if (reconnectTimeoutRef.current) {
         clearTimeout(reconnectTimeoutRef.current)
       }
@@ -471,6 +547,11 @@ export function useProjectWebSocket(projectName: string | null) {
     })
   }, [])
 
+  // Clear research state
+  const clearResearchState = useCallback(() => {
+    setState(prev => ({ ...prev, researchState: null }))
+  }, [])
+
   return {
     ...state,
     clearLogs,
@@ -478,5 +559,6 @@ export function useProjectWebSocket(projectName: string | null) {
     clearCelebration,
     getAgentLogs,
     clearAgentLogs,
+    clearResearchState,
   }
 }

@@ -85,6 +85,7 @@ class AgentProcessManager:
         self.parallel_mode: bool = False  # Parallel execution mode
         self.max_concurrency: int | None = None  # Max concurrent agents
         self.testing_agent_ratio: int = 1  # Regression testing agents (0-3)
+        self.testing_mode: str = "full"  # Testing mode: full, smart, minimal, off
 
         # Support multiple callbacks (for multiple WebSocket clients)
         self._output_callbacks: Set[Callable[[str], Awaitable[None]]] = set()
@@ -338,6 +339,7 @@ class AgentProcessManager:
         parallel_mode: bool = False,
         max_concurrency: int | None = None,
         testing_agent_ratio: int = 1,
+        testing_mode: str = "full",
         playwright_headless: bool = True,
         batch_size: int = 3,
     ) -> tuple[bool, str]:
@@ -350,7 +352,9 @@ class AgentProcessManager:
             parallel_mode: DEPRECATED - ignored, always uses unified orchestrator
             max_concurrency: Max concurrent coding agents (1-5, default 1)
             testing_agent_ratio: Number of regression testing agents (0-3, default 1)
+            testing_mode: Testing mode (full, smart, minimal, off)
             playwright_headless: If True, run browser in headless mode
+            batch_size: Features per coding agent batch (1-3)
 
         Returns:
             Tuple of (success, message)
@@ -370,6 +374,7 @@ class AgentProcessManager:
         self.parallel_mode = True  # Always True now (unified orchestrator)
         self.max_concurrency = max_concurrency or 1
         self.testing_agent_ratio = testing_agent_ratio
+        self.testing_mode = testing_mode
 
         # Build command - unified orchestrator with --concurrency
         cmd = [
@@ -393,6 +398,9 @@ class AgentProcessManager:
 
         # Add testing agent configuration
         cmd.extend(["--testing-ratio", str(testing_agent_ratio)])
+
+        # Add testing mode configuration
+        cmd.extend(["--testing-mode", testing_mode])
 
         # Add --batch-size flag for multi-feature batching
         cmd.extend(["--batch-size", str(batch_size)])
@@ -489,6 +497,7 @@ class AgentProcessManager:
             self.parallel_mode = False  # Reset parallel mode
             self.max_concurrency = None  # Reset concurrency
             self.testing_agent_ratio = 1  # Reset testing ratio
+            self.testing_mode = "full"  # Reset testing mode
 
             return True, "Agent stopped"
         except Exception as e:
@@ -564,6 +573,81 @@ class AgentProcessManager:
 
         return True
 
+    async def start_research(
+        self,
+        model: str | None = None,
+    ) -> tuple[bool, str]:
+        """
+        Start a research agent as a subprocess.
+
+        Research agents analyze the codebase and generate documentation in
+        .planning/codebase/*.md files. They use the research MCP server instead
+        of feature/playwright servers.
+
+        Args:
+            model: Model to use (e.g., claude-opus-4-5-20251101)
+
+        Returns:
+            Tuple of (success, message)
+        """
+        if self.status in ("running", "paused"):
+            return False, f"Agent is already {self.status}"
+
+        if not self._check_lock():
+            return False, "Another agent instance is already running for this project"
+
+        # Store for status queries
+        self.model = model
+
+        # Build command for research agent
+        cmd = [
+            sys.executable,
+            "-u",  # Force unbuffered stdout/stderr for real-time output
+            str(self.root_dir / "autonomous_agent_demo.py"),
+            "--project-dir",
+            str(self.project_dir.resolve()),
+            "--agent-type",
+            "research",
+        ]
+
+        # Add --model flag if model is specified
+        if model:
+            cmd.extend(["--model", model])
+
+        try:
+            # Start subprocess with piped stdout/stderr
+            # Use project_dir as cwd so Claude SDK sandbox allows access to project files
+            # IMPORTANT: Set PYTHONUNBUFFERED to ensure output isn't delayed
+            self.process = subprocess.Popen(
+                cmd,
+                stdout=subprocess.PIPE,
+                stderr=subprocess.STDOUT,
+                cwd=str(self.project_dir),
+                env={**os.environ, "PYTHONUNBUFFERED": "1"},
+            )
+
+            # Atomic lock creation - if it fails, another process beat us
+            if not self._create_lock():
+                # Kill the process we just started since we couldn't get the lock
+                self.process.terminate()
+                try:
+                    self.process.wait(timeout=5)
+                except subprocess.TimeoutExpired:
+                    self.process.kill()
+                self.process = None
+                return False, "Another agent instance is already running for this project"
+
+            self.started_at = datetime.now()
+            self.status = "running"
+
+            # Start output streaming task
+            self._output_task = asyncio.create_task(self._stream_output())
+
+            return True, f"Research agent started with PID {self.process.pid}"
+        except Exception as e:
+            logger.exception("Failed to start research agent")
+            return False, f"Failed to start research agent: {e}"
+
     def get_status_dict(self) -> dict:
         """Get current status as a dictionary."""
         return {
@@ -575,6 +659,7 @@ class AgentProcessManager:
             "parallel_mode": self.parallel_mode,
             "max_concurrency": self.max_concurrency,
             "testing_agent_ratio": self.testing_agent_ratio,
+            "testing_mode": self.testing_mode,
         }
 
 
@@ -583,6 +668,10 @@ class AgentProcessManager:
 # when different projects share the same name but have different paths
 _managers: dict[tuple[str, str], AgentProcessManager] = {}
 _managers_lock = threading.Lock()
+
+# Separate registry for research managers (research agents run independently)
+_research_managers: dict[tuple[str, str], "ResearchAgentProcessManager"] = {}
+_research_managers_lock = threading.Lock()
 
 
 def get_manager(project_name: str, project_dir: Path, root_dir: Path) -> AgentProcessManager:
@@ -599,6 +688,316 @@ def get_manager(project_name: str, project_dir: Path, root_dir: Path) -> AgentPr
         if key not in _managers:
             _managers[key] = AgentProcessManager(project_name, project_dir, root_dir)
         return _managers[key]
+
+
+class ResearchAgentProcessManager:
+    """
+    Manages research agent subprocess lifecycle for a single project.
+
+    Research agents analyze codebases and generate documentation. They use
+    a separate lock file (.research.lock) to allow running alongside coding agents.
+    """
+
+    def __init__(
+        self,
+        project_name: str,
+        project_dir: Path,
+        root_dir: Path,
+    ):
+        """
+        Initialize the research process manager.
+
+        Args:
+            project_name: Name of the project
+            project_dir: Absolute path to the project directory
+            root_dir: Root directory of the autonomous-coding-ui project
+        """
+        self.project_name = project_name
+        self.project_dir = project_dir
+        self.root_dir = root_dir
+        self.process: subprocess.Popen | None = None
+        self._status: Literal["stopped", "running", "paused", "crashed"] = "stopped"
+        self.started_at: datetime | None = None
+        self._output_task: asyncio.Task | None = None
+        self.model: str | None = None
+
+        # Support multiple callbacks (for multiple WebSocket clients)
+        self._output_callbacks: Set[Callable[[str], Awaitable[None]]] = set()
+        self._status_callbacks: Set[Callable[[str], Awaitable[None]]] = set()
+        self._callbacks_lock = threading.Lock()
+
+        # Separate lock file for research agents
+        self.lock_file = self.project_dir / ".research.lock"
+
+    @property
+    def status(self) -> Literal["stopped", "running", "paused", "crashed"]:
+        return self._status
+
+    @status.setter
+    def status(self, value: Literal["stopped", "running", "paused", "crashed"]):
+        old_status = self._status
+        self._status = value
+        if old_status != value:
+            self._notify_status_change(value)
+
+    def _notify_status_change(self, status: str) -> None:
+        """Notify all registered callbacks of status change."""
+        with self._callbacks_lock:
+            callbacks = list(self._status_callbacks)
+
+        for callback in callbacks:
+            try:
+                loop = asyncio.get_running_loop()
+                loop.create_task(self._safe_callback(callback, status))
+            except RuntimeError:
+                pass
+
+    async def _safe_callback(self, callback: Callable, *args) -> None:
+        """Safely execute a callback, catching and logging any errors."""
+        try:
+            await callback(*args)
+        except Exception as e:
+            logger.warning(f"Callback error: {e}")
+
+    def add_output_callback(self, callback: Callable[[str], Awaitable[None]]) -> None:
+        """Add a callback for output lines."""
+        with self._callbacks_lock:
+            self._output_callbacks.add(callback)
+
+    def remove_output_callback(self, callback: Callable[[str], Awaitable[None]]) -> None:
+        """Remove an output callback."""
+        with self._callbacks_lock:
+            self._output_callbacks.discard(callback)
+
+    def add_status_callback(self, callback: Callable[[str], Awaitable[None]]) -> None:
+        """Add a callback for status changes."""
+        with self._callbacks_lock:
+            self._status_callbacks.add(callback)
+
+    def remove_status_callback(self, callback: Callable[[str], Awaitable[None]]) -> None:
+        """Remove a status callback."""
+        with self._callbacks_lock:
+            self._status_callbacks.discard(callback)
+
+    @property
+    def pid(self) -> int | None:
+        return self.process.pid if self.process else None
+
+    def _check_lock(self) -> bool:
+        """Check if another research agent is already running for this project."""
+        if not self.lock_file.exists():
+            return True
+
+        try:
+            lock_content = self.lock_file.read_text().strip()
+            if ":" in lock_content:
+                pid_str, create_time_str = lock_content.split(":", 1)
+                pid = int(pid_str)
+                stored_create_time = float(create_time_str)
+            else:
+                pid = int(lock_content)
+                stored_create_time = None
+
+            if psutil.pid_exists(pid):
+                try:
+                    proc = psutil.Process(pid)
+                    if stored_create_time is not None:
+                        if abs(proc.create_time() - stored_create_time) > 1.0:
+                            self.lock_file.unlink(missing_ok=True)
+                            return True
+                    cmdline = " ".join(proc.cmdline())
+                    if "autonomous_agent_demo.py" in cmdline and "research" in cmdline:
+                        return False
+                except (psutil.NoSuchProcess, psutil.AccessDenied):
+                    pass
+            self.lock_file.unlink(missing_ok=True)
+            return True
+        except (ValueError, OSError):
+            self.lock_file.unlink(missing_ok=True)
+            return True
+
+    def _create_lock(self) -> bool:
+        """Atomically create lock file with current process PID and creation time."""
+        self.lock_file.parent.mkdir(parents=True, exist_ok=True)
+        if not self.process:
+            return False
+
+        try:
+            create_time = psutil.Process(self.process.pid).create_time()
+            lock_content = f"{self.process.pid}:{create_time}"
+
+            fd = os.open(str(self.lock_file), os.O_CREAT | os.O_EXCL | os.O_WRONLY)
+            os.write(fd, lock_content.encode())
+            os.close(fd)
+            return True
+        except FileExistsError:
+            return False
+        except (psutil.NoSuchProcess, OSError) as e:
+            logger.warning(f"Failed to create research lock file: {e}")
+            return False
+
+    def _remove_lock(self) -> None:
+        """Remove lock file."""
+        self.lock_file.unlink(missing_ok=True)
+
+    async def _broadcast_output(self, line: str) -> None:
+        """Broadcast output line to all registered callbacks."""
+        with self._callbacks_lock:
+            callbacks = list(self._output_callbacks)
+
+        for callback in callbacks:
+            await self._safe_callback(callback, line)
+
+    async def _stream_output(self) -> None:
+        """Stream process output to callbacks."""
+        if not self.process or not self.process.stdout:
+            return
+
+        try:
+            loop = asyncio.get_running_loop()
+            while True:
+                line = await loop.run_in_executor(
+                    None, self.process.stdout.readline
+                )
+                if not line:
+                    break
+
+                decoded = line.decode("utf-8", errors="replace").rstrip()
+                sanitized = sanitize_output(decoded)
+                await self._broadcast_output(sanitized)
+
+        except asyncio.CancelledError:
+            raise
+        except Exception as e:
+            logger.warning(f"Research output streaming error: {e}")
+        finally:
+            if self.process and self.process.poll() is not None:
+                exit_code = self.process.returncode
+                if exit_code != 0 and self.status == "running":
+                    self.status = "crashed"
+                elif self.status == "running":
+                    self.status = "stopped"
+                self._remove_lock()
+
+    async def start(self, model: str | None = None) -> tuple[bool, str]:
+        """
+        Start the research agent as a subprocess.
+
+        Args:
+            model: Model to use (e.g., claude-opus-4-5-20251101)
+
+        Returns:
+            Tuple of (success, message)
+        """
+        if self.status in ("running", "paused"):
+            return False, f"Research agent is already {self.status}"
+
+        if not self._check_lock():
+            return False, "Another research agent is already running for this project"
+
+        self.model = model
+
+        cmd = [
+            sys.executable,
+            "-u",
+            str(self.root_dir / "autonomous_agent_demo.py"),
+            "--project-dir",
+            str(self.project_dir.resolve()),
+            "--agent-type",
+            "research",
+        ]
+
+        if model:
+            cmd.extend(["--model", model])
+
+        try:
+            self.process = subprocess.Popen(
+                cmd,
+                stdout=subprocess.PIPE,
+                stderr=subprocess.STDOUT,
+                cwd=str(self.project_dir),
+                env={**os.environ, "PYTHONUNBUFFERED": "1"},
+            )
+
+            if not self._create_lock():
+                self.process.terminate()
+                try:
+                    self.process.wait(timeout=5)
+                except subprocess.TimeoutExpired:
+                    self.process.kill()
+                self.process = None
+                return False, "Another research agent is already running for this project"
+
+            self.started_at = datetime.now()
+            self.status = "running"
+
+            self._output_task = asyncio.create_task(self._stream_output())
+
+            return True, f"Research agent started with PID {self.process.pid}"
+        except Exception as e:
+            logger.exception("Failed to start research agent")
+            return False, f"Failed to start research agent: {e}"
+
+    async def stop(self) -> tuple[bool, str]:
+        """Stop the research agent."""
+        if not self.process or self.status == "stopped":
+            return False, "Research agent is not running"
+
+        try:
+            if self._output_task:
+                self._output_task.cancel()
+                try:
+                    await self._output_task
+                except asyncio.CancelledError:
+                    pass
+
+            proc = self.process
+            loop = asyncio.get_running_loop()
+            result = await loop.run_in_executor(None, kill_process_tree, proc, 10.0)
+            logger.debug(
+                "Research process tree kill result: status=%s, children=%d",
+                result.status, result.children_found
+            )
+
+            self._remove_lock()
+            self.status = "stopped"
+            self.process = None
+            self.started_at = None
+            self.model = None
+
+            return True, "Research agent stopped"
+        except Exception as e:
+            logger.exception("Failed to stop research agent")
+            return False, f"Failed to stop research agent: {e}"
+
+    async def healthcheck(self) -> bool:
+        """Check if the research agent process is still alive."""
+        if not self.process:
+            return self.status == "stopped"
+
+        poll = self.process.poll()
+        if poll is not None:
+            if self.status in ("running", "paused"):
+                self.status = "crashed"
+                self._remove_lock()
+            return False
+
+        return True
+
+
+def get_research_manager(project_name: str, project_dir: Path, root_dir: Path) -> ResearchAgentProcessManager:
+    """Get or create a research process manager for a project (thread-safe).
+
+    Args:
+        project_name: Name of the project
+        project_dir: Absolute path to the project directory
+        root_dir: Root directory of the autonomous-coding-ui project
+    """
+    with _research_managers_lock:
+        key = (project_name, str(project_dir.resolve()))
+        if key not in _research_managers:
+            _research_managers[key] = ResearchAgentProcessManager(project_name, project_dir, root_dir)
+        return _research_managers[key]
 
 
 async def cleanup_all_managers() -> None:

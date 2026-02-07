@@ -18,7 +18,7 @@ from fastapi import WebSocket, WebSocketDisconnect
 from .schemas import AGENT_MASCOTS
 from .services.chat_constants import ROOT_DIR
 from .services.dev_server_manager import get_devserver_manager
-from .services.process_manager import get_manager
+from .services.process_manager import get_manager, get_research_manager
 from .utils.project_helpers import get_project_path as _get_project_path
 from .utils.validation import is_valid_project_name as validate_project_name
 
@@ -78,6 +78,34 @@ ORCHESTRATOR_PATTERNS = {
     'testing_complete': re.compile(r'Feature #(\d+) testing (completed|failed)'),
     'all_complete': re.compile(r'All features complete'),
     'blocked_features': re.compile(r'(\d+) blocked by dependencies'),
+}
+
+# Research agent patterns for progress tracking
+# These patterns detect research agent output for broadcasting progress updates
+RESEARCH_PATTERNS = {
+    # Agent startup detection
+    'research_start': re.compile(r'Running as RESEARCH agent'),
+    # MCP tool usage patterns (extracted from [Tool: ...] output)
+    'scan_files': re.compile(r'\[Tool:\s*mcp__research__research_scan_files\]', re.I),
+    'detect_stack': re.compile(r'\[Tool:\s*mcp__research__research_detect_stack\]', re.I),
+    'add_finding': re.compile(r'\[Tool:\s*mcp__research__research_add_finding\]', re.I),
+    'get_context': re.compile(r'\[Tool:\s*mcp__research__research_get_context\]', re.I),
+    'finalize': re.compile(r'\[Tool:\s*mcp__research__research_finalize\]', re.I),
+    'get_stats': re.compile(r'\[Tool:\s*mcp__research__research_get_stats\]', re.I),
+    # Output patterns for file scanning progress
+    'files_scanned': re.compile(r'"count":\s*(\d+)'),
+    'files_truncated': re.compile(r'"truncated":\s*(true|false)', re.I),
+    # Findings patterns
+    'finding_added': re.compile(r'"finding_id":\s*(\d+)'),
+    'total_findings': re.compile(r'"total_findings":\s*(\d+)'),
+    # Phase detection from tool results
+    'phase_scanning': re.compile(r'"phase":\s*"scanning"'),
+    'phase_analyzing': re.compile(r'"phase":\s*"analyzing"'),
+    'phase_documenting': re.compile(r'"phase":\s*"documenting"'),
+    'phase_complete': re.compile(r'"phase":\s*"complete"'),
+    # Finalization patterns
+    'finalized': re.compile(r'"finalized":\s*true', re.I),
+    'files_written': re.compile(r'"files_written":\s*\[([^\]]+)\]'),
 }
 
 
@@ -618,6 +646,208 @@ class OrchestratorTracker:
             self.recent_events.clear()
 
 
+class ResearchTracker:
+    """Tracks research agent progress for WebSocket broadcasts.
+
+    Parses research agent stdout for key events and emits research_update
+    WebSocket messages showing current phase, files scanned, and findings count.
+    """
+
+    # Research phases in order
+    PHASES = ['idle', 'scanning', 'analyzing', 'documenting', 'complete']
+
+    def __init__(self):
+        self.phase = 'idle'
+        self.files_scanned = 0
+        self.findings_count = 0
+        self.current_document = None  # Which document is being worked on
+        self.last_tool = None  # Last MCP tool invoked
+        self.finalized = False
+        self.files_written: list[str] = []
+        self._lock = asyncio.Lock()
+
+    async def process_line(self, line: str) -> dict | None:
+        """Process an output line and return a research_update message if relevant.
+
+        Returns None if no update should be emitted.
+        """
+        async with self._lock:
+            update = None
+
+            # Check for research agent start - reset all counters for fresh run
+            if RESEARCH_PATTERNS['research_start'].search(line):
+                self.phase = 'scanning'
+                self.files_scanned = 0
+                self.findings_count = 0
+                self.current_document = None
+                self.last_tool = None
+                self.finalized = False
+                self.files_written = []
+                update = self._create_update(
+                    'research_start',
+                    'Research agent started, scanning codebase...'
+                )
+
+            # Check for MCP tool usage - these indicate current activity
+            elif RESEARCH_PATTERNS['scan_files'].search(line):
+                self.last_tool = 'scan_files'
+                self.phase = 'scanning'
+                update = self._create_update(
+                    'scan_files',
+                    'Scanning project files...'
+                )
+
+            elif RESEARCH_PATTERNS['detect_stack'].search(line):
+                self.last_tool = 'detect_stack'
+                self.phase = 'scanning'
+                update = self._create_update(
+                    'detect_stack',
+                    'Detecting technology stack...'
+                )
+
+            elif RESEARCH_PATTERNS['add_finding'].search(line):
+                self.last_tool = 'add_finding'
+                self.phase = 'analyzing'
+                # Increment findings count when add_finding tool is called
+                self.findings_count += 1
+                update = self._create_update(
+                    'add_finding',
+                    f'Recording research finding #{self.findings_count}...'
+                )
+
+            elif RESEARCH_PATTERNS['get_context'].search(line):
+                self.last_tool = 'get_context'
+                update = self._create_update(
+                    'get_context',
+                    'Reviewing research context...'
+                )
+
+            elif RESEARCH_PATTERNS['get_stats'].search(line):
+                self.last_tool = 'get_stats'
+                update = self._create_update(
+                    'get_stats',
+                    'Checking research progress...'
+                )
+
+            elif RESEARCH_PATTERNS['finalize'].search(line):
+                self.last_tool = 'finalize'
+                self.phase = 'documenting'
+                update = self._create_update(
+                    'finalize',
+                    'Finalizing research documents...'
+                )
+
+            # Check for file count in scan results
+            elif match := RESEARCH_PATTERNS['files_scanned'].search(line):
+                count = int(match.group(1))
+                if count > self.files_scanned:
+                    self.files_scanned = count
+                    update = self._create_update(
+                        'files_progress',
+                        f'Scanned {count} files'
+                    )
+
+            # Check for finding added
+            elif match := RESEARCH_PATTERNS['finding_added'].search(line):
+                finding_id = int(match.group(1))
+                self.findings_count = max(self.findings_count, finding_id)
+                update = self._create_update(
+                    'finding_added',
+                    f'Added finding #{finding_id}'
+                )
+
+            # Check for total findings count update
+            elif match := RESEARCH_PATTERNS['total_findings'].search(line):
+                total = int(match.group(1))
+                if total != self.findings_count:
+                    self.findings_count = total
+                    update = self._create_update(
+                        'findings_update',
+                        f'Total findings: {total}'
+                    )
+
+            # Check for phase changes from stats output
+            elif RESEARCH_PATTERNS['phase_scanning'].search(line):
+                if self.phase != 'scanning':
+                    self.phase = 'scanning'
+                    update = self._create_update(
+                        'phase_change',
+                        'Phase: Scanning codebase'
+                    )
+
+            elif RESEARCH_PATTERNS['phase_analyzing'].search(line):
+                if self.phase != 'analyzing':
+                    self.phase = 'analyzing'
+                    update = self._create_update(
+                        'phase_change',
+                        'Phase: Analyzing code patterns'
+                    )
+
+            elif RESEARCH_PATTERNS['phase_documenting'].search(line):
+                if self.phase != 'documenting':
+                    self.phase = 'documenting'
+                    update = self._create_update(
+                        'phase_change',
+                        'Phase: Documenting findings'
+                    )
+
+            elif RESEARCH_PATTERNS['phase_complete'].search(line):
+                if self.phase != 'complete':
+                    self.phase = 'complete'
+                    self.finalized = True
+                    update = self._create_update(
+                        'research_complete',
+                        'Research complete!'
+                    )
+
+            # Check for finalization result
+            elif RESEARCH_PATTERNS['finalized'].search(line):
+                self.finalized = True
+                self.phase = 'complete'
+                # Try to extract files written
+                files_match = RESEARCH_PATTERNS['files_written'].search(line)
+                if files_match:
+                    # Parse the files list (simple extraction)
+                    files_str = files_match.group(1)
+                    self.files_written = [
+                        f.strip().strip('"\'')
+                        for f in files_str.split(',')
+                        if f.strip()
+                    ]
+                update = self._create_update(
+                    'research_finalized',
+                    f'Research finalized - {len(self.files_written)} documents written'
+                )
+
+            return update
+
+    def _create_update(self, event_type: str, message: str) -> dict:
+        """Create a research_update WebSocket message."""
+        return {
+            'type': 'research_update',
+            'eventType': event_type,
+            'phase': self.phase,
+            'message': message,
+            'timestamp': datetime.now().isoformat(),
+            'filesScanned': self.files_scanned,
+            'findingsCount': self.findings_count,
+            'finalized': self.finalized,
+            'currentTool': self.last_tool,
+            'filesWritten': self.files_written if self.finalized else [],
+        }
+
+    async def reset(self):
+        """Reset tracker state when research agent stops or crashes."""
+        async with self._lock:
+            self.phase = 'idle'
+            self.files_scanned = 0
+            self.findings_count = 0
+            self.current_document = None
+            self.last_tool = None
+            self.finalized = False
+            self.files_written = []
+
+
 def _get_count_passing_tests():
     """Lazy import of count_passing_tests."""
     global _count_passing_tests
@@ -755,8 +985,19 @@ async def project_websocket(websocket: WebSocket, project_name: str):
     # Create orchestrator tracker for observability
     orchestrator_tracker = OrchestratorTracker()
 
+    # Create research tracker for research agent progress
+    research_tracker = ResearchTracker()
+
+        # Track consecutive send failures to detect dead connections
+    send_failures = [0]  # Use list to allow mutation in nested function
+    MAX_SEND_FAILURES = 3
+    connection_alive = [True]  # Track if connection is still alive
+
     async def on_output(line: str):
         """Handle agent output - broadcast to this WebSocket."""
+        if not connection_alive[0]:
+            return  # Skip if connection is known to be dead
+
         try:
             # Extract feature ID from line if present
             feature_id = None
@@ -778,6 +1019,7 @@ async def project_websocket(websocket: WebSocket, project_name: str):
                 log_msg["agentIndex"] = agent_index
 
             await websocket.send_json(log_msg)
+            send_failures[0] = 0  # Reset on success
 
             # Check if this line indicates agent activity (parallel mode)
             # and emit agent_update messages if so
@@ -789,26 +1031,47 @@ async def project_websocket(websocket: WebSocket, project_name: str):
             orch_update = await orchestrator_tracker.process_line(line)
             if orch_update:
                 await websocket.send_json(orch_update)
-        except Exception:
-            pass  # Connection may be closed
+
+            # Check for research agent events and emit research_update messages
+            research_update = await research_tracker.process_line(line)
+            if research_update:
+                await websocket.send_json(research_update)
+        except Exception as e:
+            send_failures[0] += 1
+            if send_failures[0] >= MAX_SEND_FAILURES:
+                connection_alive[0] = False
+                logger.debug(f"WebSocket connection appears dead after {send_failures[0]} failures: {e}")
 
     async def on_status_change(status: str):
         """Handle status change - broadcast to this WebSocket."""
+        if not connection_alive[0]:
+            return  # Skip if connection is known to be dead
+
         try:
             await websocket.send_json({
                 "type": "agent_status",
                 "status": status,
             })
+            send_failures[0] = 0  # Reset on success
             # Reset trackers when agent stops OR crashes to prevent ghost agents on restart
             if status in ("stopped", "crashed"):
                 await agent_tracker.reset()
                 await orchestrator_tracker.reset()
-        except Exception:
-            pass  # Connection may be closed
+                await research_tracker.reset()
+        except Exception as e:
+            send_failures[0] += 1
+            if send_failures[0] >= MAX_SEND_FAILURES:
+                connection_alive[0] = False
+                logger.debug(f"WebSocket connection appears dead after {send_failures[0]} failures: {e}")
 
-    # Register callbacks
+    # Register callbacks for coding agent
     agent_manager.add_output_callback(on_output)
     agent_manager.add_status_callback(on_status_change)
+
+    # Get research agent manager and register callbacks for research output
+    research_manager = get_research_manager(project_name, project_dir, ROOT_DIR)
+    research_manager.add_output_callback(on_output)
+    research_manager.add_status_callback(on_status_change)
 
     # Get dev server manager and register callbacks
     devserver_manager = get_devserver_manager(project_name, project_dir)
@@ -869,16 +1132,37 @@ async def project_websocket(websocket: WebSocket, project_name: str):
         })
 
         # Keep connection alive and handle incoming messages
+        # Use timeout to periodically check connection health
+        last_ping_time = asyncio.get_event_loop().time()
+        RECEIVE_TIMEOUT = 60.0  # 60 seconds timeout (client pings every 30s)
+
         while True:
+            if not connection_alive[0]:
+                logger.debug(f"WebSocket connection for {project_name} marked as dead, closing")
+                break
+
             try:
-                # Wait for any incoming messages (ping/pong, commands, etc.)
-                data = await websocket.receive_text()
+                # Wait for any incoming messages with timeout
+                data = await asyncio.wait_for(
+                    websocket.receive_text(),
+                    timeout=RECEIVE_TIMEOUT
+                )
                 message = json.loads(data)
+                last_ping_time = asyncio.get_event_loop().time()
 
                 # Handle ping
                 if message.get("type") == "ping":
                     await websocket.send_json({"type": "pong"})
 
+            except asyncio.TimeoutError:
+                # No message received within timeout
+                # Check if we should close due to inactivity
+                current_time = asyncio.get_event_loop().time()
+                if current_time - last_ping_time > RECEIVE_TIMEOUT * 2:
+                    logger.warning(f"WebSocket for {project_name} timed out (no ping received)")
+                    break
+                # Otherwise, continue waiting - the client might just be idle
+                continue
             except WebSocketDisconnect:
                 break
             except json.JSONDecodeError:
@@ -897,6 +1181,10 @@ async def project_websocket(websocket: WebSocket, project_name: str):
         # Unregister agent callbacks
         agent_manager.remove_output_callback(on_output)
         agent_manager.remove_status_callback(on_status_change)
+
+        # Unregister research agent callbacks
+        research_manager.remove_output_callback(on_output)
+        research_manager.remove_status_callback(on_status_change)
 
         # Unregister dev server callbacks
         devserver_manager.remove_output_callback(on_dev_output)

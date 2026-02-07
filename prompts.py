@@ -128,6 +128,11 @@ def _strip_browser_testing_sections(prompt: str) -> str:
     return prompt
 
 
+def get_research_prompt(project_dir: Path | None = None) -> str:
+    """Load the research agent prompt (project-specific if available)."""
+    return load_prompt("research_prompt", project_dir)
+
+
 def get_coding_prompt(project_dir: Path | None = None, yolo_mode: bool = False) -> str:
     """Load the coding agent prompt (project-specific if available).
 
@@ -394,34 +399,43 @@ def has_project_prompts(project_dir: Path) -> bool:
         return False
 
 
-def copy_spec_to_project(project_dir: Path) -> None:
+def copy_spec_to_project(project_dir: Path, force: bool = False) -> None:
     """
     Copy the app spec file into the project root directory for the agent to read.
 
     This maintains backwards compatibility - the agent expects app_spec.txt
     in the project root directory.
 
-    The spec is sourced from: {project_dir}/prompts/app_spec.txt
+    The spec is sourced from: {project_dir}/.autoforge/prompts/app_spec.txt
 
     Args:
         project_dir: The project directory
+        force: If True, overwrite existing root spec with the one from prompts dir.
+               This is useful after research-to-spec conversion when a new spec
+               was created but an old one exists in the root.
     """
     spec_dest = project_dir / "app_spec.txt"
-
-    # Don't overwrite if already exists
-    if spec_dest.exists():
-        return
 
     # Copy from project prompts directory
     project_prompts = get_project_prompts_dir(project_dir)
     project_spec = project_prompts / "app_spec.txt"
-    if project_spec.exists():
-        try:
-            shutil.copy(project_spec, spec_dest)
-            print("Copied app_spec.txt to project directory")
-            return
-        except (OSError, PermissionError) as e:
-            print(f"Warning: Could not copy app_spec.txt: {e}")
-            return
 
-    print("Warning: No app_spec.txt found to copy to project directory")
+    if not project_spec.exists():
+        print("Warning: No app_spec.txt found in prompts directory to copy")
+        return
+
+    # Check if we should copy
+    if spec_dest.exists() and not force:
+        # Check if prompts version is newer
+        if project_spec.stat().st_mtime > spec_dest.stat().st_mtime:
+            print("Note: Newer app_spec.txt exists in prompts dir, use force=True to overwrite")
+        return
+
+    try:
+        shutil.copy(project_spec, spec_dest)
+        if force:
+            print("Copied updated app_spec.txt to project directory (overwriting old)")
+        else:
+            print("Copied app_spec.txt to project directory")
+    except (OSError, PermissionError) as e:
+        print(f"Warning: Could not copy app_spec.txt: {e}")

@@ -145,7 +145,7 @@ Authentication:
     # Agent type for subprocess mode
     parser.add_argument(
         "--agent-type",
-        choices=["initializer", "coding", "testing"],
+        choices=["initializer", "coding", "testing", "research"],
         default=None,
         help="Agent type (used by orchestrator to spawn specialized subprocesses)",
     )
@@ -170,6 +170,14 @@ Authentication:
         type=int,
         default=1,
         help="Testing agents per coding agent (0-3, default: 1). Set to 0 to disable testing agents.",
+    )
+
+    parser.add_argument(
+        "--testing-mode",
+        type=str,
+        default="full",
+        choices=["full", "smart"],
+        help="Testing mode: full (always Playwright), smart (Playwright for UI only)",
     )
 
     parser.add_argument(
@@ -269,6 +277,7 @@ def main() -> None:
                     agent_type=args.agent_type,
                     testing_feature_id=args.testing_feature_id,
                     testing_feature_ids=testing_feature_ids,
+                    testing_mode=args.testing_mode,
                 )
             )
         else:
@@ -298,6 +307,7 @@ def main() -> None:
                     model=args.model,
                     yolo_mode=args.yolo,
                     testing_agent_ratio=args.testing_ratio,
+                    testing_mode=args.testing_mode,
                     testing_batch_size=args.testing_batch_size,
                     batch_size=args.batch_size,
                 )

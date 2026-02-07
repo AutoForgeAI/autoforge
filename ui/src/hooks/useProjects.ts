@@ -62,6 +62,15 @@ export function useResetProject(projectName: string) {
   })
 }
 
+export function useHasFeatures(projectName: string | null) {
+  return useQuery({
+    queryKey: ['has-features', projectName],
+    queryFn: () => api.checkHasFeatures(projectName!),
+    enabled: !!projectName,
+    staleTime: 0, // Always fetch fresh data
+  })
+}
+
 export function useUpdateProjectSettings(projectName: string) {
   const queryClient = useQueryClient()
 
@@ -266,6 +275,7 @@ const DEFAULT_SETTINGS: Settings = {
   glm_mode: false,
   ollama_mode: false,
   testing_agent_ratio: 1,
+  testing_mode: 'full',
   playwright_headless: true,
   batch_size: 3,
   api_provider: 'claude',
