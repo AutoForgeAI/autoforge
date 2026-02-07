@@ -127,7 +127,9 @@ def check_node() -> bool:
         result = subprocess.run(
             ["node", "--version"],
             capture_output=True,
-            text=True
+            text=True,
+            encoding="utf-8",  # Fix Windows CP1252 encoding issue (#138)
+            errors="replace",
         )
         print(f"  Node.js version: {result.stdout.strip()}")
     except Exception:
