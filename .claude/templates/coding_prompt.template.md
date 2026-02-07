@@ -90,7 +90,7 @@ Use browser automation tools:
 
 - Navigate to the app in a real browser
 - Interact like a human user (click, type, scroll)
-- Take screenshots at each step and store them in the `.autoforge/validation` directory
+- Take screenshots at each step and store them in the `.autoforge/screenshots` directory
 - Verify both functionality AND visual appearance
 
 **DO:**
