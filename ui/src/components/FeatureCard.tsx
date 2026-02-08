@@ -1,4 +1,4 @@
-import { CheckCircle2, Circle, Loader2, MessageCircle } from 'lucide-react'
+import { CheckCircle2, Circle, Loader2, MessageCircle, UserCircle } from 'lucide-react'
 import type { Feature, ActiveAgent } from '../lib/types'
 import { DependencyBadge } from './DependencyBadge'
 import { AgentAvatar } from './AgentAvatar'
@@ -45,7 +45,8 @@ export function FeatureCard({ feature, onClick, isInProgress, allFeatures = [], 
         cursor-pointer transition-all hover:border-primary py-3
         ${isInProgress ? 'animate-pulse' : ''}
         ${feature.passes ? 'border-primary/50' : ''}
-        ${isBlocked && !feature.passes ? 'border-destructive/50 opacity-80' : ''}
+        ${feature.needs_human_input ? 'border-amber-500/50' : ''}
+        ${isBlocked && !feature.passes && !feature.needs_human_input ? 'border-destructive/50 opacity-80' : ''}
         ${hasActiveAgent ? 'ring-2 ring-primary ring-offset-2' : ''}
       `}
     >
@@ -104,6 +105,11 @@ export function FeatureCard({ feature, onClick, isInProgress, allFeatures = [], 
             <>
               <CheckCircle2 size={16} className="text-primary" />
               <span className="text-primary font-medium">Complete</span>
+            </>
+          ) : feature.needs_human_input ? (
+            <>
+              <UserCircle size={16} className="text-amber-500" />
+              <span className="text-amber-500 font-medium">Needs Your Input</span>
             </>
           ) : isBlocked ? (
             <>

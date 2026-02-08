@@ -492,6 +492,9 @@ class ParallelOrchestrator:
         for fd in feature_dicts:
             if not fd.get("in_progress") or fd.get("passes"):
                 continue
+            # Skip if blocked for human input
+            if fd.get("needs_human_input"):
+                continue
             # Skip if already running in this orchestrator instance
             if fd["id"] in running_ids:
                 continue
@@ -536,10 +539,13 @@ class ParallelOrchestrator:
                 running_ids.update(batch_ids)
 
         ready = []
-        skipped_reasons = {"passes": 0, "in_progress": 0, "running": 0, "failed": 0, "deps": 0}
+        skipped_reasons = {"passes": 0, "in_progress": 0, "running": 0, "failed": 0, "deps": 0, "needs_human_input": 0}
         for fd in feature_dicts:
             if fd.get("passes"):
                 skipped_reasons["passes"] += 1
+                continue
+            if fd.get("needs_human_input"):
+                skipped_reasons["needs_human_input"] += 1
                 continue
             if fd.get("in_progress"):
                 skipped_reasons["in_progress"] += 1

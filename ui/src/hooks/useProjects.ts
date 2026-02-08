@@ -133,6 +133,18 @@ export function useUpdateFeature(projectName: string) {
   })
 }
 
+export function useResolveHumanInput(projectName: string) {
+  const queryClient = useQueryClient()
+
+  return useMutation({
+    mutationFn: ({ featureId, fields }: { featureId: number; fields: Record<string, string | boolean | string[]> }) =>
+      api.resolveHumanInput(projectName, featureId, { fields }),
+    onSuccess: () => {
+      queryClient.invalidateQueries({ queryKey: ['features', projectName] })
+    },
+  })
+}
+
 // ============================================================================
 // Agent
 // ============================================================================

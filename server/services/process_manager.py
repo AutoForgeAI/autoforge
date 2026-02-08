@@ -255,7 +255,10 @@ class AgentProcessManager:
                 ).all()
                 if stuck:
                     for f in stuck:
-                        f.in_progress = False
+                        # Don't clear in_progress for features blocked for human input -
+                        # they should stay in needs_human_input state even after crash
+                        if not getattr(f, 'needs_human_input', False):
+                            f.in_progress = False
                     session.commit()
                     logger.info(
                         "Cleaned up %d stuck feature(s) for %s",

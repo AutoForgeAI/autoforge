@@ -13,12 +13,15 @@ interface KanbanBoardProps {
 }
 
 export function KanbanBoard({ features, onFeatureClick, onAddFeature, onExpandProject, activeAgents = [], onCreateSpec, hasSpec = true }: KanbanBoardProps) {
-  const hasFeatures = features && (features.pending.length + features.in_progress.length + features.done.length) > 0
+  const hasFeatures = features && (features.pending.length + features.in_progress.length + features.done.length + (features.needs_human_input?.length || 0)) > 0
 
   // Combine all features for dependency status calculation
   const allFeatures = features
-    ? [...features.pending, ...features.in_progress, ...features.done]
+    ? [...features.pending, ...features.in_progress, ...features.done, ...(features.needs_human_input || [])]
     : []
+
+  const needsInputCount = features?.needs_human_input?.length || 0
+  const showNeedsInput = needsInputCount > 0
 
   if (!features) {
     return (
@@ -40,7 +43,7 @@ export function KanbanBoard({ features, onFeatureClick, onAddFeature, onExpandPr
   }
 
   return (
-    <div className="grid grid-cols-1 md:grid-cols-3 gap-6">
+    <div className={`grid grid-cols-1 ${showNeedsInput ? 'md:grid-cols-4' : 'md:grid-cols-3'} gap-6`}>
       <KanbanColumn
         title="Pending"
         count={features.pending.length}
@@ -64,6 +67,17 @@ export function KanbanBoard({ features, onFeatureClick, onAddFeature, onExpandPr
         color="progress"
         onFeatureClick={onFeatureClick}
       />
+      {showNeedsInput && (
+        <KanbanColumn
+          title="Needs Input"
+          count={needsInputCount}
+          features={features.needs_human_input}
+          allFeatures={allFeatures}
+          activeAgents={activeAgents}
+          color="human_input"
+          onFeatureClick={onFeatureClick}
+        />
+      )}
       <KanbanColumn
         title="Done"
         count={features.done.length}

@@ -102,7 +102,7 @@ def get_project_stats(project_dir: Path) -> ProjectStats:
     """Get statistics for a project."""
     _init_imports()
     assert _count_passing_tests is not None  # guaranteed by _init_imports()
-    passing, in_progress, total = _count_passing_tests(project_dir)
+    passing, in_progress, total, _needs_human_input = _count_passing_tests(project_dir)
     percentage = (passing / total * 100) if total > 0 else 0.0
     return ProjectStats(
         passing=passing,

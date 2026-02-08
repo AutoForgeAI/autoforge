@@ -137,6 +137,7 @@ function isAllComplete(features: FeatureListResponse | undefined): boolean {
   return (
     features.pending.length === 0 &&
     features.in_progress.length === 0 &&
+    (features.needs_human_input?.length || 0) === 0 &&
     features.done.length > 0
   )
 }

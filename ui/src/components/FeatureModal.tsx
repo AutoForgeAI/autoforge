@@ -1,7 +1,8 @@
 import { useState } from 'react'
-import { X, CheckCircle2, Circle, SkipForward, Trash2, Loader2, AlertCircle, Pencil, Link2, AlertTriangle } from 'lucide-react'
-import { useSkipFeature, useDeleteFeature, useFeatures } from '../hooks/useProjects'
+import { X, CheckCircle2, Circle, SkipForward, Trash2, Loader2, AlertCircle, Pencil, Link2, AlertTriangle, UserCircle } from 'lucide-react'
+import { useSkipFeature, useDeleteFeature, useFeatures, useResolveHumanInput } from '../hooks/useProjects'
 import { EditFeatureForm } from './EditFeatureForm'
+import { HumanInputForm } from './HumanInputForm'
 import type { Feature } from '../lib/types'
 import {
   Dialog,
@@ -50,10 +51,12 @@ export function FeatureModal({ feature, projectName, onClose }: FeatureModalProp
   const deleteFeature = useDeleteFeature(projectName)
   const { data: allFeatures } = useFeatures(projectName)
 
+  const resolveHumanInput = useResolveHumanInput(projectName)
+
   // Build a map of feature ID to feature for looking up dependency names
   const featureMap = new Map<number, Feature>()
   if (allFeatures) {
-    ;[...allFeatures.pending, ...allFeatures.in_progress, ...allFeatures.done].forEach(f => {
+    ;[...allFeatures.pending, ...allFeatures.in_progress, ...allFeatures.done, ...(allFeatures.needs_human_input || [])].forEach(f => {
       featureMap.set(f.id, f)
     })
   }
@@ -141,6 +144,11 @@ export function FeatureModal({ feature, projectName, onClose }: FeatureModalProp
                 <CheckCircle2 size={24} className="text-primary" />
                 <span className="font-semibold text-primary">COMPLETE</span>
               </>
+            ) : feature.needs_human_input ? (
+              <>
+                <UserCircle size={24} className="text-amber-500" />
+                <span className="font-semibold text-amber-500">NEEDS YOUR INPUT</span>
+              </>
             ) : (
               <>
                 <Circle size={24} className="text-muted-foreground" />
@@ -151,6 +159,38 @@ export function FeatureModal({ feature, projectName, onClose }: FeatureModalProp
               Priority: #{feature.priority}
             </span>
           </div>
+
+          {/* Human Input Request */}
+          {feature.needs_human_input && feature.human_input_request && (
+            <HumanInputForm
+              request={feature.human_input_request}
+              onSubmit={async (fields) => {
+                setError(null)
+                try {
+                  await resolveHumanInput.mutateAsync({ featureId: feature.id, fields })
+                  onClose()
+                } catch (err) {
+                  setError(err instanceof Error ? err.message : 'Failed to submit response')
+                }
+              }}
+              isLoading={resolveHumanInput.isPending}
+            />
+          )}
+
+          {/* Previous Human Input Response */}
+          {feature.human_input_response && !feature.needs_human_input && (
+            <Alert className="border-green-500 bg-green-50 dark:bg-green-950/20">
+              <CheckCircle2 className="h-4 w-4 text-green-600" />
+              <AlertDescription>
+                <h4 className="font-semibold mb-1 text-green-700 dark:text-green-400">Human Input Provided</h4>
+                <p className="text-sm text-green-600 dark:text-green-300">
+                  Response submitted{feature.human_input_response.responded_at
+                    ? ` at ${new Date(feature.human_input_response.responded_at).toLocaleString()}`
+                    : ''}.
+                </p>
+              </AlertDescription>
+            </Alert>
+          )}
 
           {/* Description */}
           <div>

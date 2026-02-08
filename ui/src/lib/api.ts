@@ -181,6 +181,17 @@ export async function createFeaturesBulk(
   })
 }
 
+export async function resolveHumanInput(
+  projectName: string,
+  featureId: number,
+  response: { fields: Record<string, string | boolean | string[]> }
+): Promise<Feature> {
+  return fetchJSON(`/projects/${encodeURIComponent(projectName)}/features/${featureId}/resolve-human-input`, {
+    method: 'POST',
+    body: JSON.stringify(response),
+  })
+}
+
 // ============================================================================
 // Dependency Graph API
 // ============================================================================

@@ -222,7 +222,7 @@ async def run_autonomous_agent(
         # Check if all features are already complete (before starting a new session)
         # Skip this check if running as initializer (needs to create features first)
         if not is_initializer and iteration == 1:
-            passing, in_progress, total = count_passing_tests(project_dir)
+            passing, in_progress, total, _nhi = count_passing_tests(project_dir)
             if total > 0 and passing == total:
                 print("\n" + "=" * 70)
                 print("  ALL FEATURES ALREADY COMPLETE!")
@@ -358,7 +358,7 @@ async def run_autonomous_agent(
             print_progress_summary(project_dir)
 
             # Check if all features are complete - exit gracefully if done
-            passing, in_progress, total = count_passing_tests(project_dir)
+            passing, in_progress, total, _nhi = count_passing_tests(project_dir)
             if total > 0 and passing == total:
                 print("\n" + "=" * 70)
                 print("  ALL FEATURES COMPLETE!")

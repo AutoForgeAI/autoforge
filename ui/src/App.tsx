@@ -181,7 +181,7 @@ function App() {
 
       // E : Expand project with AI (when project selected, has spec and has features)
       if ((e.key === 'e' || e.key === 'E') && selectedProject && hasSpec && features &&
-          (features.pending.length + features.in_progress.length + features.done.length) > 0) {
+          (features.pending.length + features.in_progress.length + features.done.length + (features.needs_human_input?.length || 0)) > 0) {
         e.preventDefault()
         setShowExpandProject(true)
       }
@@ -443,6 +443,7 @@ function App() {
              features.pending.length === 0 &&
              features.in_progress.length === 0 &&
              features.done.length === 0 &&
+             (features.needs_human_input?.length || 0) === 0 &&
              wsState.agentStatus === 'running' && (
               <Card className="p-8 text-center">
                 <CardContent className="p-0">
@@ -458,7 +459,7 @@ function App() {
             )}
 
             {/* View Toggle - only show when there are features */}
-            {features && (features.pending.length + features.in_progress.length + features.done.length) > 0 && (
+            {features && (features.pending.length + features.in_progress.length + features.done.length + (features.needs_human_input?.length || 0)) > 0 && (
               <div className="flex justify-center">
                 <ViewToggle viewMode={viewMode} onViewModeChange={setViewMode} />
               </div>

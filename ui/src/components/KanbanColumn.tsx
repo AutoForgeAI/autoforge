@@ -11,7 +11,7 @@ interface KanbanColumnProps {
   features: Feature[]
   allFeatures?: Feature[]
   activeAgents?: ActiveAgent[]
-  color: 'pending' | 'progress' | 'done'
+  color: 'pending' | 'progress' | 'done' | 'human_input'
   onFeatureClick: (feature: Feature) => void
   onAddFeature?: () => void
   onExpandProject?: () => void
@@ -24,6 +24,7 @@ const colorMap = {
   pending: 'border-t-4 border-t-muted',
   progress: 'border-t-4 border-t-primary',
   done: 'border-t-4 border-t-primary',
+  human_input: 'border-t-4 border-t-amber-500',
 }
 
 export function KanbanColumn({
