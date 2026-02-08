@@ -14,6 +14,7 @@ from pathlib import Path
 from typing import Set
 
 from fastapi import WebSocket, WebSocketDisconnect
+import psutil
 
 from .schemas import AGENT_MASCOTS
 from .services.chat_constants import ROOT_DIR
@@ -716,6 +717,60 @@ async def poll_progress(websocket: WebSocket, project_name: str, project_dir: Pa
             break
 
 
+def _collect_perf_metrics(agent_manager) -> dict:
+    """Collect coarse, non-sensitive metrics for PerfMon."""
+    # System-level metrics are robust across platforms and do not expose paths/usernames.
+    cpu_percent = float(psutil.cpu_percent(interval=None))
+    memory = psutil.virtual_memory()
+
+    started_at = None
+    if agent_manager.started_at is not None:
+        started_at = agent_manager.started_at.isoformat()
+
+    return {
+        "type": "perf_metrics",
+        "timestamp": datetime.now().isoformat(),
+        "run": {
+            "status": agent_manager.status,
+            "pid": agent_manager.pid,
+            "started_at": started_at,
+        },
+        "tokens": {
+            "available": False,
+            "current_run": None,
+            "total_session": None,
+        },
+        "cpu": {
+            "percent": round(cpu_percent, 1),
+        },
+        "memory": {
+            "used_gb": round(memory.used / (1024 ** 3), 1),
+            "total_gb": round(memory.total / (1024 ** 3), 1),
+            "percent": round(float(memory.percent), 1),
+        },
+        "gpu": {
+            "available": False,
+            "percent": None,
+            "vram_used_gb": None,
+            "vram_total_gb": None,
+        },
+    }
+
+
+async def poll_perf_metrics(websocket: WebSocket, agent_manager):
+    """Send PerfMon telemetry over WebSocket at adaptive cadence."""
+    while True:
+        try:
+            await websocket.send_json(_collect_perf_metrics(agent_manager))
+            interval = 1 if agent_manager.status in ("running", "paused") else 3
+            await asyncio.sleep(interval)
+        except asyncio.CancelledError:
+            raise
+        except Exception as e:
+            logger.warning(f"Perf metrics polling error: {e}")
+            break
+
+
 async def project_websocket(websocket: WebSocket, project_name: str):
     """
     WebSocket endpoint for project updates.
@@ -841,6 +896,7 @@ async def project_websocket(websocket: WebSocket, project_name: str):
 
     # Start progress polling task
     poll_task = asyncio.create_task(poll_progress(websocket, project_name, project_dir))
+    perf_task = asyncio.create_task(poll_perf_metrics(websocket, agent_manager))
 
     try:
         # Send initial agent status
@@ -889,8 +945,13 @@ async def project_websocket(websocket: WebSocket, project_name: str):
     finally:
         # Clean up
         poll_task.cancel()
+        perf_task.cancel()
         try:
             await poll_task
+        except asyncio.CancelledError:
+            pass
+        try:
+            await perf_task
         except asyncio.CancelledError:
             pass
 

@@ -240,7 +240,7 @@ export interface OrchestratorStatus {
 }
 
 // WebSocket message types
-export type WSMessageType = 'progress' | 'feature_update' | 'log' | 'agent_status' | 'pong' | 'dev_log' | 'dev_server_status' | 'agent_update' | 'orchestrator_update'
+export type WSMessageType = 'progress' | 'feature_update' | 'log' | 'agent_status' | 'pong' | 'dev_log' | 'dev_server_status' | 'agent_update' | 'orchestrator_update' | 'perf_metrics'
 
 export interface WSProgressMessage {
   type: 'progress'
@@ -315,6 +315,38 @@ export interface WSOrchestratorUpdateMessage {
   featureName?: string
 }
 
+export interface PerfMetrics {
+  timestamp: string
+  run: {
+    status: AgentStatus
+    pid: number | null
+    started_at: string | null
+  }
+  tokens: {
+    available: boolean
+    current_run: number | null
+    total_session: number | null
+  }
+  cpu: {
+    percent: number | null
+  }
+  memory: {
+    used_gb: number | null
+    total_gb: number | null
+    percent: number | null
+  }
+  gpu: {
+    available: boolean
+    percent: number | null
+    vram_used_gb: number | null
+    vram_total_gb: number | null
+  }
+}
+
+export interface WSPerfMetricsMessage extends PerfMetrics {
+  type: 'perf_metrics'
+}
+
 export type WSMessage =
   | WSProgressMessage
   | WSFeatureUpdateMessage
@@ -325,6 +357,7 @@ export type WSMessage =
   | WSDevLogMessage
   | WSDevServerStatusMessage
   | WSOrchestratorUpdateMessage
+  | WSPerfMetricsMessage
 
 // ============================================================================
 // Spec Chat Types

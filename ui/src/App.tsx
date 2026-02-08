@@ -27,6 +27,7 @@ import { KeyboardShortcutsHelp } from './components/KeyboardShortcutsHelp'
 import { ThemeSelector } from './components/ThemeSelector'
 import { ResetProjectModal } from './components/ResetProjectModal'
 import { ProjectSetupRequired } from './components/ProjectSetupRequired'
+import { PerfMonPanel } from './components/PerfMonPanel'
 import { getDependencyGraph, startAgent } from './lib/api'
 import { Loader2, Settings, Moon, Sun, RotateCcw, BookOpen } from 'lucide-react'
 import type { Feature } from './lib/types'
@@ -83,6 +84,7 @@ function App() {
   useAgentStatus(selectedProject) // Keep polling for status updates
   const wsState = useProjectWebSocket(selectedProject)
   const { theme, setTheme, darkMode, toggleDarkMode, themes } = useTheme()
+  const isAgentLive = wsState.agentStatus === 'running' || wsState.agentStatus === 'paused'
 
   // Get has_spec from the selected project
   const selectedProjectData = projects?.find(p => p.name === selectedProject)
@@ -363,6 +365,8 @@ function App() {
                 </TooltipTrigger>
                 <TooltipContent>Docs</TooltipContent>
               </Tooltip>
+
+              <PerfMonPanel isLive={isAgentLive} perfMetrics={wsState.perfMetrics} />
 
               {/* Theme selector */}
               <ThemeSelector

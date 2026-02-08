@@ -12,6 +12,7 @@ import type {
   AgentLogEntry,
   OrchestratorStatus,
   OrchestratorEvent,
+  PerfMetrics,
 } from '../lib/types'
 
 // Activity item for the feed
@@ -52,6 +53,8 @@ interface WebSocketState {
   celebration: CelebrationTrigger | null
   // Orchestrator state for Mission Control
   orchestratorStatus: OrchestratorStatus | null
+  // Perf metrics for PerfMon panel
+  perfMetrics: PerfMetrics | null
 }
 
 const MAX_LOGS = 100 // Keep last 100 log lines
@@ -73,6 +76,7 @@ export function useProjectWebSocket(projectName: string | null) {
     celebrationQueue: [],
     celebration: null,
     orchestratorStatus: null,
+    perfMetrics: null,
   })
 
   const wsRef = useRef<WebSocket | null>(null)
@@ -326,6 +330,20 @@ export function useProjectWebSocket(projectName: string | null) {
               }))
               break
 
+            case 'perf_metrics':
+              setState(prev => ({
+                ...prev,
+                perfMetrics: {
+                  timestamp: message.timestamp,
+                  run: message.run,
+                  tokens: message.tokens,
+                  cpu: message.cpu,
+                  memory: message.memory,
+                  gpu: message.gpu,
+                },
+              }))
+              break
+
             case 'pong':
               // Heartbeat response
               break
@@ -398,6 +416,7 @@ export function useProjectWebSocket(projectName: string | null) {
       celebrationQueue: [],
       celebration: null,
       orchestratorStatus: null,
+      perfMetrics: null,
     })
 
     if (!projectName) {
