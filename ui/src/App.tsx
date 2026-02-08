@@ -261,19 +261,19 @@ function App() {
     <div className="min-h-screen bg-background">
       {/* Header */}
       <header className="sticky top-0 z-50 bg-card/80 backdrop-blur-md text-foreground border-b-2 border-border">
-        <div className="max-w-7xl mx-auto px-4 py-4">
+        <div className="max-w-7xl mx-auto px-4 py-3">
           <TooltipProvider>
-            <div className="flex items-center justify-between">
+            {/* Row 1: Branding + Project + Utility icons */}
+            <div className="flex items-center gap-3">
               {/* Logo and Title */}
-              <div className="flex items-center gap-3">
+              <div className="flex items-center gap-2 shrink-0">
                 <img src="/logo.png" alt="AutoForge" className="h-9 w-9 rounded-full" />
-                <h1 className="font-display text-2xl font-bold tracking-tight uppercase">
+                <h1 className="font-display text-2xl font-bold tracking-tight uppercase hidden md:block">
                   AutoForge
                 </h1>
               </div>
 
-              {/* Controls */}
-              <div className="flex items-center gap-4">
+              {/* Project selector */}
               <ProjectSelector
                 projects={projects ?? []}
                 selectedProject={selectedProject}
@@ -282,73 +282,31 @@ function App() {
                 onSpecCreatingChange={setIsSpecCreating}
               />
 
-              {selectedProject && (
-                <>
-                  <AgentControl
-                    projectName={selectedProject}
-                    status={wsState.agentStatus}
-                    defaultConcurrency={selectedProjectData?.default_concurrency}
-                  />
+              {/* Spacer */}
+              <div className="flex-1" />
 
-                  <DevServerControl
-                    projectName={selectedProject}
-                    status={wsState.devServerStatus}
-                    url={wsState.devServerUrl}
-                  />
-
-                  <Tooltip>
-                    <TooltipTrigger asChild>
-                      <Button
-                        onClick={() => setShowSettings(true)}
-                        variant="outline"
-                        size="sm"
-                        aria-label="Open Settings"
-                      >
-                        <Settings size={18} />
-                      </Button>
-                    </TooltipTrigger>
-                    <TooltipContent>Settings (,)</TooltipContent>
-                  </Tooltip>
-
-                  <Tooltip>
-                    <TooltipTrigger asChild>
-                      <Button
-                        onClick={() => setShowResetModal(true)}
-                        variant="outline"
-                        size="sm"
-                        aria-label="Reset Project"
-                        disabled={wsState.agentStatus === 'running'}
-                      >
-                        <RotateCcw size={18} />
-                      </Button>
-                    </TooltipTrigger>
-                    <TooltipContent>Reset (R)</TooltipContent>
-                  </Tooltip>
-
-                  {/* Ollama Mode Indicator */}
-                  {settings?.ollama_mode && (
-                    <div
-                      className="flex items-center gap-1.5 px-2 py-1 bg-card rounded border-2 border-border shadow-sm"
-                      title="Using Ollama local models"
-                    >
-                      <img src="/ollama.png" alt="Ollama" className="w-5 h-5" />
-                      <span className="text-xs font-bold text-foreground">Ollama</span>
-                    </div>
-                  )}
-
-                  {/* GLM Mode Badge */}
-                  {settings?.glm_mode && (
-                    <Badge
-                      className="bg-purple-500 text-white hover:bg-purple-600"
-                      title="Using GLM API"
-                    >
-                      GLM
-                    </Badge>
-                  )}
-                </>
+              {/* Ollama Mode Indicator */}
+              {selectedProject && settings?.ollama_mode && (
+                <div
+                  className="hidden sm:flex items-center gap-1.5 px-2 py-1 bg-card rounded border-2 border-border shadow-sm"
+                  title="Using Ollama local models"
+                >
+                  <img src="/ollama.png" alt="Ollama" className="w-5 h-5" />
+                  <span className="text-xs font-bold text-foreground">Ollama</span>
+                </div>
               )}
 
-              {/* Docs link */}
+              {/* GLM Mode Badge */}
+              {selectedProject && settings?.glm_mode && (
+                <Badge
+                  className="hidden sm:inline-flex bg-purple-500 text-white hover:bg-purple-600"
+                  title="Using GLM API"
+                >
+                  GLM
+                </Badge>
+              )}
+
+              {/* Utility icons - always visible */}
               <Tooltip>
                 <TooltipTrigger asChild>
                   <Button
@@ -363,14 +321,12 @@ function App() {
                 <TooltipContent>Docs</TooltipContent>
               </Tooltip>
 
-              {/* Theme selector */}
               <ThemeSelector
                 themes={themes}
                 currentTheme={theme}
                 onThemeChange={setTheme}
               />
 
-              {/* Dark mode toggle - always visible */}
               <Tooltip>
                 <TooltipTrigger asChild>
                   <Button
@@ -384,8 +340,55 @@ function App() {
                 </TooltipTrigger>
                 <TooltipContent>Toggle theme</TooltipContent>
               </Tooltip>
-              </div>
             </div>
+
+            {/* Row 2: Project controls - only when a project is selected */}
+            {selectedProject && (
+              <div className="flex items-center gap-3 mt-2 pt-2 border-t border-border/50">
+                <AgentControl
+                  projectName={selectedProject}
+                  status={wsState.agentStatus}
+                  defaultConcurrency={selectedProjectData?.default_concurrency}
+                />
+
+                <DevServerControl
+                  projectName={selectedProject}
+                  status={wsState.devServerStatus}
+                  url={wsState.devServerUrl}
+                />
+
+                <div className="flex-1" />
+
+                <Tooltip>
+                  <TooltipTrigger asChild>
+                    <Button
+                      onClick={() => setShowSettings(true)}
+                      variant="outline"
+                      size="sm"
+                      aria-label="Open Settings"
+                    >
+                      <Settings size={18} />
+                    </Button>
+                  </TooltipTrigger>
+                  <TooltipContent>Settings (,)</TooltipContent>
+                </Tooltip>
+
+                <Tooltip>
+                  <TooltipTrigger asChild>
+                    <Button
+                      onClick={() => setShowResetModal(true)}
+                      variant="outline"
+                      size="sm"
+                      aria-label="Reset Project"
+                      disabled={wsState.agentStatus === 'running'}
+                    >
+                      <RotateCcw size={18} />
+                    </Button>
+                  </TooltipTrigger>
+                  <TooltipContent>Reset (R)</TooltipContent>
+                </Tooltip>
+              </div>
+            )}
           </TooltipProvider>
         </div>
       </header>
