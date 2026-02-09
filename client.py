@@ -7,6 +7,7 @@ Functions for creating and configuring the Claude Agent SDK client.
 
 import json
 import os
+import platform
 import re
 import shutil
 import sys
@@ -16,6 +17,7 @@ from claude_agent_sdk import ClaudeAgentOptions, ClaudeSDKClient
 from claude_agent_sdk.types import HookContext, HookInput, HookMatcher, SyncHookJSONOutput
 from dotenv import load_dotenv
 
+from app_spec_parser import get_ui_config_from_spec
 from security import SENSITIVE_DIRECTORIES, bash_security_hook
 
 # Load environment variables from .env file if present
@@ -107,6 +109,39 @@ def get_playwright_browser() -> str:
               f"Defaulting to {DEFAULT_PLAYWRIGHT_BROWSER}")
         return DEFAULT_PLAYWRIGHT_BROWSER
     return value
+
+
+def get_npx_command() -> str:
+    """
+    Get the npx command that works on all platforms.
+
+    On Windows, npx is often installed as npx.cmd and may not be found
+    via simple 'npx' lookup. This function handles platform-specific resolution.
+
+    Returns:
+        Path to npx executable.
+
+    Raises:
+        RuntimeError: If npx cannot be found.
+    """
+    # Try standard npx first
+    npx_path = shutil.which("npx")
+    if npx_path:
+        return npx_path
+
+    # On Windows, try npx.cmd
+    if platform.system() == "Windows":
+        npx_cmd = shutil.which("npx.cmd")
+        if npx_cmd:
+            return npx_cmd
+
+    raise RuntimeError("npx not found. Install Node.js and ensure it's in PATH.")
+
+
+# Version pinning for UI MCP servers to avoid breaking changes
+# Can be overridden via environment variables
+SHADCN_MCP_VERSION = os.getenv("MCP_SHADCN_VERSION", "latest")
+ARK_MCP_VERSION = os.getenv("MCP_ARK_VERSION", "latest")
 
 
 def get_extra_read_paths() -> list[Path]:
@@ -228,6 +263,17 @@ ALL_FEATURE_MCP_TOOLS = sorted(
     set(CODING_AGENT_TOOLS) | set(TESTING_AGENT_TOOLS) | set(INITIALIZER_AGENT_TOOLS)
 )
 
+# UI Component MCP tools (shadcn-ui, ark-ui)
+# These tools are only available when the project uses a UI library with MCP support
+UI_MCP_TOOLS = [
+    "mcp__ui_components__list_components",
+    "mcp__ui_components__list_examples",
+    "mcp__ui_components__get_example",
+    "mcp__ui_components__styling_guide",
+    "mcp__ui_components__get_component",
+    "mcp__ui_components__search_components",
+]
+
 # Playwright MCP tools for browser automation.
 # Full set of tools for comprehensive UI testing including drag-and-drop,
 # hover menus, file uploads, tab management, etc.
@@ -309,6 +355,12 @@ def create_client(
     Note: Authentication is handled by start.bat/start.sh before this runs.
     The Claude SDK auto-detects credentials from the Claude CLI configuration
     """
+    # Cache UI config once to avoid repeated file reads
+    # This is used for both allowed_tools and MCP server configuration
+    ui_mcp_disabled = os.getenv("DISABLE_UI_MCP", "").lower() == "true"
+    ui_config = None if ui_mcp_disabled else get_ui_config_from_spec(project_dir)
+    has_ui_mcp = ui_config is not None and ui_config.get("has_mcp", False)
+
     # Select the feature MCP tools appropriate for this agent type
     feature_tools_map = {
         "coding": CODING_AGENT_TOOLS,
@@ -332,6 +384,11 @@ def create_client(
     allowed_tools = [*BUILTIN_TOOLS, *feature_tools]
     if not yolo_mode:
         allowed_tools.extend(PLAYWRIGHT_TOOLS)
+
+    # Add UI MCP tools if the project uses a library with MCP support
+    # UI MCP is available in both standard and YOLO mode
+    if has_ui_mcp:
+        allowed_tools.extend(UI_MCP_TOOLS)
 
     # Build permissions list.
     # We permit ALL feature MCP tools at the security layer (so the MCP server
@@ -366,6 +423,10 @@ def create_client(
     if not yolo_mode:
         # Allow Playwright MCP tools for browser automation (standard mode only)
         permissions_list.extend(PLAYWRIGHT_TOOLS)
+
+    # Add UI MCP tools to permissions if available
+    if has_ui_mcp:
+        permissions_list.extend(UI_MCP_TOOLS)
 
     # Create comprehensive security settings
     # Note: Using relative paths ("./**") restricts access to project directory
@@ -450,6 +511,53 @@ def create_client(
                 "NODE_COMPILE_CACHE": "",  # Disable V8 compile caching to prevent .node file accumulation in %TEMP%
             },
         }
+
+    # UI Components MCP server (available in both standard and YOLO mode)
+    # Only added for libraries with MCP support (shadcn-ui, ark-ui)
+    if has_ui_mcp and ui_config:
+        library = ui_config.get("library", "")
+        framework = ui_config.get("framework", "react")
+
+        try:
+            npx_cmd = get_npx_command()
+
+            if library == "shadcn-ui":
+                # shadcn/ui MCP server for React components
+                # Uses GitHub API - benefits from GITHUB_PERSONAL_ACCESS_TOKEN for rate limits
+                ui_mcp_args = [
+                    "-y",
+                    "--prefer-offline",
+                    f"@jpisnice/shadcn-ui-mcp-server@{SHADCN_MCP_VERSION}",
+                    "--framework", framework,
+                ]
+                ui_mcp_config: dict = {
+                    "command": npx_cmd,
+                    "args": ui_mcp_args,
+                }
+                # Only add env if there are environment variables to pass
+                github_token = os.getenv("GITHUB_PERSONAL_ACCESS_TOKEN")
+                if github_token:
+                    ui_mcp_config["env"] = {"GITHUB_TOKEN": github_token}
+
+                mcp_servers["ui_components"] = ui_mcp_config
+                print(f"   - UI MCP: shadcn/ui ({framework})")
+
+            elif library == "ark-ui":
+                # Ark UI MCP server for multi-framework headless components
+                ui_mcp_args = [
+                    "-y",
+                    "--prefer-offline",
+                    f"@ark-ui/mcp@{ARK_MCP_VERSION}",
+                ]
+                mcp_servers["ui_components"] = {
+                    "command": npx_cmd,
+                    "args": ui_mcp_args,
+                }
+                print(f"   - UI MCP: Ark UI ({framework})")
+
+        except RuntimeError as e:
+            # npx not found - graceful degradation
+            print(f"   - Warning: UI MCP disabled - {e}")
 
     # Build environment overrides for API endpoint configuration
     # Uses get_effective_sdk_env() which reads provider settings from the database,
