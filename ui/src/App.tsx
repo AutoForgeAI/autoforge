@@ -130,7 +130,8 @@ function App() {
     const allFeatures = [
       ...(features?.pending ?? []),
       ...(features?.in_progress ?? []),
-      ...(features?.done ?? [])
+      ...(features?.done ?? []),
+      ...(features?.needs_human_input ?? [])
     ]
     const feature = allFeatures.find(f => f.id === nodeId)
     if (feature) setSelectedFeature(feature)
@@ -245,7 +246,7 @@ function App() {
   // Combine WebSocket progress with feature data
   const progress = wsState.progress.total > 0 ? wsState.progress : {
     passing: features?.done.length ?? 0,
-    total: (features?.pending.length ?? 0) + (features?.in_progress.length ?? 0) + (features?.done.length ?? 0),
+    total: (features?.pending.length ?? 0) + (features?.in_progress.length ?? 0) + (features?.done.length ?? 0) + (features?.needs_human_input?.length ?? 0),
     percentage: 0,
   }
 

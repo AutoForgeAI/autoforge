@@ -1032,9 +1032,25 @@ def feature_request_human_input(
         JSON with success confirmation or error message
     """
     # Validate fields
+    VALID_FIELD_TYPES = {"text", "textarea", "select", "boolean"}
+    seen_ids: set[str] = set()
     for i, field in enumerate(fields):
         if "id" not in field or "label" not in field:
             return json.dumps({"error": f"Field at index {i} missing required 'id' or 'label'"})
+        fid = field["id"]
+        flabel = field["label"]
+        if not isinstance(fid, str) or not fid.strip():
+            return json.dumps({"error": f"Field at index {i} has empty or invalid 'id'"})
+        if not isinstance(flabel, str) or not flabel.strip():
+            return json.dumps({"error": f"Field at index {i} has empty or invalid 'label'"})
+        if fid in seen_ids:
+            return json.dumps({"error": f"Duplicate field id '{fid}' at index {i}"})
+        seen_ids.add(fid)
+        ftype = field.get("type", "text")
+        if ftype not in VALID_FIELD_TYPES:
+            return json.dumps({"error": f"Field at index {i} has invalid type '{ftype}'. Must be one of: {', '.join(sorted(VALID_FIELD_TYPES))}"})
+        if ftype == "select" and not field.get("options"):
+            return json.dumps({"error": f"Field at index {i} is type 'select' but missing 'options' array"})
 
     request_data = {
         "prompt": prompt,
@@ -1050,7 +1066,7 @@ def feature_request_human_input(
                 in_progress = 0,
                 human_input_request = :request,
                 human_input_response = NULL
-            WHERE id = :id AND passes = 0
+            WHERE id = :id AND passes = 0 AND in_progress = 1
         """), {"id": feature_id, "request": json.dumps(request_data)})
         session.commit()
 
@@ -1060,6 +1076,8 @@ def feature_request_human_input(
                 return json.dumps({"error": f"Feature with ID {feature_id} not found"})
             if feature.passes:
                 return json.dumps({"error": f"Feature with ID {feature_id} is already passing"})
+            if not feature.in_progress:
+                return json.dumps({"error": f"Feature with ID {feature_id} is not in progress"})
             return json.dumps({"error": "Failed to request human input for unknown reason"})
 
         feature = session.query(Feature).filter(Feature.id == feature_id).first()
