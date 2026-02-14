@@ -57,6 +57,26 @@ export interface ProjectPrompts {
   coding_prompt: string
 }
 
+// Human input types
+export interface HumanInputField {
+  id: string
+  label: string
+  type: 'text' | 'textarea' | 'select' | 'boolean'
+  required: boolean
+  placeholder?: string
+  options?: { value: string; label: string }[]
+}
+
+export interface HumanInputRequest {
+  prompt: string
+  fields: HumanInputField[]
+}
+
+export interface HumanInputResponseData {
+  fields: Record<string, string | boolean | string[]>
+  responded_at?: string
+}
+
 // Feature types
 export interface Feature {
   id: number
@@ -70,10 +90,13 @@ export interface Feature {
   dependencies?: number[]           // Optional for backwards compat
   blocked?: boolean                 // Computed by API
   blocking_dependencies?: number[]  // Computed by API
+  needs_human_input?: boolean
+  human_input_request?: HumanInputRequest | null
+  human_input_response?: HumanInputResponseData | null
 }
 
 // Status type for graph nodes
-export type FeatureStatus = 'pending' | 'in_progress' | 'done' | 'blocked'
+export type FeatureStatus = 'pending' | 'in_progress' | 'done' | 'blocked' | 'needs_human_input'
 
 // Graph visualization types
 export interface GraphNode {
@@ -99,6 +122,7 @@ export interface FeatureListResponse {
   pending: Feature[]
   in_progress: Feature[]
   done: Feature[]
+  needs_human_input: Feature[]
 }
 
 export interface FeatureCreate {
@@ -120,7 +144,7 @@ export interface FeatureUpdate {
 }
 
 // Agent types
-export type AgentStatus = 'stopped' | 'running' | 'paused' | 'crashed' | 'loading'
+export type AgentStatus = 'stopped' | 'running' | 'paused' | 'crashed' | 'loading' | 'pausing' | 'paused_graceful'
 
 export interface AgentStatusResponse {
   status: AgentStatus
@@ -216,6 +240,8 @@ export type OrchestratorState =
   | 'spawning'
   | 'monitoring'
   | 'complete'
+  | 'draining'
+  | 'paused'
 
 // Orchestrator event for recent activity
 export interface OrchestratorEvent {
@@ -248,6 +274,7 @@ export interface WSProgressMessage {
   in_progress: number
   total: number
   percentage: number
+  needs_human_input?: number
 }
 
 export interface WSFeatureUpdateMessage {

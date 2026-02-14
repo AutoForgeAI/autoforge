@@ -72,9 +72,13 @@ export function AgentMissionControl({
               ? `${agents.length} ${agents.length === 1 ? 'agent' : 'agents'} active`
               : orchestratorStatus?.state === 'initializing'
                 ? 'Initializing'
-                : orchestratorStatus?.state === 'complete'
-                  ? 'Complete'
-                  : 'Orchestrating'
+                : orchestratorStatus?.state === 'draining'
+                  ? 'Draining'
+                  : orchestratorStatus?.state === 'paused'
+                    ? 'Paused'
+                    : orchestratorStatus?.state === 'complete'
+                      ? 'Complete'
+                      : 'Orchestrating'
             }
           </Badge>
         </div>

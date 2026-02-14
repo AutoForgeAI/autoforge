@@ -120,9 +120,33 @@ class FeatureResponse(FeatureBase):
     in_progress: bool
     blocked: bool = False  # Computed: has unmet dependencies
     blocking_dependencies: list[int] = Field(default_factory=list)  # Computed
+    needs_human_input: bool = False
+    human_input_request: dict | None = None
+    human_input_response: dict | None = None
 
     class Config:
         from_attributes = True
+
+
+class HumanInputField(BaseModel):
+    """Schema for a single human input field."""
+    id: str
+    label: str
+    type: Literal["text", "textarea", "select", "boolean"] = "text"
+    required: bool = True
+    placeholder: str | None = None
+    options: list[dict] | None = None  # For select: [{value, label}]
+
+
+class HumanInputRequest(BaseModel):
+    """Schema for an agent's human input request."""
+    prompt: str
+    fields: list[HumanInputField]
+
+
+class HumanInputResponse(BaseModel):
+    """Schema for a human's response to an input request."""
+    fields: dict[str, str | bool | list[str]]
 
 
 class FeatureListResponse(BaseModel):
@@ -130,6 +154,7 @@ class FeatureListResponse(BaseModel):
     pending: list[FeatureResponse]
     in_progress: list[FeatureResponse]
     done: list[FeatureResponse]
+    needs_human_input: list[FeatureResponse] = Field(default_factory=list)
 
 
 class FeatureBulkCreate(BaseModel):
@@ -153,7 +178,7 @@ class DependencyGraphNode(BaseModel):
     id: int
     name: str
     category: str
-    status: Literal["pending", "in_progress", "done", "blocked"]
+    status: Literal["pending", "in_progress", "done", "blocked", "needs_human_input"]
     priority: int
     dependencies: list[int]
 
@@ -217,7 +242,7 @@ class AgentStartRequest(BaseModel):
 
 class AgentStatus(BaseModel):
     """Current agent status."""
-    status: Literal["stopped", "running", "paused", "crashed"]
+    status: Literal["stopped", "running", "paused", "crashed", "pausing", "paused_graceful"]
     pid: int | None = None
     started_at: datetime | None = None
     yolo_mode: bool = False
@@ -257,6 +282,7 @@ class WSProgressMessage(BaseModel):
     in_progress: int
     total: int
     percentage: float
+    needs_human_input: int = 0
 
 
 class WSFeatureUpdateMessage(BaseModel):

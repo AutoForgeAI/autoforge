@@ -103,6 +103,10 @@ function getStateAnimation(state: OrchestratorState): string {
       return 'animate-working'
     case 'monitoring':
       return 'animate-bounce-gentle'
+    case 'draining':
+      return 'animate-thinking'
+    case 'paused':
+      return ''
     case 'complete':
       return 'animate-celebrate'
     default:
@@ -121,6 +125,10 @@ function getStateGlow(state: OrchestratorState): string {
       return 'shadow-[0_0_16px_rgba(124,58,237,0.6)]'
     case 'monitoring':
       return 'shadow-[0_0_8px_rgba(167,139,250,0.4)]'
+    case 'draining':
+      return 'shadow-[0_0_10px_rgba(251,191,36,0.5)]'
+    case 'paused':
+      return ''
     case 'complete':
       return 'shadow-[0_0_20px_rgba(112,224,0,0.6)]'
     default:
@@ -141,6 +149,10 @@ function getStateDescription(state: OrchestratorState): string {
       return 'spawning agents'
     case 'monitoring':
       return 'monitoring progress'
+    case 'draining':
+      return 'draining active agents'
+    case 'paused':
+      return 'paused'
     case 'complete':
       return 'all features complete'
     default:

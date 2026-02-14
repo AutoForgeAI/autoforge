@@ -23,6 +23,7 @@ from ..schemas import (
     FeatureListResponse,
     FeatureResponse,
     FeatureUpdate,
+    HumanInputResponse,
 )
 from ..utils.project_helpers import get_project_path as _get_project_path
 from ..utils.validation import validate_project_name
@@ -104,6 +105,9 @@ def feature_to_response(f, passing_ids: set[int] | None = None) -> FeatureRespon
         in_progress=f.in_progress if f.in_progress is not None else False,
         blocked=blocked,
         blocking_dependencies=blocking,
+        needs_human_input=getattr(f, 'needs_human_input', False) or False,
+        human_input_request=getattr(f, 'human_input_request', None),
+        human_input_response=getattr(f, 'human_input_response', None),
     )
 
 
@@ -143,11 +147,14 @@ async def list_features(project_name: str):
             pending = []
             in_progress = []
             done = []
+            needs_human_input_list = []
 
             for f in all_features:
                 feature_response = feature_to_response(f, passing_ids)
                 if f.passes:
                     done.append(feature_response)
+                elif getattr(f, 'needs_human_input', False):
+                    needs_human_input_list.append(feature_response)
                 elif f.in_progress:
                     in_progress.append(feature_response)
                 else:
@@ -157,6 +164,7 @@ async def list_features(project_name: str):
                 pending=pending,
                 in_progress=in_progress,
                 done=done,
+                needs_human_input=needs_human_input_list,
             )
     except HTTPException:
         raise
@@ -341,9 +349,11 @@ async def get_dependency_graph(project_name: str):
                 deps = f.dependencies or []
                 blocking = [d for d in deps if d not in passing_ids]
 
-                status: Literal["pending", "in_progress", "done", "blocked"]
+                status: Literal["pending", "in_progress", "done", "blocked", "needs_human_input"]
                 if f.passes:
                     status = "done"
+                elif getattr(f, 'needs_human_input', False):
+                    status = "needs_human_input"
                 elif blocking:
                     status = "blocked"
                 elif f.in_progress:
@@ -562,6 +572,71 @@ async def skip_feature(project_name: str, feature_id: int):
     except Exception:
         logger.exception("Failed to skip feature")
         raise HTTPException(status_code=500, detail="Failed to skip feature")
+
+
+@router.post("/{feature_id}/resolve-human-input", response_model=FeatureResponse)
+async def resolve_human_input(project_name: str, feature_id: int, response: HumanInputResponse):
+    """Resolve a human input request for a feature.
+
+    Validates all required fields have values, stores the response,
+    and returns the feature to the pending queue for agents to pick up.
+    """
+    project_name = validate_project_name(project_name)
+    project_dir = _get_project_path(project_name)
+
+    if not project_dir:
+        raise HTTPException(status_code=404, detail=f"Project '{project_name}' not found in registry")
+
+    if not project_dir.exists():
+        raise HTTPException(status_code=404, detail="Project directory not found")
+
+    _, Feature = _get_db_classes()
+
+    try:
+        with get_db_session(project_dir) as session:
+            feature = session.query(Feature).filter(Feature.id == feature_id).first()
+
+            if not feature:
+                raise HTTPException(status_code=404, detail=f"Feature {feature_id} not found")
+
+            if not getattr(feature, 'needs_human_input', False):
+                raise HTTPException(status_code=400, detail="Feature is not waiting for human input")
+
+            # Validate required fields
+            request_data = feature.human_input_request
+            if request_data and isinstance(request_data, dict):
+                for field_def in request_data.get("fields", []):
+                    if field_def.get("required", True):
+                        field_id = field_def.get("id")
+                        if field_id not in response.fields or response.fields[field_id] in (None, ""):
+                            raise HTTPException(
+                                status_code=400,
+                                detail=f"Required field '{field_def.get('label', field_id)}' is missing"
+                            )
+
+            # Store response and return to pending queue
+            from datetime import datetime, timezone
+            response_data = {
+                "fields": {k: v for k, v in response.fields.items()},
+                "responded_at": datetime.now(timezone.utc).isoformat(),
+            }
+            feature.human_input_response = response_data
+            feature.needs_human_input = False
+            # Keep in_progress=False, passes=False so it returns to pending
+
+            session.commit()
+            session.refresh(feature)
+
+            # Compute passing IDs for response
+            all_features = session.query(Feature).all()
+            passing_ids = {f.id for f in all_features if f.passes}
+
+            return feature_to_response(feature, passing_ids)
+    except HTTPException:
+        raise
+    except Exception:
+        logger.exception("Failed to resolve human input")
+        raise HTTPException(status_code=500, detail="Failed to resolve human input")
 
 
 # ============================================================================

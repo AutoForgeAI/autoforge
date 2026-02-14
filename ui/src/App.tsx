@@ -130,7 +130,8 @@ function App() {
     const allFeatures = [
       ...(features?.pending ?? []),
       ...(features?.in_progress ?? []),
-      ...(features?.done ?? [])
+      ...(features?.done ?? []),
+      ...(features?.needs_human_input ?? [])
     ]
     const feature = allFeatures.find(f => f.id === nodeId)
     if (feature) setSelectedFeature(feature)
@@ -181,7 +182,7 @@ function App() {
 
       // E : Expand project with AI (when project selected, has spec and has features)
       if ((e.key === 'e' || e.key === 'E') && selectedProject && hasSpec && features &&
-          (features.pending.length + features.in_progress.length + features.done.length) > 0) {
+          (features.pending.length + features.in_progress.length + features.done.length + (features.needs_human_input?.length || 0)) > 0) {
         e.preventDefault()
         setShowExpandProject(true)
       }
@@ -210,8 +211,8 @@ function App() {
         setShowKeyboardHelp(true)
       }
 
-      // R : Open reset modal (when project selected and agent not running)
-      if ((e.key === 'r' || e.key === 'R') && selectedProject && wsState.agentStatus !== 'running') {
+      // R : Open reset modal (when project selected and agent not running/draining)
+      if ((e.key === 'r' || e.key === 'R') && selectedProject && !['running', 'pausing', 'paused_graceful'].includes(wsState.agentStatus)) {
         e.preventDefault()
         setShowResetModal(true)
       }
@@ -245,7 +246,7 @@ function App() {
   // Combine WebSocket progress with feature data
   const progress = wsState.progress.total > 0 ? wsState.progress : {
     passing: features?.done.length ?? 0,
-    total: (features?.pending.length ?? 0) + (features?.in_progress.length ?? 0) + (features?.done.length ?? 0),
+    total: (features?.pending.length ?? 0) + (features?.in_progress.length ?? 0) + (features?.done.length ?? 0) + (features?.needs_human_input?.length ?? 0),
     percentage: 0,
   }
 
@@ -380,7 +381,7 @@ function App() {
                       variant="outline"
                       size="sm"
                       aria-label="Reset Project"
-                      disabled={wsState.agentStatus === 'running'}
+                      disabled={['running', 'pausing', 'paused_graceful'].includes(wsState.agentStatus)}
                     >
                       <RotateCcw size={18} />
                     </Button>
@@ -443,6 +444,7 @@ function App() {
              features.pending.length === 0 &&
              features.in_progress.length === 0 &&
              features.done.length === 0 &&
+             (features.needs_human_input?.length || 0) === 0 &&
              wsState.agentStatus === 'running' && (
               <Card className="p-8 text-center">
                 <CardContent className="p-0">
@@ -458,7 +460,7 @@ function App() {
             )}
 
             {/* View Toggle - only show when there are features */}
-            {features && (features.pending.length + features.in_progress.length + features.done.length) > 0 && (
+            {features && (features.pending.length + features.in_progress.length + features.done.length + (features.needs_human_input?.length || 0)) > 0 && (
               <div className="flex justify-center">
                 <ViewToggle viewMode={viewMode} onViewModeChange={setViewMode} />
               </div>

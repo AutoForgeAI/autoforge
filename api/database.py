@@ -43,10 +43,10 @@ class Feature(Base):
 
     __tablename__ = "features"
 
-    # Composite index for common status query pattern (passes, in_progress)
+    # Composite index for common status query pattern (passes, in_progress, needs_human_input)
     # Used by feature_get_stats, get_ready_features, and other status queries
     __table_args__ = (
-        Index('ix_feature_status', 'passes', 'in_progress'),
+        Index('ix_feature_status', 'passes', 'in_progress', 'needs_human_input'),
     )
 
     id = Column(Integer, primary_key=True, index=True)
@@ -60,6 +60,11 @@ class Feature(Base):
     # Dependencies: list of feature IDs that must be completed before this feature
     # NULL/empty = no dependencies (backwards compatible)
     dependencies = Column(JSON, nullable=True, default=None)
+
+    # Human input: agent can request structured input from a human
+    needs_human_input = Column(Boolean, nullable=False, default=False, index=True)
+    human_input_request = Column(JSON, nullable=True, default=None)   # Agent's structured request
+    human_input_response = Column(JSON, nullable=True, default=None)  # Human's response
 
     def to_dict(self) -> dict:
         """Convert feature to dictionary for JSON serialization."""
@@ -75,6 +80,10 @@ class Feature(Base):
             "in_progress": self.in_progress if self.in_progress is not None else False,
             # Dependencies: NULL/empty treated as empty list for backwards compat
             "dependencies": self.dependencies if self.dependencies else [],
+            # Human input fields
+            "needs_human_input": self.needs_human_input if self.needs_human_input is not None else False,
+            "human_input_request": self.human_input_request,
+            "human_input_response": self.human_input_response,
         }
 
     def get_dependencies_safe(self) -> list[int]:
@@ -302,6 +311,21 @@ def _is_network_path(path: Path) -> bool:
     return False
 
 
+def _migrate_add_human_input_columns(engine) -> None:
+    """Add human input columns to existing databases that don't have them."""
+    with engine.connect() as conn:
+        result = conn.execute(text("PRAGMA table_info(features)"))
+        columns = [row[1] for row in result.fetchall()]
+
+        if "needs_human_input" not in columns:
+            conn.execute(text("ALTER TABLE features ADD COLUMN needs_human_input BOOLEAN DEFAULT 0"))
+        if "human_input_request" not in columns:
+            conn.execute(text("ALTER TABLE features ADD COLUMN human_input_request TEXT DEFAULT NULL"))
+        if "human_input_response" not in columns:
+            conn.execute(text("ALTER TABLE features ADD COLUMN human_input_response TEXT DEFAULT NULL"))
+        conn.commit()
+
+
 def _migrate_add_schedules_tables(engine) -> None:
     """Create schedules and schedule_overrides tables if they don't exist."""
     from sqlalchemy import inspect
@@ -425,6 +449,7 @@ def create_database(project_dir: Path) -> tuple:
     _migrate_fix_null_boolean_fields(engine)
     _migrate_add_dependencies_column(engine)
     _migrate_add_testing_columns(engine)
+    _migrate_add_human_input_columns(engine)
 
     # Migrate to add schedules tables
     _migrate_add_schedules_tables(engine)

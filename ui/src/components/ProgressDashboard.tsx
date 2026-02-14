@@ -55,7 +55,7 @@ export function ProgressDashboard({
 
   const showThought = useMemo(() => {
     if (!thought) return false
-    if (agentStatus === 'running') return true
+    if (agentStatus === 'running' || agentStatus === 'pausing') return true
     if (agentStatus === 'paused') {
       return Date.now() - lastLogTimestamp < IDLE_TIMEOUT
     }

@@ -768,11 +768,24 @@ API_PROVIDERS: dict[str, dict[str, Any]] = {
         "requires_auth": True,
         "auth_env_var": "ANTHROPIC_AUTH_TOKEN",
         "models": [
+            {"id": "glm-5", "name": "GLM 5"},
             {"id": "glm-4.7", "name": "GLM 4.7"},
             {"id": "glm-4.5-air", "name": "GLM 4.5 Air"},
         ],
         "default_model": "glm-4.7",
         "tiers": {"high": "glm-4.7", "mid": "glm-4.5-air", "low": "glm-4.5-air"},
+    },
+    "azure": {
+        "name": "Azure Anthropic (Claude)",
+        "base_url": "",
+        "requires_auth": True,
+        "auth_env_var": "ANTHROPIC_API_KEY",
+        "models": [
+            {"id": "claude-opus-4-6", "name": "Claude Opus"},
+            {"id": "claude-sonnet-4-5", "name": "Claude Sonnet"},
+            {"id": "claude-haiku-4-5", "name": "Claude Haiku"},
+        ],
+        "default_model": "claude-opus-4-6",
     },
     "ollama": {
         "name": "Ollama (Local)",
@@ -831,7 +844,7 @@ def get_effective_sdk_env() -> dict[str, str]:
                 sdk_env[var] = value
         return sdk_env
 
-    sdk_env: dict[str, str] = {}
+    sdk_env = {}
 
     # Explicitly clear credentials that could leak from the server process env.
     # For providers using ANTHROPIC_AUTH_TOKEN (GLM, Custom), clear ANTHROPIC_API_KEY.

@@ -151,17 +151,20 @@ def feature_get_stats() -> str:
         result = session.query(
             func.count(Feature.id).label('total'),
             func.sum(case((Feature.passes == True, 1), else_=0)).label('passing'),
-            func.sum(case((Feature.in_progress == True, 1), else_=0)).label('in_progress')
+            func.sum(case((Feature.in_progress == True, 1), else_=0)).label('in_progress'),
+            func.sum(case((Feature.needs_human_input == True, 1), else_=0)).label('needs_human_input')
         ).first()
 
         total = result.total or 0
         passing = int(result.passing or 0)
         in_progress = int(result.in_progress or 0)
+        needs_human_input = int(result.needs_human_input or 0)
         percentage = round((passing / total) * 100, 1) if total > 0 else 0.0
 
         return json.dumps({
             "passing": passing,
             "in_progress": in_progress,
+            "needs_human_input": needs_human_input,
             "total": total,
             "percentage": percentage
         })
@@ -221,6 +224,7 @@ def feature_get_summary(
             "name": feature.name,
             "passes": feature.passes,
             "in_progress": feature.in_progress,
+            "needs_human_input": feature.needs_human_input if feature.needs_human_input is not None else False,
             "dependencies": feature.dependencies or []
         })
     finally:
@@ -401,11 +405,11 @@ def feature_mark_in_progress(
     """
     session = get_session()
     try:
-        # Atomic claim: only succeeds if feature is not already claimed or passing
+        # Atomic claim: only succeeds if feature is not already claimed, passing, or blocked for human input
         result = session.execute(text("""
             UPDATE features
             SET in_progress = 1
-            WHERE id = :id AND passes = 0 AND in_progress = 0
+            WHERE id = :id AND passes = 0 AND in_progress = 0 AND needs_human_input = 0
         """), {"id": feature_id})
         session.commit()
 
@@ -418,6 +422,8 @@ def feature_mark_in_progress(
                 return json.dumps({"error": f"Feature with ID {feature_id} is already passing"})
             if feature.in_progress:
                 return json.dumps({"error": f"Feature with ID {feature_id} is already in-progress"})
+            if getattr(feature, 'needs_human_input', False):
+                return json.dumps({"error": f"Feature with ID {feature_id} is blocked waiting for human input"})
             return json.dumps({"error": "Failed to mark feature in-progress for unknown reason"})
 
         # Fetch the claimed feature
@@ -455,11 +461,14 @@ def feature_claim_and_get(
         if feature.passes:
             return json.dumps({"error": f"Feature with ID {feature_id} is already passing"})
 
-        # Try atomic claim: only succeeds if not already claimed
+        if getattr(feature, 'needs_human_input', False):
+            return json.dumps({"error": f"Feature with ID {feature_id} is blocked waiting for human input"})
+
+        # Try atomic claim: only succeeds if not already claimed and not blocked for human input
         result = session.execute(text("""
             UPDATE features
             SET in_progress = 1
-            WHERE id = :id AND passes = 0 AND in_progress = 0
+            WHERE id = :id AND passes = 0 AND in_progress = 0 AND needs_human_input = 0
         """), {"id": feature_id})
         session.commit()
 
@@ -806,6 +815,8 @@ def feature_get_ready(
         for f in all_features:
             if f.passes or f.in_progress:
                 continue
+            if getattr(f, 'needs_human_input', False):
+                continue
             deps = f.dependencies or []
             if all(dep_id in passing_ids for dep_id in deps):
                 ready.append(f.to_dict())
@@ -888,6 +899,8 @@ def feature_get_graph() -> str:
 
             if f.passes:
                 status = "done"
+            elif getattr(f, 'needs_human_input', False):
+                status = "needs_human_input"
             elif blocking:
                 status = "blocked"
             elif f.in_progress:
@@ -982,6 +995,103 @@ def feature_set_dependencies(
             })
     except Exception as e:
         return json.dumps({"error": f"Failed to set dependencies: {str(e)}"})
+
+
+@mcp.tool()
+def feature_request_human_input(
+    feature_id: Annotated[int, Field(description="The ID of the feature that needs human input", ge=1)],
+    prompt: Annotated[str, Field(min_length=1, description="Explain what you need from the human and why")],
+    fields: Annotated[list[dict], Field(min_length=1, description="List of input fields to collect")]
+) -> str:
+    """Request structured input from a human for a feature that is blocked.
+
+    Use this ONLY when the feature genuinely cannot proceed without human intervention:
+    - Creating API keys or external accounts
+    - Choosing between design approaches that require human preference
+    - Configuring external services the agent cannot access
+    - Providing credentials or secrets
+
+    Do NOT use this for issues you can solve yourself (debugging, reading docs, etc.).
+
+    The feature will be moved out of in_progress and into a "needs human input" state.
+    Once the human provides their response, the feature returns to the pending queue
+    and will include the human's response when you pick it up again.
+
+    Args:
+        feature_id: The ID of the feature that needs human input
+        prompt: A clear explanation of what you need and why
+        fields: List of input fields, each with:
+            - id (str): Unique field identifier
+            - label (str): Human-readable label
+            - type (str): "text", "textarea", "select", or "boolean" (default: "text")
+            - required (bool): Whether the field is required (default: true)
+            - placeholder (str, optional): Placeholder text
+            - options (list, optional): For select type: [{value, label}]
+
+    Returns:
+        JSON with success confirmation or error message
+    """
+    # Validate fields
+    VALID_FIELD_TYPES = {"text", "textarea", "select", "boolean"}
+    seen_ids: set[str] = set()
+    for i, field in enumerate(fields):
+        if "id" not in field or "label" not in field:
+            return json.dumps({"error": f"Field at index {i} missing required 'id' or 'label'"})
+        fid = field["id"]
+        flabel = field["label"]
+        if not isinstance(fid, str) or not fid.strip():
+            return json.dumps({"error": f"Field at index {i} has empty or invalid 'id'"})
+        if not isinstance(flabel, str) or not flabel.strip():
+            return json.dumps({"error": f"Field at index {i} has empty or invalid 'label'"})
+        if fid in seen_ids:
+            return json.dumps({"error": f"Duplicate field id '{fid}' at index {i}"})
+        seen_ids.add(fid)
+        ftype = field.get("type", "text")
+        if ftype not in VALID_FIELD_TYPES:
+            return json.dumps({"error": f"Field at index {i} has invalid type '{ftype}'. Must be one of: {', '.join(sorted(VALID_FIELD_TYPES))}"})
+        if ftype == "select" and not field.get("options"):
+            return json.dumps({"error": f"Field at index {i} is type 'select' but missing 'options' array"})
+
+    request_data = {
+        "prompt": prompt,
+        "fields": fields,
+    }
+
+    session = get_session()
+    try:
+        # Atomically set needs_human_input, clear in_progress, store request, clear previous response
+        result = session.execute(text("""
+            UPDATE features
+            SET needs_human_input = 1,
+                in_progress = 0,
+                human_input_request = :request,
+                human_input_response = NULL
+            WHERE id = :id AND passes = 0 AND in_progress = 1
+        """), {"id": feature_id, "request": json.dumps(request_data)})
+        session.commit()
+
+        if result.rowcount == 0:
+            feature = session.query(Feature).filter(Feature.id == feature_id).first()
+            if feature is None:
+                return json.dumps({"error": f"Feature with ID {feature_id} not found"})
+            if feature.passes:
+                return json.dumps({"error": f"Feature with ID {feature_id} is already passing"})
+            if not feature.in_progress:
+                return json.dumps({"error": f"Feature with ID {feature_id} is not in progress"})
+            return json.dumps({"error": "Failed to request human input for unknown reason"})
+
+        feature = session.query(Feature).filter(Feature.id == feature_id).first()
+        return json.dumps({
+            "success": True,
+            "feature_id": feature_id,
+            "name": feature.name,
+            "message": f"Feature '{feature.name}' is now blocked waiting for human input"
+        })
+    except Exception as e:
+        session.rollback()
+        return json.dumps({"error": f"Failed to request human input: {str(e)}"})
+    finally:
+        session.close()
 
 
 @mcp.tool()

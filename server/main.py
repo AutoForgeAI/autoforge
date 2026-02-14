@@ -61,6 +61,17 @@ UI_DIST_DIR = ROOT_DIR / "ui" / "dist"
 @asynccontextmanager
 async def lifespan(app: FastAPI):
     """Lifespan context manager for startup and shutdown."""
+    # Startup - clean up stale temp files (Playwright profiles, .node cache, etc.)
+    try:
+        from temp_cleanup import cleanup_stale_temp
+        stats = cleanup_stale_temp()
+        if stats["dirs_deleted"] > 0 or stats["files_deleted"] > 0:
+            mb_freed = stats["bytes_freed"] / (1024 * 1024)
+            logger.info("Startup temp cleanup: %d dirs, %d files, %.1f MB freed",
+                        stats["dirs_deleted"], stats["files_deleted"], mb_freed)
+    except Exception as e:
+        logger.warning("Startup temp cleanup failed (non-fatal): %s", e)
+
     # Startup - clean up orphaned lock files from previous runs
     cleanup_orphaned_locks()
     cleanup_orphaned_devserver_locks()

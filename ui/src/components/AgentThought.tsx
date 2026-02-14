@@ -63,7 +63,7 @@ export function AgentThought({ logs, agentStatus }: AgentThoughtProps) {
   // Determine if component should be visible
   const shouldShow = useMemo(() => {
     if (!thought) return false
-    if (agentStatus === 'running') return true
+    if (agentStatus === 'running' || agentStatus === 'pausing') return true
     if (agentStatus === 'paused') {
       return Date.now() - lastLogTimestamp < IDLE_TIMEOUT
     }

@@ -181,6 +181,17 @@ export async function createFeaturesBulk(
   })
 }
 
+export async function resolveHumanInput(
+  projectName: string,
+  featureId: number,
+  response: { fields: Record<string, string | boolean | string[]> }
+): Promise<Feature> {
+  return fetchJSON(`/projects/${encodeURIComponent(projectName)}/features/${featureId}/resolve-human-input`, {
+    method: 'POST',
+    body: JSON.stringify(response),
+  })
+}
+
 // ============================================================================
 // Dependency Graph API
 // ============================================================================
@@ -267,6 +278,18 @@ export async function pauseAgent(projectName: string): Promise<AgentActionRespon
 
 export async function resumeAgent(projectName: string): Promise<AgentActionResponse> {
   return fetchJSON(`/projects/${encodeURIComponent(projectName)}/agent/resume`, {
+    method: 'POST',
+  })
+}
+
+export async function gracefulPauseAgent(projectName: string): Promise<AgentActionResponse> {
+  return fetchJSON(`/projects/${encodeURIComponent(projectName)}/agent/graceful-pause`, {
+    method: 'POST',
+  })
+}
+
+export async function gracefulResumeAgent(projectName: string): Promise<AgentActionResponse> {
+  return fetchJSON(`/projects/${encodeURIComponent(projectName)}/agent/graceful-resume`, {
     method: 'POST',
   })
 }

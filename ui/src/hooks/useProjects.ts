@@ -133,6 +133,18 @@ export function useUpdateFeature(projectName: string) {
   })
 }
 
+export function useResolveHumanInput(projectName: string) {
+  const queryClient = useQueryClient()
+
+  return useMutation({
+    mutationFn: ({ featureId, fields }: { featureId: number; fields: Record<string, string | boolean | string[]> }) =>
+      api.resolveHumanInput(projectName, featureId, { fields }),
+    onSuccess: () => {
+      queryClient.invalidateQueries({ queryKey: ['features', projectName] })
+    },
+  })
+}
+
 // ============================================================================
 // Agent
 // ============================================================================
@@ -191,6 +203,28 @@ export function useResumeAgent(projectName: string) {
 
   return useMutation({
     mutationFn: () => api.resumeAgent(projectName),
+    onSuccess: () => {
+      queryClient.invalidateQueries({ queryKey: ['agent-status', projectName] })
+    },
+  })
+}
+
+export function useGracefulPauseAgent(projectName: string) {
+  const queryClient = useQueryClient()
+
+  return useMutation({
+    mutationFn: () => api.gracefulPauseAgent(projectName),
+    onSuccess: () => {
+      queryClient.invalidateQueries({ queryKey: ['agent-status', projectName] })
+    },
+  })
+}
+
+export function useGracefulResumeAgent(projectName: string) {
+  const queryClient = useQueryClient()
+
+  return useMutation({
+    mutationFn: () => api.gracefulResumeAgent(projectName),
     onSuccess: () => {
       queryClient.invalidateQueries({ queryKey: ['agent-status', projectName] })
     },

@@ -62,54 +62,71 @@ def has_features(project_dir: Path) -> bool:
         return False
 
 
-def count_passing_tests(project_dir: Path) -> tuple[int, int, int]:
+def count_passing_tests(project_dir: Path) -> tuple[int, int, int, int]:
     """
-    Count passing, in_progress, and total tests via direct database access.
+    Count passing, in_progress, total, and needs_human_input tests via direct database access.
 
     Args:
         project_dir: Directory containing the project
 
     Returns:
-        (passing_count, in_progress_count, total_count)
+        (passing_count, in_progress_count, total_count, needs_human_input_count)
     """
     from autoforge_paths import get_features_db_path
     db_file = get_features_db_path(project_dir)
     if not db_file.exists():
-        return 0, 0, 0
+        return 0, 0, 0, 0
 
     try:
         with closing(_get_connection(db_file)) as conn:
             cursor = conn.cursor()
-            # Single aggregate query instead of 3 separate COUNT queries
-            # Handle case where in_progress column doesn't exist yet (legacy DBs)
+            # Single aggregate query instead of separate COUNT queries
+            # Handle case where columns don't exist yet (legacy DBs)
             try:
                 cursor.execute("""
                     SELECT
                         COUNT(*) as total,
                         SUM(CASE WHEN passes = 1 THEN 1 ELSE 0 END) as passing,
-                        SUM(CASE WHEN in_progress = 1 THEN 1 ELSE 0 END) as in_progress
+                        SUM(CASE WHEN in_progress = 1 THEN 1 ELSE 0 END) as in_progress,
+                        SUM(CASE WHEN needs_human_input = 1 THEN 1 ELSE 0 END) as needs_human_input
                     FROM features
                 """)
                 row = cursor.fetchone()
                 total = row[0] or 0
                 passing = row[1] or 0
                 in_progress = row[2] or 0
+                needs_human_input = row[3] or 0
             except sqlite3.OperationalError:
-                # Fallback for databases without in_progress column
-                cursor.execute("""
-                    SELECT
-                        COUNT(*) as total,
-                        SUM(CASE WHEN passes = 1 THEN 1 ELSE 0 END) as passing
-                    FROM features
-                """)
-                row = cursor.fetchone()
-                total = row[0] or 0
-                passing = row[1] or 0
-                in_progress = 0
-            return passing, in_progress, total
+                # Fallback for databases without newer columns
+                try:
+                    cursor.execute("""
+                        SELECT
+                            COUNT(*) as total,
+                            SUM(CASE WHEN passes = 1 THEN 1 ELSE 0 END) as passing,
+                            SUM(CASE WHEN in_progress = 1 THEN 1 ELSE 0 END) as in_progress
+                        FROM features
+                    """)
+                    row = cursor.fetchone()
+                    total = row[0] or 0
+                    passing = row[1] or 0
+                    in_progress = row[2] or 0
+                    needs_human_input = 0
+                except sqlite3.OperationalError:
+                    cursor.execute("""
+                        SELECT
+                            COUNT(*) as total,
+                            SUM(CASE WHEN passes = 1 THEN 1 ELSE 0 END) as passing
+                        FROM features
+                    """)
+                    row = cursor.fetchone()
+                    total = row[0] or 0
+                    passing = row[1] or 0
+                    in_progress = 0
+                    needs_human_input = 0
+            return passing, in_progress, total, needs_human_input
     except Exception as e:
         print(f"[Database error in count_passing_tests: {e}]")
-        return 0, 0, 0
+        return 0, 0, 0, 0
 
 
 def get_all_passing_features(project_dir: Path) -> list[dict]:
@@ -234,7 +251,7 @@ def print_session_header(session_num: int, is_initializer: bool) -> None:
 
 def print_progress_summary(project_dir: Path) -> None:
     """Print a summary of current progress."""
-    passing, in_progress, total = count_passing_tests(project_dir)
+    passing, in_progress, total, _needs_human_input = count_passing_tests(project_dir)
 
     if total > 0:
         percentage = (passing / total) * 100
