@@ -24,6 +24,7 @@ const PROVIDER_INFO_TEXT: Record<string, string> = {
   kimi: 'Get an API key at kimi.com',
   glm: 'Get an API key at open.bigmodel.cn',
   ollama: 'Run models locally. Install from ollama.com',
+  'github-copilot': 'Requires copilot-api proxy. Run: npx copilot-api@latest start',
   custom: 'Connect to any OpenAI-compatible API endpoint.',
 }
 
