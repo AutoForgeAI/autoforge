@@ -27,6 +27,7 @@ import signal
 import subprocess
 import sys
 import threading
+import time
 from datetime import datetime, timezone
 from pathlib import Path
 from typing import Any, Callable, Literal
@@ -135,6 +136,7 @@ DEFAULT_TESTING_BATCH_SIZE = 3  # Number of features per testing batch (1-5)
 POLL_INTERVAL = 5  # seconds between checking for ready features
 MAX_FEATURE_RETRIES = 3  # Maximum times to retry a failed feature
 INITIALIZER_TIMEOUT = 1800  # 30 minutes timeout for initializer
+AGENT_SPAWN_STAGGER_SECS = 1.5  # Delay between consecutive agent spawns to avoid ~/.claude.json race condition
 
 
 class ParallelOrchestrator:
@@ -224,6 +226,9 @@ class ParallelOrchestrator:
         # This reduces latency when spawning the next feature after completion.
         self._agent_completed_event: asyncio.Event | None = None  # Created in run_loop
         self._event_loop: asyncio.AbstractEventLoop | None = None  # Stored for thread-safe signaling
+
+        # Track time of last agent spawn to enforce stagger between all spawns (coding + testing)
+        self._last_spawn_time: float = 0.0
 
         # Database session for this orchestrator
         self._engine, self._session_maker = create_database(project_dir)
@@ -643,7 +648,19 @@ class ParallelOrchestrator:
                 session.close()
         return sum(1 for fd in feature_dicts if fd.get("passes"))
 
-    def _maintain_testing_agents(self, feature_dicts: list[dict] | None = None) -> None:
+    async def _stagger_if_needed(self) -> None:
+        """Sleep if needed to enforce minimum gap between any two consecutive agent spawns.
+
+        Prevents ~/.claude.json race conditions when coding and testing agents
+        start in rapid succession and concurrently read/write the config file.
+        Applies across all spawn types (coding and testing).
+        """
+        elapsed = time.monotonic() - self._last_spawn_time
+        remaining = AGENT_SPAWN_STAGGER_SECS - elapsed
+        if remaining > 0:
+            await asyncio.sleep(remaining)
+
+    async def _maintain_testing_agents(self, feature_dicts: list[dict] | None = None) -> None:
         """Maintain the desired count of testing agents independently.
 
         This runs every loop iteration and spawns testing agents as needed to maintain
@@ -698,6 +715,8 @@ class ParallelOrchestrator:
 
             # Spawn outside lock (I/O bound operation)
             logger.debug("Spawning testing agent (%d/%d)", spawn_index, desired)
+            # Enforce minimum gap from last spawn of any type (coding or testing)
+            await self._stagger_if_needed()
             success, msg = self._spawn_testing_agent()
             if not success:
                 debug_log.log("TESTING", f"Spawn failed, stopping: {msg}")
@@ -862,6 +881,7 @@ class ParallelOrchestrator:
                 popen_kwargs["creationflags"] = subprocess.CREATE_NO_WINDOW
 
             proc = subprocess.Popen(cmd, **popen_kwargs)
+            self._last_spawn_time = time.monotonic()
         except Exception as e:
             # Reset in_progress on failure
             session = self.get_session()
@@ -925,6 +945,7 @@ class ParallelOrchestrator:
                 popen_kwargs["creationflags"] = subprocess.CREATE_NO_WINDOW
 
             proc = subprocess.Popen(cmd, **popen_kwargs)
+            self._last_spawn_time = time.monotonic()
         except Exception as e:
             # Reset in_progress on failure
             session = self.get_session()
@@ -1030,6 +1051,7 @@ class ParallelOrchestrator:
                     popen_kwargs["creationflags"] = subprocess.CREATE_NO_WINDOW
 
                 proc = subprocess.Popen(cmd, **popen_kwargs)
+                self._last_spawn_time = time.monotonic()
             except Exception as e:
                 debug_log.log("TESTING", f"FAILED to spawn testing agent: {e}")
                 return False, f"Failed to start testing agent: {e}"
@@ -1549,7 +1571,7 @@ class ParallelOrchestrator:
                         continue
 
                 # Maintain testing agents independently (runs every iteration)
-                self._maintain_testing_agents(feature_dicts)
+                await self._maintain_testing_agents(feature_dicts)
 
                 # Check capacity
                 with self._lock:
@@ -1620,10 +1642,12 @@ class ParallelOrchestrator:
                     batch_count=len(batches),
                     batches=[[f['id'] for f in b] for b in batches[:slots]])
 
-                for batch in batches[:slots]:
+                for spawn_index, batch in enumerate(batches[:slots]):
                     batch_ids = [f["id"] for f in batch]
                     batch_names = [f"{f['id']}:{f['name']}" for f in batch]
                     logger.debug("Starting batch: %s", batch_ids)
+                    # Enforce minimum gap from last spawn of any type (coding or testing)
+                    await self._stagger_if_needed()
                     success, msg = self.start_feature_batch(batch_ids)
                     if not success:
                         logger.debug("Failed to start batch %s: %s", batch_ids, msg)
