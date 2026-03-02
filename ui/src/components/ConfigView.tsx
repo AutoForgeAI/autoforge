@@ -144,12 +144,6 @@ const CONNECTORS: ConnectorDef[] = [
   { id: 'sentry', name: 'Sentry', description: 'Auto-create features from error reports and track resolution', icon: '◎', color: '#362D59', connected: false, category: 'devops' },
 ]
 
-const CATEGORY_LABELS: Record<string, string> = {
-  design: 'Design',
-  communication: 'Communication',
-  devops: 'DevOps & CI/CD',
-  storage: 'Data & Storage',
-}
 
 function ConnectorCard({ connector, onToggle }: { connector: ConnectorDef; onToggle: () => void }) {
   const [hovered, setHovered] = useState(false)

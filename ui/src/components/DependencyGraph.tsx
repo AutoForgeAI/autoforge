@@ -123,13 +123,6 @@ function FeatureNode({ data }: { data: GraphNode & { onClick?: () => void; agent
     needs_human_input: { color: '#A05A00' },
   }
 
-  const textColors: Record<string, string> = {
-    pending: '',
-    in_progress: '',
-    done: '',
-    blocked: '',
-    needs_human_input: '',
-  }
 
   const StatusIcon = () => {
     const style = textInlineStyles[data.status]
