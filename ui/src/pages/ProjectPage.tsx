@@ -1,7 +1,7 @@
 import { useState, useEffect, useCallback } from 'react'
 import { useParams, useNavigate } from 'react-router-dom'
 import { useQueryClient, useQuery } from '@tanstack/react-query'
-import { useFeatures, useAgentStatus, useSettings, useProjects } from '../hooks/useProjects'
+import { useFeatures, useAgentStatus, useProjects } from '../hooks/useProjects'
 import { useProjectWebSocket } from '../hooks/useWebSocket'
 import { useFeatureSound } from '../hooks/useFeatureSound'
 import { OlympusHeader } from '../components/OlympusHeader'
@@ -17,7 +17,7 @@ import { AssistantPanel } from '../components/AssistantPanel'
 import { ExpandProjectModal } from '../components/ExpandProjectModal'
 import { SpecCreationChat } from '../components/SpecCreationChat'
 import { SettingsModal } from '../components/SettingsModal'
-import { DevServerControl } from '../components/DevServerControl'
+// DevServerControl removed from header
 import { ViewToggle, type ViewMode } from '../components/ViewToggle'
 import { DependencyGraph } from '../components/DependencyGraph'
 import { KeyboardShortcutsHelp } from '../components/KeyboardShortcutsHelp'
@@ -25,7 +25,7 @@ import { ResetProjectModal } from '../components/ResetProjectModal'
 import { ProjectSetupRequired } from '../components/ProjectSetupRequired'
 import { SpecEditorModal } from '../components/SpecEditorModal'
 import { getDependencyGraph, startAgent, listSpecFiles, getModernizeStatus } from '../lib/api'
-import { Loader2, Settings, RotateCcw } from 'lucide-react'
+import { Loader2, RotateCcw } from 'lucide-react'
 import type { Feature } from '../lib/types'
 
 const VIEW_MODE_KEY = 'olympus-view-mode'
@@ -64,7 +64,6 @@ export function ProjectPage() {
   const queryClient = useQueryClient()
   const { data: projects } = useProjects()
   const { data: features } = useFeatures(projectName)
-  const { data: settings } = useSettings()
   useAgentStatus(projectName)
   const wsState = useProjectWebSocket(projectName)
 
@@ -207,34 +206,6 @@ export function ProjectPage() {
         status={wsState.agentStatus}
         defaultConcurrency={selectedProjectData?.default_concurrency}
       />
-      <DevServerControl
-        projectName={projectName}
-        status={wsState.devServerStatus}
-        url={wsState.devServerUrl}
-      />
-
-      {settings?.ollama_mode && (
-        <div style={{
-          display: 'flex', alignItems: 'center', gap: '6px',
-          padding: '4px 8px', borderRadius: '6px',
-          border: '1px solid #DDEC90', background: '#FFFFFF',
-        }} title="Using Ollama local models">
-          <img src="/ollama.png" alt="Ollama" style={{ width: '20px', height: '20px' }} />
-          <span style={{ fontSize: '12px', fontWeight: 700, color: '#1A1A00' }}>Ollama</span>
-        </div>
-      )}
-
-      <button
-        onClick={() => setShowSettings(true)}
-        aria-label="Settings"
-        title="Settings (,)"
-        style={headerBtnStyle}
-        onMouseEnter={e => { (e.currentTarget as HTMLElement).style.background = '#F5F8D0' }}
-        onMouseLeave={e => { (e.currentTarget as HTMLElement).style.background = 'transparent' }}
-      >
-        <Settings size={18} />
-      </button>
-
       <button
         onClick={() => setShowResetModal(true)}
         aria-label="Reset Odyssey"

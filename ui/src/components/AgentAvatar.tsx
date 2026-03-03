@@ -107,6 +107,72 @@ function getStateDescription(state: AgentState): string {
   }
 }
 
+export const AGENT_EMOJIS: Record<string, string> = {
+  Zeus: '\u26A1',
+  Athena: '\uD83E\uDDE0',
+  Apollo: '\u2600\uFE0F',
+  Hermes: '\uD83D\uDC65',
+  Artemis: '\uD83C\uDFAF',
+  Hephaestus: '\uD83D\uDD28',
+  Ares: '\uD83D\uDEE1\uFE0F',
+  Poseidon: '\uD83C\uDF0A',
+  Demeter: '\uD83C\uDF3E',
+  Dionysus: '\uD83C\uDF77',
+  Hera: '\uD83D\uDC51',
+  Persephone: '\uD83C\uDF38',
+  Hades: '\uD83D\uDD25',
+  Aphrodite: '\uD83D\uDC9D',
+  Hecate: '\uD83C\uDF19',
+  Nike: '\uD83C\uDFC6',
+  Iris: '\uD83C\uDF08',
+  Helios: '\u2B50',
+  Selene: '\uD83C\uDF1C',
+  Eos: '\uD83C\uDF05',
+}
+
+function getAgentEmoji(name: string): string {
+  const resolved = LEGACY_NAME_MAP[name] || name
+  return AGENT_EMOJIS[resolved] || '\uD83E\uDD16'
+}
+
+const EMOJI_SIZES = {
+  xs: { box: 22, fontSize: '12px' },
+  sm: { box: 34, fontSize: '16px' },
+  md: { box: 44, fontSize: '22px' },
+  lg: { box: 56, fontSize: '28px' },
+}
+
+interface AgentEmojiAvatarProps {
+  name: string
+  size?: 'xs' | 'sm' | 'md' | 'lg'
+  active?: boolean
+}
+
+export function AgentEmojiAvatar({ name, size = 'sm', active = true }: AgentEmojiAvatarProps) {
+  const emoji = getAgentEmoji(name)
+  const { box, fontSize } = EMOJI_SIZES[size]
+
+  return (
+    <div
+      style={{
+        width: `${box}px`,
+        height: `${box}px`,
+        borderRadius: '8px',
+        border: active ? '1.5px solid #BBCB64' : '1.5px solid #DDEC90',
+        background: active ? '#FFFFF0' : '#FAFAF2',
+        display: 'flex',
+        alignItems: 'center',
+        justifyContent: 'center',
+        fontSize,
+        flexShrink: 0,
+        animation: active ? 'emoji-breathe 2.5s ease-in-out infinite' : 'none',
+      }}
+    >
+      {emoji}
+    </div>
+  )
+}
+
 export function AgentAvatar({ name, state, size = 'md', showName = false }: AgentAvatarProps) {
   const resolved = (name !== 'Unknown' && LEGACY_NAME_MAP[name]) || name
   const resolvedName = resolved as AgentMascot

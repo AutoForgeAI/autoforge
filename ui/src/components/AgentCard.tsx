@@ -1,7 +1,7 @@
 import { MessageCircle, ScrollText, X, Copy, Check, Code, FlaskConical } from 'lucide-react'
 import { useState } from 'react'
 import { createPortal } from 'react-dom'
-import { AgentAvatar, resolveAgentName } from './AgentAvatar'
+import { AgentEmojiAvatar, resolveAgentName } from './AgentAvatar'
 import type { ActiveAgent, AgentLogEntry, AgentType } from '../lib/types'
 
 interface AgentCardProps {
@@ -102,7 +102,7 @@ export function AgentCard({ agent, onShowLogs }: AgentCardProps) {
       }} />
 
       {/* Avatar */}
-      <AgentAvatar name={agent.agentName} state={agent.state} size="sm" />
+      <AgentEmojiAvatar name={agent.agentName} size="sm" />
 
       {/* Name */}
       <span style={{ fontSize: '13px', fontWeight: 700, color: '#1A1A00', whiteSpace: 'nowrap' }}>
@@ -214,7 +214,7 @@ export function AgentLogModal({ agent, logs, onClose }: AgentLogModalProps) {
       }}>
         <div style={{ display: 'flex', alignItems: 'center', justifyContent: 'space-between', padding: '16px', borderBottom: '1px solid #DDEC90' }}>
           <div style={{ display: 'flex', alignItems: 'center', gap: '12px' }}>
-            <AgentAvatar name={agent.agentName} state={agent.state} size="sm" />
+            <AgentEmojiAvatar name={agent.agentName} size="sm" />
             <div>
               <div style={{ display: 'flex', alignItems: 'center', gap: '8px' }}>
                 <h2 style={{ fontSize: '18px', fontWeight: 700, color: '#1A1A00', margin: 0 }}>

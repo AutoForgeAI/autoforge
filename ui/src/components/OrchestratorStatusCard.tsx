@@ -1,7 +1,7 @@
 import { useState } from 'react'
 import { ChevronDown, ChevronUp, Code, FlaskConical, Clock, Lock, Sparkles } from 'lucide-react'
 import type { OrchestratorStatus, OrchestratorState } from '../lib/types'
-import { AgentAvatar } from './AgentAvatar'
+import { AgentEmojiAvatar } from './AgentAvatar'
 
 interface OrchestratorStatusCardProps {
   status: OrchestratorStatus
@@ -74,7 +74,7 @@ export function OrchestratorStatusCard({ status }: OrchestratorStatusCardProps) 
           background: dotColor, flexShrink: 0,
           boxShadow: `0 0 6px ${dotColor}60`,
         }} />
-        <AgentAvatar name="Zeus" state="working" size="sm" />
+        <AgentEmojiAvatar name="Zeus" size="sm" />
         <span style={{ fontSize: '16px', fontWeight: 700, color: '#1A1A00' }}>
           Zeus, Commander
         </span>

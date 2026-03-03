@@ -62,21 +62,73 @@ const ORCH_FLOWS: OrchFlow[] = [
     badgeStyle: { bg: '#F5F8D0', color: '#7A8A00', border: '#DDEC90' },
     nodes: [
       { emoji: '\u26A1', name: 'Zeus', sub: 'Ingest & Route', lead: true },
-      { emoji: '\uD83E\uDDE0', name: 'Athena', sub: 'Build', running: true },
-      { emoji: '\uD83D\uDD28', name: 'Hephaestus', sub: 'QA', running: true },
-      { emoji: '\uD83D\uDEE1\uFE0F', name: 'Ares', sub: 'Docs' },
+      { emoji: '\uD83E\uDDE0', name: 'Athena', sub: 'Architect', running: true },
+      { emoji: '\u2600\uFE0F', name: 'Apollo', sub: 'Code Gen', running: true },
+      { emoji: '\uD83D\uDD28', name: 'Hephaestus', sub: 'Build & QA', running: true },
+      { emoji: '\uD83D\uDEE1\uFE0F', name: 'Ares', sub: 'Security' },
       { emoji: '\uD83C\uDFAF', name: 'Artemis', sub: 'Validate' },
     ],
   },
   {
     title: 'Figma Input Workflow',
-    badge: 'Design-first path',
-    badgeStyle: { bg: '#F5F8D0', color: '#7A8A00', border: '#DDEC90' },
+    badge: 'Design-first',
+    badgeStyle: { bg: '#EDE4F7', color: '#6B21A8', border: '#D4B8F0' },
     nodes: [
       { emoji: '\u26A1', name: 'Zeus', sub: 'Ingest', lead: true },
       { emoji: '\uD83C\uDF0A', name: 'Poseidon', sub: 'Parse Design', running: true },
-      { emoji: '\uD83E\uDDE0', name: 'Athena', sub: 'Build', running: true },
-      { emoji: '\uD83D\uDD28', name: 'Hephaestus', sub: 'QA' },
+      { emoji: '\uD83E\uDDE0', name: 'Athena', sub: 'Architect', running: true },
+      { emoji: '\u2600\uFE0F', name: 'Apollo', sub: 'Code Gen', running: true },
+      { emoji: '\uD83D\uDD28', name: 'Hephaestus', sub: 'Build & QA' },
+    ],
+  },
+  {
+    title: 'Greenfield Project',
+    badge: 'From scratch',
+    badgeStyle: { bg: '#D1FAE5', color: '#047857', border: '#6EE7B7' },
+    nodes: [
+      { emoji: '\u26A1', name: 'Zeus', sub: 'Plan & Scaffold', lead: true },
+      { emoji: '\uD83E\uDDE0', name: 'Athena', sub: 'Architecture', running: true },
+      { emoji: '\u2600\uFE0F', name: 'Apollo', sub: 'Code Gen', running: true },
+      { emoji: '\uD83D\uDC65', name: 'Hermes', sub: 'Integrate', running: true },
+      { emoji: '\uD83D\uDD28', name: 'Hephaestus', sub: 'CI/CD' },
+      { emoji: '\uD83C\uDFAF', name: 'Artemis', sub: 'E2E Tests' },
+      { emoji: '\uD83D\uDEE1\uFE0F', name: 'Ares', sub: 'Audit' },
+    ],
+  },
+  {
+    title: 'Input Form \u2014 Spec Driven',
+    badge: 'Guided',
+    badgeStyle: { bg: '#DBEAFE', color: '#1D4ED8', border: '#93C5FD' },
+    nodes: [
+      { emoji: '\u26A1', name: 'Zeus', sub: 'Parse Spec', lead: true },
+      { emoji: '\uD83E\uDDE0', name: 'Athena', sub: 'Plan Features', running: true },
+      { emoji: '\u2600\uFE0F', name: 'Apollo', sub: 'Implement', running: true },
+      { emoji: '\uD83C\uDFAF', name: 'Artemis', sub: 'Verify', running: true },
+      { emoji: '\uD83D\uDEE1\uFE0F', name: 'Ares', sub: 'Compliance' },
+    ],
+  },
+  {
+    title: 'API-First Workflow',
+    badge: 'Backend',
+    badgeStyle: { bg: '#FFF0DC', color: '#A05A00', border: '#F0C880' },
+    nodes: [
+      { emoji: '\u26A1', name: 'Zeus', sub: 'Route', lead: true },
+      { emoji: '\uD83E\uDDE0', name: 'Athena', sub: 'Schema Design', running: true },
+      { emoji: '\u2600\uFE0F', name: 'Apollo', sub: 'Endpoints', running: true },
+      { emoji: '\uD83D\uDC65', name: 'Hermes', sub: 'Integration', running: true },
+      { emoji: '\uD83D\uDD25', name: 'Hades', sub: 'Load Test' },
+      { emoji: '\uD83D\uDEE1\uFE0F', name: 'Ares', sub: 'Auth & Security' },
+    ],
+  },
+  {
+    title: 'Bug Fix \u2014 Hotfix Path',
+    badge: 'Fast-track',
+    badgeStyle: { bg: '#FEE2E2', color: '#B91C1C', border: '#FCA5A5' },
+    nodes: [
+      { emoji: '\u26A1', name: 'Zeus', sub: 'Triage', lead: true },
+      { emoji: '\u2600\uFE0F', name: 'Apollo', sub: 'Fix', running: true },
+      { emoji: '\uD83C\uDFAF', name: 'Artemis', sub: 'Regression', running: true },
+      { emoji: '\uD83D\uDD28', name: 'Hephaestus', sub: 'Deploy' },
     ],
   },
 ]
@@ -580,74 +632,150 @@ export function AgentsView() {
       </div>
 
       {/* Orchestration Pathways */}
-      <div style={{ marginTop: '20px' }}>
-        <div style={{ fontSize: '12px', fontWeight: 700, letterSpacing: '2px', textTransform: 'uppercase', color: '#7A8A00', marginBottom: '10px' }}>
-          Orchestration Pathways
+      <div style={{ marginTop: '28px' }}>
+        <div style={{ display: 'flex', alignItems: 'center', justifyContent: 'space-between', marginBottom: '14px' }}>
+          <div>
+            <div style={{ fontSize: '12px', fontWeight: 700, letterSpacing: '2px', textTransform: 'uppercase', color: '#7A8A00', marginBottom: '2px' }}>
+              Orchestration Pathways
+            </div>
+            <p style={{ fontSize: '13px', color: '#6A6A20', margin: 0 }}>
+              Agent routing flows for different project types
+            </p>
+          </div>
+          <span style={{
+            fontSize: '11px', fontWeight: 700, padding: '4px 12px', borderRadius: '20px',
+            background: '#F5F8D0', color: '#7A8A00', border: '1px solid #DDEC90',
+          }}>
+            {ORCH_FLOWS.length} flows
+          </span>
         </div>
-        <div style={{ background: '#FFFFFF', border: '1px solid #DDEC90', borderRadius: '8px', overflow: 'hidden' }}>
-          {ORCH_FLOWS.map((flow, flowIdx) => (
-            <div key={flow.title}>
+
+        <div style={{ display: 'grid', gridTemplateColumns: 'repeat(2, 1fr)', gap: '14px' }}>
+          {ORCH_FLOWS.map((flow) => (
+            <div
+              key={flow.title}
+              style={{
+                background: '#FFFFFF',
+                border: '1px solid #DDEC90',
+                borderRadius: '10px',
+                overflow: 'hidden',
+                transition: 'box-shadow 0.15s, border-color 0.15s',
+              }}
+              onMouseEnter={e => {
+                (e.currentTarget as HTMLElement).style.boxShadow = '0 4px 16px rgba(187,203,100,0.18)'
+                ;(e.currentTarget as HTMLElement).style.borderColor = '#BBCB64'
+              }}
+              onMouseLeave={e => {
+                (e.currentTarget as HTMLElement).style.boxShadow = 'none'
+                ;(e.currentTarget as HTMLElement).style.borderColor = '#DDEC90'
+              }}
+            >
               {/* Flow header */}
               <div style={{
                 padding: '12px 16px',
-                borderBottom: '1px solid #DDEC90',
+                borderBottom: '1px solid #F5F8D0',
                 background: '#FAFAF2',
                 display: 'flex',
                 alignItems: 'center',
                 justifyContent: 'space-between',
-                borderTop: flowIdx > 0 ? '1px solid #DDEC90' : undefined,
               }}>
-                <span style={{ fontSize: '12px', fontWeight: 700, letterSpacing: '2px', textTransform: 'uppercase', color: '#7A8A00' }}>
+                <span style={{ fontSize: '13px', fontWeight: 700, color: '#1A1A00' }}>
                   {flow.title}
                 </span>
                 <span style={{
-                  fontSize: '10px', fontWeight: 700, padding: '3px 8px', borderRadius: '20px',
+                  fontSize: '10px', fontWeight: 700, padding: '3px 10px', borderRadius: '20px',
                   background: flow.badgeStyle.bg, color: flow.badgeStyle.color,
                   border: `1px solid ${flow.badgeStyle.border}`,
                 }}>
                   {flow.badge}
                 </span>
               </div>
+
               {/* Flow nodes */}
-              <div style={{ display: 'flex', alignItems: 'center', padding: '16px', overflowX: 'auto' }}>
-                {flow.nodes.map((node, idx) => (
-                  <React.Fragment key={node.name}>
-                    <div style={{ display: 'flex', flexDirection: 'column', alignItems: 'center', minWidth: '72px' }}>
+              <div style={{ padding: '18px 16px 14px', overflowX: 'auto' }}>
+                <div style={{ display: 'flex', alignItems: 'flex-start' }}>
+                  {flow.nodes.map((node, idx) => (
+                    <React.Fragment key={`${flow.title}-${node.name}`}>
                       <div style={{
-                        width: '40px', height: '40px', borderRadius: '8px',
-                        background: node.lead ? '#F79A19' : node.running ? '#BBCB64' : '#F5F8D0',
-                        border: `1.5px solid ${node.lead ? '#D07000' : node.running ? '#7A8A00' : '#DDEC90'}`,
-                        display: 'flex', alignItems: 'center', justifyContent: 'center',
-                        fontSize: '18px', marginBottom: '5px', position: 'relative',
+                        display: 'flex', flexDirection: 'column', alignItems: 'center',
+                        minWidth: '64px', position: 'relative',
                       }}>
-                        {node.emoji}
-                        {(node.running || node.lead) && (
-                          <span style={{
-                            position: 'absolute', top: '-3px', right: '-3px',
-                            width: '9px', height: '9px', borderRadius: '50%',
-                            background: '#BBCB64', border: '2px solid #FFFFFF',
-                          }} />
-                        )}
-                      </div>
-                      <span style={{ fontSize: '12px', fontWeight: 700, color: '#1A1A00', textAlign: 'center' }}>{node.name}</span>
-                      <span style={{ fontSize: '10px', color: '#6A6A20', textAlign: 'center' }}>{node.sub}</span>
-                    </div>
-                    {idx < flow.nodes.length - 1 && (
-                      <div style={{
-                        flex: 1, height: '2px',
-                        background: (node.running || node.lead) ? '#BBCB64' : '#DDEC90',
-                        minWidth: '16px', position: 'relative', margin: '0 4px', marginBottom: '20px',
-                      }}>
-                        <span style={{
-                          position: 'absolute', right: '-5px', top: '-6px',
-                          fontSize: '10px', color: (node.running || node.lead) ? '#7A8A00' : '#DDEC90',
+                        {/* Node circle */}
+                        <div style={{
+                          width: '44px', height: '44px', borderRadius: '12px',
+                          background: node.lead ? '#FFF8EE' : node.running ? '#FAFFF0' : '#FAFAF2',
+                          border: `2px solid ${node.lead ? '#F79A19' : node.running ? '#BBCB64' : '#E5E7EB'}`,
+                          display: 'flex', alignItems: 'center', justifyContent: 'center',
+                          fontSize: '20px', position: 'relative',
+                          boxShadow: (node.running || node.lead)
+                            ? `0 0 0 3px ${node.lead ? 'rgba(247,154,25,0.15)' : 'rgba(187,203,100,0.15)'}`
+                            : 'none',
+                          transition: 'transform 0.15s',
                         }}>
-                          &#9654;
+                          {node.emoji}
+                          {(node.running || node.lead) && (
+                            <span style={{
+                              position: 'absolute', top: '-2px', right: '-2px',
+                              width: '10px', height: '10px', borderRadius: '50%',
+                              background: node.lead ? '#F79A19' : '#BBCB64',
+                              border: '2px solid #FFFFFF',
+                              boxShadow: `0 0 4px ${node.lead ? 'rgba(247,154,25,0.4)' : 'rgba(187,203,100,0.4)'}`,
+                            }} />
+                          )}
+                        </div>
+                        {/* Labels */}
+                        <span style={{
+                          fontSize: '11px', fontWeight: 700, color: '#1A1A00',
+                          textAlign: 'center', marginTop: '6px', lineHeight: 1.2,
+                        }}>
+                          {node.name}
+                        </span>
+                        <span style={{
+                          fontSize: '10px', color: '#6A6A20', textAlign: 'center',
+                          marginTop: '1px', lineHeight: 1.2,
+                        }}>
+                          {node.sub}
                         </span>
                       </div>
-                    )}
-                  </React.Fragment>
-                ))}
+                      {/* Connector arrow */}
+                      {idx < flow.nodes.length - 1 && (
+                        <div style={{
+                          display: 'flex', alignItems: 'center',
+                          marginTop: '18px', minWidth: '20px', flex: 1,
+                        }}>
+                          <div style={{
+                            flex: 1, height: '2px', minWidth: '8px',
+                            background: (node.running || node.lead)
+                              ? 'linear-gradient(90deg, #BBCB64, #DDEC90)'
+                              : '#E5E7EB',
+                          }} />
+                          <svg width="8" height="10" viewBox="0 0 8 10" style={{ flexShrink: 0, marginLeft: '-1px' }}>
+                            <path
+                              d="M0 0 L8 5 L0 10 Z"
+                              fill={(node.running || node.lead) ? '#BBCB64' : '#E5E7EB'}
+                            />
+                          </svg>
+                        </div>
+                      )}
+                    </React.Fragment>
+                  ))}
+                </div>
+              </div>
+
+              {/* Flow footer */}
+              <div style={{
+                padding: '8px 16px',
+                borderTop: '1px solid #F5F8D0',
+                background: '#FEFFF8',
+                display: 'flex', alignItems: 'center', gap: '12px',
+              }}>
+                <span style={{ fontSize: '10px', color: '#9A9A60' }}>
+                  {flow.nodes.length} agents
+                </span>
+                <span style={{ fontSize: '10px', color: '#DDEC90' }}>&bull;</span>
+                <span style={{ fontSize: '10px', color: '#9A9A60' }}>
+                  {flow.nodes.filter(n => n.running || n.lead).length} active
+                </span>
               </div>
             </div>
           ))}

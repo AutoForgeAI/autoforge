@@ -1,7 +1,5 @@
 import { Activity } from 'lucide-react'
-import { resolveAgentName } from './AgentAvatar'
-import { AVATAR_COLORS } from './mascotData'
-import type { AgentMascot } from '../lib/types'
+import { AgentEmojiAvatar, resolveAgentName } from './AgentAvatar'
 
 interface ActivityItem {
   agentName: string
@@ -28,11 +26,6 @@ function formatTimestamp(timestamp: string): string {
   return date.toLocaleTimeString([], { hour: '2-digit', minute: '2-digit' })
 }
 
-function getMascotDotColor(name: string): string {
-  const resolved = resolveAgentName(name) as AgentMascot
-  return AVATAR_COLORS[resolved]?.accent || '#7A8A00'
-}
-
 export function ActivityFeed({ activities, maxItems = 20, showHeader = true }: ActivityFeedProps) {
   const displayedActivities = activities.slice(0, maxItems)
 
@@ -54,7 +47,6 @@ export function ActivityFeed({ activities, maxItems = 20, showHeader = true }: A
 
       <div style={{ display: 'flex', flexDirection: 'column', gap: '2px' }}>
         {displayedActivities.map((activity, idx) => {
-          const dotColor = getMascotDotColor(activity.agentName)
           return (
             <div
               key={`${idx}-${activity.featureId}-${activity.timestamp}`}
@@ -65,11 +57,8 @@ export function ActivityFeed({ activities, maxItems = 20, showHeader = true }: A
               onMouseEnter={e => { (e.currentTarget as HTMLElement).style.background = '#FAFAF2' }}
               onMouseLeave={e => { (e.currentTarget as HTMLElement).style.background = 'transparent' }}
             >
-              {/* Small colored dot */}
-              <span style={{
-                width: '8px', height: '8px', borderRadius: '50%', flexShrink: 0,
-                background: dotColor,
-              }} />
+              {/* Agent avatar */}
+              <AgentEmojiAvatar name={activity.agentName} size="xs" />
 
               {/* Agent name */}
               <span style={{ fontSize: '12px', fontWeight: 700, color: '#1A1A00', whiteSpace: 'nowrap' }}>

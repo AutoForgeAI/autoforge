@@ -19,7 +19,12 @@ export function DashboardHeader({ projectCount, activeTab = 'DASHBOARD', onTabCh
       {/* Logo */}
       <div className="text-[22px] font-bold text-white tracking-[-0.3px] shrink-0 mr-8">
         Infini<span style={{ color: '#FFE52A' }}>AI</span>
-        <sup className="text-[10px] font-normal tracking-[2px] uppercase ml-[3px]" style={{ color: '#4A4A10' }}>OS</sup>
+        <sup
+          className="text-[10px] font-normal tracking-[2px] uppercase ml-[3px]"
+          style={{ color: '#9A9A60' }}
+        >
+          OS
+        </sup>
       </div>
 
       {/* Nav tabs */}
@@ -31,10 +36,10 @@ export function DashboardHeader({ projectCount, activeTab = 'DASHBOARD', onTabCh
             className="text-[14px] font-bold tracking-[0.5px] uppercase px-4 py-1.5 rounded cursor-pointer border-none transition-all"
             style={{
               background: activeTab === tab ? '#BBCB64' : 'transparent',
-              color: activeTab === tab ? '#1A1A00' : '#4A4A10',
+              color: activeTab === tab ? '#1A1A00' : '#9A9A60',
             }}
-            onMouseEnter={e => { if (activeTab !== tab) (e.target as HTMLElement).style.color = '#BBCB64' }}
-            onMouseLeave={e => { if (activeTab !== tab) (e.target as HTMLElement).style.color = '#4A4A10' }}
+            onMouseEnter={e => { if (activeTab !== tab) (e.target as HTMLElement).style.color = '#DDEC90' }}
+            onMouseLeave={e => { if (activeTab !== tab) (e.target as HTMLElement).style.color = '#9A9A60' }}
           >
             {tab}
           </button>

@@ -53,8 +53,8 @@ export const THEMES: ThemeOption[] = [
   {
     id: 'olympus',
     name: 'Olympus',
-    description: 'Sage, gold, orange and crimson ember palette',
-    previewColors: { primary: '#F79A19', background: '#141008', accent: '#FFE52A' }
+    description: 'Sage green and olive divine palette',
+    previewColors: { primary: '#BBCB64', background: '#FAFAF2', accent: '#7A8A00' }
   }
 ]
 
