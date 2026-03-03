@@ -6,6 +6,7 @@ import { DEFAULT_PROMPTS, QUICK_INSERT_ITEMS } from './agentPrompts'
 interface DashboardSidebarProps {
   projects: ProjectSummary[]
   onNewProject?: () => void
+  onTabChange?: (tab: string) => void
 }
 
 type RoleBadge = 'LEAD' | 'INT' | 'SPC'
@@ -352,7 +353,7 @@ const sbItem: React.CSSProperties = {
   textDecoration: 'none',
 }
 
-export function DashboardSidebar({ projects }: DashboardSidebarProps) {
+export function DashboardSidebar({ projects, onNewProject, onTabChange }: DashboardSidebarProps) {
   const [hoveredItem, setHoveredItem] = useState<string | null>(null)
   const [selectedAgent, setSelectedAgent] = useState<SidebarAgent | null>(null)
 
@@ -452,25 +453,27 @@ export function DashboardSidebar({ projects }: DashboardSidebarProps) {
       <div>
         <span style={sbLabel}>Quick Actions</span>
         {[
-          { label: 'Upload Project', dot: '#E0E0E0' },
-          { label: 'HITL Queue', dot: '#F79A19', badge: '3', warn: true },
-          { label: 'Token Report', dot: '#E0E0E0' },
-          { label: 'Configuration', dot: '#E0E0E0' },
-        ].map(({ label, dot, badge, warn }) => (
+          { label: 'Upload Project', dot: '#BBCB64', action: () => onNewProject?.() },
+          { label: 'HITL Queue', dot: '#F79A19', badge: String(projects.filter(p => p.stats.in_progress > 0).length || 0), warn: true, action: () => onTabChange?.('DASHBOARD') },
+          { label: 'Token Report', dot: '#BBCB64', action: () => onTabChange?.('ANALYTICS') },
+          { label: 'Configuration', dot: '#BBCB64', action: () => onTabChange?.('CONFIG') },
+        ].map(({ label, dot, badge, warn, action }) => (
           <div
             key={label}
+            onClick={action}
             style={{
               ...sbItem,
               background: hoveredItem === label ? '#F5F8D0' : 'transparent',
               borderLeft: hoveredItem === label ? '3px solid #BBCB64' : '3px solid transparent',
               color: hoveredItem === label ? '#1A1A00' : '#6A6A20',
+              cursor: 'pointer',
             }}
             onMouseEnter={() => setHoveredItem(label)}
             onMouseLeave={() => setHoveredItem(null)}
           >
             <span style={{ width: '7px', height: '7px', borderRadius: '50%', background: dot, flexShrink: 0 }} />
             <span style={{ flex: 1 }}>{label}</span>
-            {badge && (
+            {badge && badge !== '0' && (
               <span style={{
                 fontSize: '12px', fontWeight: 700,
                 background: warn ? '#FFF0DC' : '#F5F8D0',
