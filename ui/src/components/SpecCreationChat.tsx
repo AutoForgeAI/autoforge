@@ -44,6 +44,7 @@ type InitializerStatus = 'idle' | 'starting' | 'error'
 
 interface SpecCreationChatProps {
   projectName: string
+  fromResearch?: boolean  // True when coming from research results (existing codebase)
   onComplete: (specPath: string, yoloMode?: boolean) => void
   onCancel: () => void
   onExitToProject: () => void  // Exit to project without starting agent
@@ -54,6 +55,7 @@ interface SpecCreationChatProps {
 
 export function SpecCreationChat({
   projectName,
+  fromResearch,
   onComplete,
   onCancel,
   onExitToProject,
@@ -81,6 +83,7 @@ export function SpecCreationChat({
     disconnect,
   } = useSpecChat({
     projectName,
+    fromResearch,
     onComplete,
     onError: (err) => setError(err),
   })

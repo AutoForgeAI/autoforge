@@ -203,8 +203,11 @@ async def spec_chat_websocket(websocket: WebSocket, project_name: str):
                     continue
 
                 elif msg_type == "start":
+                    # Check if coming from research results (existing codebase)
+                    from_research = message.get("from_research", False)
+
                     # Create and start a new session
-                    session = await create_session(project_name, project_dir)
+                    session = await create_session(project_name, project_dir, from_research=from_research)
 
                     # Track spec completion state
                     spec_complete_received = False

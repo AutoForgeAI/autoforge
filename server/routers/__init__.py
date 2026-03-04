@@ -11,6 +11,7 @@ from .devserver import router as devserver_router
 from .expand_project import router as expand_project_router
 from .features import router as features_router
 from .filesystem import router as filesystem_router
+from .git import router as git_router
 from .projects import router as projects_router
 from .scaffold import router as scaffold_router
 from .schedules import router as schedules_router
@@ -31,4 +32,5 @@ __all__ = [
     "settings_router",
     "terminal_router",
     "scaffold_router",
+    "git_router",
 ]
