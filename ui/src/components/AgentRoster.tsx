@@ -1,5 +1,5 @@
 import React, { useState, useEffect, useCallback } from 'react'
-import { DEFAULT_PROMPTS, QUICK_INSERT_ITEMS } from './agentPrompts'
+import { DEFAULT_PROMPTS, QUICK_INSERT_ITEMS } from './agentPrompts/index'
 
 type RoleBadge = 'LEAD' | 'INT' | 'SPC'
 
