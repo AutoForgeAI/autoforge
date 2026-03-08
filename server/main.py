@@ -52,6 +52,7 @@ from .services.dev_server_manager import (
 from .services.expand_chat_session import cleanup_all_expand_sessions
 from .services.process_manager import cleanup_all_managers, cleanup_orphaned_locks
 from .services.scheduler_service import cleanup_scheduler, get_scheduler
+from .services.orphan_reaper import start_reaper, stop_reaper
 from .services.terminal_manager import cleanup_all_terminals
 from .websocket import project_websocket
 
@@ -81,6 +82,9 @@ async def lifespan(app: FastAPI):
     scheduler = get_scheduler()
     await scheduler.start()
 
+    # Start orphan process reaper (Linux containers only)
+    start_reaper()
+
     yield
 
     # Shutdown - cleanup scheduler first to stop triggering new starts
@@ -91,6 +95,7 @@ async def lifespan(app: FastAPI):
     await cleanup_all_expand_sessions()
     await cleanup_all_terminals()
     await cleanup_all_devservers()
+    stop_reaper()
 
 
 # Create FastAPI app

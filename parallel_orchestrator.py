@@ -860,6 +860,8 @@ class ParallelOrchestrator:
             }
             if sys.platform == "win32":
                 popen_kwargs["creationflags"] = subprocess.CREATE_NO_WINDOW
+            else:
+                popen_kwargs["start_new_session"] = True
 
             proc = subprocess.Popen(cmd, **popen_kwargs)
         except Exception as e:
@@ -923,6 +925,8 @@ class ParallelOrchestrator:
             }
             if sys.platform == "win32":
                 popen_kwargs["creationflags"] = subprocess.CREATE_NO_WINDOW
+            else:
+                popen_kwargs["start_new_session"] = True
 
             proc = subprocess.Popen(cmd, **popen_kwargs)
         except Exception as e:
@@ -1028,6 +1032,8 @@ class ParallelOrchestrator:
                 self._testing_session_counter += 1
                 if sys.platform == "win32":
                     popen_kwargs["creationflags"] = subprocess.CREATE_NO_WINDOW
+                else:
+                    popen_kwargs["start_new_session"] = True
 
                 proc = subprocess.Popen(cmd, **popen_kwargs)
             except Exception as e:
@@ -1089,6 +1095,8 @@ class ParallelOrchestrator:
         }
         if sys.platform == "win32":
             popen_kwargs["creationflags"] = subprocess.CREATE_NO_WINDOW
+        else:
+            popen_kwargs["start_new_session"] = True
 
         proc = subprocess.Popen(cmd, **popen_kwargs)
 
