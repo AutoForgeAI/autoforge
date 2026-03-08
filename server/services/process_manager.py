@@ -470,6 +470,8 @@ class AgentProcessManager:
             }
             if sys.platform == "win32":
                 popen_kwargs["creationflags"] = subprocess.CREATE_NO_WINDOW
+            else:
+                popen_kwargs["start_new_session"] = True
 
             self.process = subprocess.Popen(cmd, **popen_kwargs)
 

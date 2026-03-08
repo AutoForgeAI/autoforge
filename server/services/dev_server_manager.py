@@ -352,6 +352,7 @@ class DevServerProcessManager:
                     stdout=subprocess.PIPE,
                     stderr=subprocess.STDOUT,
                     cwd=str(self.project_dir),
+                    start_new_session=True,
                 )
 
             self._command = command
