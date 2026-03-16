@@ -36,7 +36,18 @@ from sqlalchemy import text
 from api.database import Feature, create_database
 from api.dependency_resolver import are_dependencies_satisfied, compute_scheduling_scores
 from progress import has_features
+from rate_limit_utils import is_rate_limit_error, parse_claude_reset_time
 from server.utils.process_utils import kill_process_tree
+
+# WebSocket broadcasting (orchestrator has access to WebSocket server)
+try:
+    import asyncio
+    from server.websocket import manager as ws_manager
+    WEBSOCKET_AVAILABLE = True
+except ImportError as e:
+    WEBSOCKET_AVAILABLE = False
+    ws_manager = None
+    print(f"[ORCHESTRATOR] WebSocket import failed: {e}")
 
 logger = logging.getLogger(__name__)
 
@@ -1150,6 +1161,49 @@ class ParallelOrchestrator:
                 if abort.is_set():
                     break
                 line = line.rstrip()
+                
+                # Check for usage limit indicators in agent output
+                if is_rate_limit_error(line):
+                    print(f"\n[ORCHESTRATOR] ⚠️  USAGE LIMIT DETECTED in agent output", flush=True)
+                    print(f"[ORCHESTRATOR] Agent output: {line}", flush=True)
+                    
+                    # Try to extract reset time
+                    reset_result = parse_claude_reset_time(line)
+                    if reset_result:
+                        delay_seconds, target_time_str = reset_result
+                        print(f"[ORCHESTRATOR] 📅 Reset time: {target_time_str} ({delay_seconds}s)", flush=True)
+                        
+                        # Broadcast to WebSocket if available
+                        if WEBSOCKET_AVAILABLE and ws_manager and self.project_dir:
+                            try:
+                                project_name = self.project_dir.name
+                                # Broadcast usage limit alert
+                                asyncio.create_task(ws_manager.broadcast_usage_limit(
+                                    project_name, 
+                                    f"Claude usage limit reached. AutoForge will resume at {target_time_str}",
+                                    target_time_str, 
+                                    delay_seconds
+                                ))
+                                # Broadcast waiting state
+                                asyncio.create_task(ws_manager.broadcast_to_project(project_name, {
+                                    "type": "agent_update",
+                                    "agentIndex": -1,
+                                    "agentName": "Orchestrator",
+                                    "agentType": "orchestrator",
+                                    "featureId": current_feature_id or 0,
+                                    "featureName": "Rate Limit",
+                                    "state": "waiting_on_rate_limit",
+                                    "thought": f"Waiting for Claude usage limit to reset at {target_time_str}",
+                                    "timestamp": datetime.now().isoformat(),
+                                }))
+                                print(f"[ORCHESTRATOR] 📡 WebSocket broadcasts sent", flush=True)
+                            except Exception as e:
+                                print(f"[ORCHESTRATOR] ❌ WebSocket broadcast failed: {e}", flush=True)
+                        else:
+                            print(f"[ORCHESTRATOR] ⚠️  WebSocket not available - UI won't update", flush=True)
+                    else:
+                        print(f"[ORCHESTRATOR] ⚠️  Could not parse reset time from: {line}", flush=True)
+                
                 # Detect when a batch agent claims a new feature
                 claim_match = self._CLAIM_FEATURE_PATTERN.search(line)
                 if claim_match:
