@@ -266,7 +266,7 @@ export interface OrchestratorStatus {
 }
 
 // WebSocket message types
-export type WSMessageType = 'progress' | 'feature_update' | 'log' | 'agent_status' | 'pong' | 'dev_log' | 'dev_server_status' | 'agent_update' | 'orchestrator_update'
+export type WSMessageType = 'progress' | 'feature_update' | 'log' | 'agent_status' | 'pong' | 'dev_log' | 'dev_server_status' | 'agent_update' | 'orchestrator_update' | 'auth_error' | 'usage_limit'
 
 export interface WSProgressMessage {
   type: 'progress'
@@ -342,6 +342,25 @@ export interface WSOrchestratorUpdateMessage {
   featureName?: string
 }
 
+export interface WSAuthErrorMessage {
+  type: 'auth_error'
+  message: string
+  timestamp: string
+  agentIndex?: number
+  agentName?: string
+  requiresLogin: boolean
+}
+
+export interface WSUsageLimitMessage {
+  type: 'usage_limit'
+  message: string
+  timestamp: string
+  resetTime: string
+  waitSeconds: number
+  agentIndex?: number
+  agentName?: string
+}
+
 export type WSMessage =
   | WSProgressMessage
   | WSFeatureUpdateMessage
@@ -352,6 +371,8 @@ export type WSMessage =
   | WSDevLogMessage
   | WSDevServerStatusMessage
   | WSOrchestratorUpdateMessage
+  | WSAuthErrorMessage
+  | WSUsageLimitMessage
 
 // ============================================================================
 // Spec Chat Types

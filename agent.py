@@ -47,6 +47,18 @@ from rate_limit_utils import (
     parse_retry_after,
 )
 
+# WebSocket broadcasting (try to import, fail gracefully if not available)
+try:
+    import asyncio
+    import sys
+    from pathlib import Path
+    sys.path.insert(0, str(Path(__file__).parent / "server"))
+    from websocket import manager as ws_manager
+    WEBSOCKET_AVAILABLE = True
+except ImportError:
+    WEBSOCKET_AVAILABLE = False
+    ws_manager = None
+
 # Configuration
 AUTO_CONTINUE_DELAY_SECONDS = 3
 
@@ -67,6 +79,28 @@ def setup_usage_limit_logger(project_dir: Path) -> logging.Logger:
         logger.addHandler(handler)
     
     return logger
+
+
+async def broadcast_auth_error(project_dir: Path, message: str, requires_login: bool = True):
+    """Broadcast authentication error via WebSocket if available."""
+    if WEBSOCKET_AVAILABLE and ws_manager:
+        try:
+            project_name = project_dir.name
+            await ws_manager.broadcast_auth_error(project_name, message, requires_login)
+        except Exception as e:
+            # Don't let WebSocket errors break the agent
+            print(f"Failed to broadcast auth error: {e}")
+
+
+async def broadcast_usage_limit(project_dir: Path, message: str, reset_time: str, wait_seconds: int):
+    """Broadcast usage limit alert via WebSocket if available."""
+    if WEBSOCKET_AVAILABLE and ws_manager:
+        try:
+            project_name = project_dir.name
+            await ws_manager.broadcast_usage_limit(project_name, message, reset_time, wait_seconds)
+        except Exception as e:
+            # Don't let WebSocket errors break the agent
+            print(f"Failed to broadcast usage limit: {e}")
 
 
 async def run_agent_session(
@@ -197,6 +231,16 @@ async def run_agent_session(
     except Exception as e:
         error_str = str(e)
         print(f"Error during agent session: {error_str}")
+
+        # Detect authentication errors
+        if "not authenticated" in error_str.lower() or "login" in error_str.lower():
+            auth_message = "Claude authentication required. Please run 'claude login' in terminal."
+            print(f"\n{auth_message}")
+            if logger:
+                logger.error(f"Authentication error: {error_str}")
+            # Broadcast authentication error
+            await broadcast_auth_error(project_dir, auth_message, requires_login=True)
+            return "error", error_str
 
         # Detect rate limit errors from exception message
         if is_rate_limit_error(error_str):
@@ -378,6 +422,9 @@ async def run_autonomous_agent(
                     if usage_logger:
                         usage_logger.info(f"Reset time parsed from response: {target_time_str} ({delay_seconds}s)")
                     delay_seconds = clamp_retry_delay(delay_seconds)
+                    # Broadcast usage limit alert
+                    usage_message = "Claude usage limit reached. AutoForge will automatically resume when limit resets."
+                    await broadcast_usage_limit(project_dir, usage_message, target_time_str, delay_seconds)
                 else:
                     # Try to extract retry-after from response text first
                     retry_seconds = parse_retry_after(response)
@@ -386,6 +433,9 @@ async def run_autonomous_agent(
                         target_time_str = None
                         if usage_logger:
                             usage_logger.info(f"Retry-after parsed from response: {retry_seconds}s")
+                        # Broadcast usage limit alert without specific reset time
+                        usage_message = f"Claude usage limit reached. AutoForge will resume in {retry_seconds} seconds."
+                        await broadcast_usage_limit(project_dir, usage_message, "Unknown", retry_seconds)
                     else:
                         # Use exponential backoff when retry-after unknown
                         delay_seconds = calculate_rate_limit_backoff(rate_limit_retries)
@@ -393,6 +443,9 @@ async def run_autonomous_agent(
                         target_time_str = None
                         if usage_logger:
                             usage_logger.warning(f"No reset time found, using backoff: {delay_seconds}s (attempt #{rate_limit_retries})")
+                        # Broadcast usage limit alert with backoff time
+                        usage_message = f"Claude usage limit reached. AutoForge will retry in {delay_seconds} seconds."
+                        await broadcast_usage_limit(project_dir, usage_message, "Unknown", delay_seconds)
 
             if target_time_str:
                 print(

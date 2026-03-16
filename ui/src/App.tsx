@@ -27,6 +27,7 @@ import { KeyboardShortcutsHelp } from './components/KeyboardShortcutsHelp'
 import { ThemeSelector } from './components/ThemeSelector'
 import { ResetProjectModal } from './components/ResetProjectModal'
 import { ProjectSetupRequired } from './components/ProjectSetupRequired'
+import { AuthenticationAlert, UsageLimitAlert } from './components/AuthenticationAlert'
 import { getDependencyGraph, startAgent } from './lib/api'
 import { Loader2, Settings, Moon, Sun, RotateCcw, BookOpen } from 'lucide-react'
 import type { Feature } from './lib/types'
@@ -124,6 +125,22 @@ function App() {
       // localStorage not available
     }
   }, [])
+
+  // Handle authentication alert actions
+  const handleLogin = useCallback(() => {
+    // Open terminal and run claude login
+    setDebugOpen(true)
+    setDebugActiveTab('terminal')
+    wsState.clearAuthAlert()
+  }, [wsState.clearAuthAlert, setDebugOpen, setDebugActiveTab])
+
+  const handleAuthAlertClose = useCallback(() => {
+    wsState.clearAuthAlert()
+  }, [wsState.clearAuthAlert])
+
+  const handleUsageLimitAlertClose = useCallback(() => {
+    wsState.clearUsageLimitAlert()
+  }, [wsState.clearUsageLimitAlert])
 
   // Handle graph node click - memoized to prevent DependencyGraph re-renders
   const handleGraphNodeClick = useCallback((nodeId: number) => {
@@ -618,6 +635,26 @@ function App() {
           agentName={wsState.celebration.agentName}
           featureName={wsState.celebration.featureName}
           onComplete={wsState.clearCelebration}
+        />
+      )}
+
+      {/* Authentication Alert */}
+      {wsState.authAlert && (
+        <AuthenticationAlert
+          isOpen={wsState.authAlert.isOpen}
+          onClose={handleAuthAlertClose}
+          message={wsState.authAlert.message}
+          onLogin={wsState.authAlert.requiresLogin ? handleLogin : undefined}
+        />
+      )}
+
+      {/* Usage Limit Alert */}
+      {wsState.usageLimitAlert && (
+        <UsageLimitAlert
+          isOpen={wsState.usageLimitAlert.isOpen}
+          onClose={handleUsageLimitAlertClose}
+          resetTime={wsState.usageLimitAlert.resetTime}
+          waitSeconds={wsState.usageLimitAlert.waitSeconds}
         />
       )}
     </div>

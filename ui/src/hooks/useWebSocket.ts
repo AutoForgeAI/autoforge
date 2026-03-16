@@ -53,6 +53,18 @@ interface WebSocketState {
   celebration: CelebrationTrigger | null
   // Orchestrator state for Mission Control
   orchestratorStatus: OrchestratorStatus | null
+  // Authentication and usage limit alerts
+  authAlert: {
+    isOpen: boolean
+    message: string
+    requiresLogin: boolean
+  } | null
+  usageLimitAlert: {
+    isOpen: boolean
+    message: string
+    resetTime: string
+    waitSeconds: number
+  } | null
 }
 
 const MAX_LOGS = 100 // Keep last 100 log lines
@@ -74,6 +86,8 @@ export function useProjectWebSocket(projectName: string | null) {
     celebrationQueue: [],
     celebration: null,
     orchestratorStatus: null,
+    authAlert: null,
+    usageLimitAlert: null,
   })
 
   const wsRef = useRef<WebSocket | null>(null)
@@ -328,6 +342,29 @@ export function useProjectWebSocket(projectName: string | null) {
               }))
               break
 
+            case 'auth_error':
+              setState(prev => ({
+                ...prev,
+                authAlert: {
+                  isOpen: true,
+                  message: message.message,
+                  requiresLogin: message.requiresLogin,
+                },
+              }))
+              break
+
+            case 'usage_limit':
+              setState(prev => ({
+                ...prev,
+                usageLimitAlert: {
+                  isOpen: true,
+                  message: message.message,
+                  resetTime: message.resetTime,
+                  waitSeconds: message.waitSeconds,
+                },
+              }))
+              break
+
             case 'pong':
               // Heartbeat response
               break
@@ -400,6 +437,8 @@ export function useProjectWebSocket(projectName: string | null) {
       celebrationQueue: [],
       celebration: null,
       orchestratorStatus: null,
+      authAlert: null,
+      usageLimitAlert: null,
     })
 
     if (!projectName) {
@@ -473,6 +512,16 @@ export function useProjectWebSocket(projectName: string | null) {
     })
   }, [])
 
+  // Clear authentication alert
+  const clearAuthAlert = useCallback(() => {
+    setState(prev => ({ ...prev, authAlert: null }))
+  }, [])
+
+  // Clear usage limit alert
+  const clearUsageLimitAlert = useCallback(() => {
+    setState(prev => ({ ...prev, usageLimitAlert: null }))
+  }, [])
+
   return {
     ...state,
     clearLogs,
@@ -480,5 +529,7 @@ export function useProjectWebSocket(projectName: string | null) {
     clearCelebration,
     getAgentLogs,
     clearAgentLogs,
+    clearAuthAlert,
+    clearUsageLimitAlert,
   }
 }

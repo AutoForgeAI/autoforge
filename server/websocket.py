@@ -701,6 +701,29 @@ class ConnectionManager:
                     if project_name in self.active_connections:
                         self.active_connections[project_name].discard(connection)
 
+    async def broadcast_auth_error(self, project_name: str, message: str, requires_login: bool = True, agent_index: int = None, agent_name: str = None):
+        """Broadcast an authentication error to all connections for a project."""
+        await self.broadcast_to_project(project_name, {
+            "type": "auth_error",
+            "message": message,
+            "timestamp": datetime.now().isoformat(),
+            "requiresLogin": requires_login,
+            "agentIndex": agent_index,
+            "agentName": agent_name,
+        })
+
+    async def broadcast_usage_limit(self, project_name: str, message: str, reset_time: str, wait_seconds: int, agent_index: int = None, agent_name: str = None):
+        """Broadcast a usage limit alert to all connections for a project."""
+        await self.broadcast_to_project(project_name, {
+            "type": "usage_limit",
+            "message": message,
+            "timestamp": datetime.now().isoformat(),
+            "resetTime": reset_time,
+            "waitSeconds": wait_seconds,
+            "agentIndex": agent_index,
+            "agentName": agent_name,
+        })
+
     def get_connection_count(self, project_name: str) -> int:
         """Get number of active connections for a project."""
         return len(self.active_connections.get(project_name, set()))
