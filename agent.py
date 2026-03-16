@@ -7,6 +7,7 @@ Core agent interaction functions for running autonomous coding sessions.
 
 import asyncio
 import io
+import logging
 import re
 import sys
 from datetime import datetime, timedelta
@@ -49,11 +50,30 @@ from rate_limit_utils import (
 # Configuration
 AUTO_CONTINUE_DELAY_SECONDS = 3
 
+# Setup logging for usage limit detection
+def setup_usage_limit_logger(project_dir: Path) -> logging.Logger:
+    """Setup logger that writes to .autoforge/usage_limits.log"""
+    logger = logging.getLogger("usage_limits")
+    logger.setLevel(logging.INFO)
+    
+    # Avoid duplicate handlers
+    if not logger.handlers:
+        log_file = project_dir / ".autoforge" / "usage_limits.log"
+        log_file.parent.mkdir(parents=True, exist_ok=True)
+        
+        handler = logging.FileHandler(log_file, mode='a')
+        formatter = logging.Formatter('%(asctime)s - %(levelname)s - %(message)s')
+        handler.setFormatter(formatter)
+        logger.addHandler(handler)
+    
+    return logger
+
 
 async def run_agent_session(
     client: ClaudeSDKClient,
     message: str,
     project_dir: Path,
+    logger: Optional[logging.Logger] = None,
 ) -> tuple[str, str]:
     """
     Run a single agent session using Claude Agent SDK.
@@ -140,14 +160,20 @@ async def run_agent_session(
                     # Check if this is a rate limit event
                     if "rate_limit_event" in exc_str:
                         print("\n[Rate Limit Event] Claude usage limit detected via CLI event")
+                        if logger:
+                            logger.info("Rate limit detected via CLI event")
                         rate_limit_detected = True
                         # Try to extract reset time from the error message
                         reset_result = parse_claude_reset_time(exc_str)
                         if reset_result:
                             delay_seconds, target_time_str = reset_result
                             print(f"   Reset time: {target_time_str}")
+                            if logger:
+                                logger.info(f"Reset time parsed: {target_time_str} ({delay_seconds}s)")
                         else:
                             print("   No reset time found in event, will use backoff")
+                            if logger:
+                                logger.warning("No reset time found in rate limit event")
                         continue
                     else:
                         print(f"Ignoring unrecognized message from Claude CLI: {inner_exc}")
@@ -231,6 +257,9 @@ async def run_autonomous_agent(
     # Create project directory
     project_dir.mkdir(parents=True, exist_ok=True)
 
+    # Setup usage limit logger
+    usage_logger = setup_usage_limit_logger(project_dir)
+
     # Determine agent type if not explicitly set
     if agent_type is None:
         # Auto-detect based on whether we have features
@@ -312,7 +341,7 @@ async def run_autonomous_agent(
         # Wrap in try/except to handle MCP server startup failures gracefully
         try:
             async with client:
-                status, response = await run_agent_session(client, prompt, project_dir)
+                status, response = await run_agent_session(client, prompt, project_dir, usage_logger)
         except Exception as e:
             print(f"Client/MCP server error: {e}")
             # Don't crash - return error status so the loop can retry
@@ -338,12 +367,16 @@ async def run_autonomous_agent(
             # Check for rate limit indicators in response text
             if is_rate_limit_error(response):
                 print("Claude Agent SDK indicated rate limit reached.")
+                if usage_logger:
+                    usage_logger.info("Rate limit detected in response text")
                 reset_rate_limit_retries = False
 
                 # Try to extract reset time using the new utility function
                 reset_result = parse_claude_reset_time(response)
                 if reset_result:
                     delay_seconds, target_time_str = reset_result
+                    if usage_logger:
+                        usage_logger.info(f"Reset time parsed from response: {target_time_str} ({delay_seconds}s)")
                     delay_seconds = clamp_retry_delay(delay_seconds)
                 else:
                     # Try to extract retry-after from response text first
@@ -351,11 +384,15 @@ async def run_autonomous_agent(
                     if retry_seconds is not None:
                         delay_seconds = clamp_retry_delay(retry_seconds)
                         target_time_str = None
+                        if usage_logger:
+                            usage_logger.info(f"Retry-after parsed from response: {retry_seconds}s")
                     else:
                         # Use exponential backoff when retry-after unknown
                         delay_seconds = calculate_rate_limit_backoff(rate_limit_retries)
                         rate_limit_retries += 1
                         target_time_str = None
+                        if usage_logger:
+                            usage_logger.warning(f"No reset time found, using backoff: {delay_seconds}s (attempt #{rate_limit_retries})")
 
             if target_time_str:
                 print(
