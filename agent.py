@@ -82,6 +82,8 @@ async def run_agent_session(
         response_text = ""
         max_parse_retries = 50
         parse_retries = 0
+        rate_limit_detected = False  # Track if we've detected a rate limit event
+        
         while True:
             try:
                 async for msg in client.receive_response():
@@ -126,16 +128,44 @@ async def run_agent_session(
 
                 break  # Normal completion
             except Exception as inner_exc:
-                if type(inner_exc).__name__ == "MessageParseError":
+                exc_type = type(inner_exc).__name__
+                exc_str = str(inner_exc)
+                
+                if exc_type == "MessageParseError":
                     parse_retries += 1
                     if parse_retries > max_parse_retries:
                         print(f"Too many unrecognized CLI messages ({parse_retries}), stopping")
                         break
-                    print(f"Ignoring unrecognized message from Claude CLI: {inner_exc}")
-                    continue
+                    
+                    # Check if this is a rate limit event
+                    if "rate_limit_event" in exc_str:
+                        print("\n[Rate Limit Event] Claude usage limit detected via CLI event")
+                        rate_limit_detected = True
+                        # Try to extract reset time from the error message
+                        reset_result = parse_claude_reset_time(exc_str)
+                        if reset_result:
+                            delay_seconds, target_time_str = reset_result
+                            print(f"   Reset time: {target_time_str}")
+                        else:
+                            print("   No reset time found in event, will use backoff")
+                        continue
+                    else:
+                        print(f"Ignoring unrecognized message from Claude CLI: {inner_exc}")
+                        continue
                 raise  # Re-raise to outer except
 
         print("\n" + "-" * 70 + "\n")
+        
+        # If we detected a rate limit event, return appropriate status
+        if rate_limit_detected:
+            # Try to extract reset time from the accumulated response text
+            reset_result = parse_claude_reset_time(response_text)
+            if reset_result:
+                delay_seconds, target_time_str = reset_result
+                return "rate_limit", str(delay_seconds)
+            else:
+                return "rate_limit", "unknown"
+        
         return "continue", response_text
 
     except Exception as e:

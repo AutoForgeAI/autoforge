@@ -23,6 +23,8 @@ RATE_LIMIT_REGEX_PATTERNS = [
     r"\bquota\s*exceeded\b",      # "quota exceeded"
     r"\bclaude\s+usage\s+limit\s+reached",  # "claude usage limit reached"
     r"\byour\s+limit\s+will\s+reset\s+at", # "your limit will reset at"
+    r"\byou've\s+hit\s+your\s+limit",      # "you've hit your limit"
+    r"\bresets\s+\d+(?::\d+)?\s*(am|pm)",   # "resets 1pm" or "resets 1:30pm"
 ]
 
 # Compiled regex for efficient matching
@@ -70,7 +72,9 @@ def parse_claude_reset_time(error_message: str) -> Optional[tuple[int, str]]:
     """
     Extract Claude usage limit reset time and timezone from error message.
 
-    Handles format: "Your limit will reset at 3pm (America/Santiago)"
+    Handles formats:
+    - "Your limit will reset at 3pm (America/Santiago)"
+    - "resets 1pm (Europe/Sofia)"
     
     Args:
         error_message: The error message to parse
@@ -82,8 +86,9 @@ def parse_claude_reset_time(error_message: str) -> Optional[tuple[int, str]]:
     from zoneinfo import ZoneInfo
     
     # Match patterns like "resets at 3pm (America/Santiago)" or "reset at 3:30pm (UTC)"
+    # Also handle Claude CLI format: "resets 1pm (Europe/Sofia)"
     match = re.search(
-        r"(?i)\b(?:resets?|will\s+reset)\s+at\s+(\d+)(?::(\d+))?\s*(am|pm)\s*\(([^)]+)\)",
+        r"(?i)\b(?:resets?|will\s+reset)\s+(?:at\s+)?(\d+)(?::(\d+))?\s*(am|pm)\s*\(([^)]+)\)",
         error_message,
     )
     
