@@ -47,6 +47,7 @@ load_dotenv()
 import os
 
 from agent import run_autonomous_agent
+from auth import check_login_and_report
 from registry import DEFAULT_MODEL, get_effective_sdk_env, get_project_path
 
 
@@ -262,6 +263,10 @@ def main() -> None:
             return
 
     try:
+        # Check authentication status before starting
+        if not check_login_and_report():
+            return
+        
         if args.agent_type:
             # Subprocess mode - spawned by orchestrator for a specific role
             asyncio.run(

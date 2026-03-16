@@ -15,7 +15,7 @@ from pathlib import Path
 
 from dotenv import load_dotenv
 
-from auth import is_auth_error, print_auth_error_help
+from auth import is_auth_error, print_auth_error_help, check_login_and_report
 
 # Load environment variables from .env file if present
 load_dotenv()
@@ -212,6 +212,10 @@ def run_spec_creation(project_dir: Path) -> bool:
     The project path is passed as an argument so create-spec knows where to write files.
     Captures stderr to detect authentication errors and provide helpful guidance.
     """
+    # Check authentication status before starting
+    if not check_login_and_report():
+        return False
+    
     print("\n" + "=" * 50)
     print("  Project Specification Setup")
     print("=" * 50)
@@ -378,6 +382,10 @@ def run_agent(project_name: str, project_dir: Path) -> None:
         project_name: Name of the project
         project_dir: Absolute path to the project directory
     """
+    # Check authentication status before starting
+    if not check_login_and_report():
+        return
+    
     # Final validation before running
     if not has_project_prompts(project_dir):
         print(f"\nWarning: No valid spec found for project '{project_name}'")

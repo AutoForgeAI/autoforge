@@ -13,7 +13,8 @@ import re
 import subprocess
 import sys
 import threading
-from datetime import datetime
+import time
+from datetime import datetime, timezone
 from pathlib import Path
 from typing import Any, Awaitable, Callable, Literal, Set
 
@@ -22,7 +23,7 @@ import psutil
 # Add parent directory to path for shared module imports
 sys.path.insert(0, str(Path(__file__).parent.parent.parent))
 from auth import AUTH_ERROR_HELP_SERVER as AUTH_ERROR_HELP  # noqa: E402
-from auth import is_auth_error
+from auth import is_auth_error, is_logged_in  # noqa: E402
 from server.utils.process_utils import kill_process_tree
 
 logger = logging.getLogger(__name__)
@@ -80,11 +81,14 @@ class AgentProcessManager:
         self._status: Literal["stopped", "running", "paused", "crashed", "pausing", "paused_graceful"] = "stopped"
         self.started_at: datetime | None = None
         self._output_task: asyncio.Task | None = None
+        self._auth_check_task: asyncio.Task | None = None  # Periodic auth monitoring
         self.yolo_mode: bool = False  # YOLO mode for rapid prototyping
         self.model: str | None = None  # Model being used
         self.parallel_mode: bool = False  # Parallel execution mode
         self.max_concurrency: int | None = None  # Max concurrent agents
         self.testing_agent_ratio: int = 1  # Regression testing agents (0-3)
+        self._last_auth_check: float = 0  # Timestamp of last auth check
+        self._auth_check_interval: int = 3600  # Check every 60 minutes (3600 seconds)
 
         # Support multiple callbacks (for multiple WebSocket clients)
         self._output_callbacks: Set[Callable[[str], Awaitable[None]]] = set()
@@ -289,6 +293,49 @@ class AgentProcessManager:
         except Exception as e:
             logger.warning("Failed to cleanup features for %s: %s", self.project_name, e)
 
+    async def _monitor_authentication(self) -> None:
+        """
+        Periodically check Claude CLI authentication status.
+        
+        Runs in background to detect if login expires during long-running sessions.
+        Broadcasts warning message if authentication is lost.
+        """
+        try:
+            while self.status in ("running", "pausing", "paused_graceful"):
+                current_time = time.time()
+                
+                # Only check at specified intervals
+                if current_time - self._last_auth_check >= self._auth_check_interval:
+                    self._last_auth_check = current_time
+                    
+                    # Check authentication status
+                    if not is_logged_in():
+                        # Authentication lost - broadcast warning
+                        await self._broadcast_output("\n" + "=" * 60 + "\n")
+                        await self._broadcast_output("  AUTHENTICATION LOST\n")
+                        await self._broadcast_output("=" * 60 + "\n")
+                        await self._broadcast_output("\nClaude CLI authentication has expired or been lost.\n")
+                        await self._broadcast_output("The agent will continue running but may fail on API calls.\n")
+                        await self._broadcast_output("\nTo fix this, run in another terminal:\n")
+                        await self._broadcast_output("  claude login\n")
+                        await self._broadcast_output("\nAfter logging in, the agent should recover automatically.\n")
+                        await self._broadcast_output("=" * 60 + "\n\n")
+                        
+                        # Check less frequently while auth is lost (every 30 seconds)
+                        self._auth_check_interval = 30
+                    else:
+                        # Auth is valid - reset to normal checking interval
+                        self._auth_check_interval = 3600
+                
+                # Sleep for a short interval before next check
+                await asyncio.sleep(30)  # Check every 30 seconds if we should run auth check
+                
+        except asyncio.CancelledError:
+            # Task was cancelled - normal shutdown
+            pass
+        except Exception as e:
+            logger.warning(f"Authentication monitoring error: {e}")
+
     async def _broadcast_output(self, line: str) -> None:
         """Broadcast output line to all registered callbacks."""
         with self._callbacks_lock:
@@ -395,6 +442,18 @@ class AgentProcessManager:
         if not self._check_lock():
             return False, "Another agent instance is already running for this project"
 
+        # Check authentication status before starting
+        if not is_logged_in():
+            error_msg = "Claude CLI authentication required. Please run 'claude login' to authenticate."
+            await self._broadcast_output("\n" + "=" * 60 + "\n")
+            await self._broadcast_output("  AUTHENTICATION ERROR\n")
+            await self._broadcast_output("=" * 60 + "\n")
+            await self._broadcast_output(f"\n{error_msg}\n")
+            await self._broadcast_output("This will open a browser window to sign in.\n")
+            await self._broadcast_output("After logging in, try starting the agent again.\n")
+            await self._broadcast_output("=" * 60 + "\n\n")
+            return False, error_msg
+
         # Clean up stale browser daemons from previous runs
         try:
             subprocess.run(
@@ -489,7 +548,10 @@ class AgentProcessManager:
 
             # Start output streaming task
             self._output_task = asyncio.create_task(self._stream_output())
-
+            
+            # Start authentication monitoring task
+            self._auth_check_task = asyncio.create_task(self._monitor_authentication())
+            
             return True, f"Agent started with PID {self.process.pid}"
         except Exception as e:
             logger.exception("Failed to start agent")
@@ -513,6 +575,14 @@ class AgentProcessManager:
                 self._output_task.cancel()
                 try:
                     await self._output_task
+                except asyncio.CancelledError:
+                    pass
+            
+            # Cancel authentication monitoring
+            if self._auth_check_task:
+                self._auth_check_task.cancel()
+                try:
+                    await self._auth_check_task
                 except asyncio.CancelledError:
                     pass
 
