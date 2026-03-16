@@ -42,6 +42,7 @@ from rate_limit_utils import (
     calculate_rate_limit_backoff,
     clamp_retry_delay,
     is_rate_limit_error,
+    parse_claude_reset_time,
     parse_retry_after,
 )
 
@@ -309,49 +310,22 @@ async def run_autonomous_agent(
                 print("Claude Agent SDK indicated rate limit reached.")
                 reset_rate_limit_retries = False
 
-                # Try to extract retry-after from response text first
-                retry_seconds = parse_retry_after(response)
-                if retry_seconds is not None:
-                    delay_seconds = clamp_retry_delay(retry_seconds)
+                # Try to extract reset time using the new utility function
+                reset_result = parse_claude_reset_time(response)
+                if reset_result:
+                    delay_seconds, target_time_str = reset_result
+                    delay_seconds = clamp_retry_delay(delay_seconds)
                 else:
-                    # Use exponential backoff when retry-after unknown
-                    delay_seconds = calculate_rate_limit_backoff(rate_limit_retries)
-                    rate_limit_retries += 1
-
-                # Try to parse reset time from response (more specific format)
-                match = re.search(
-                    r"(?i)\bresets(?:\s+at)?\s+(\d+)(?::(\d+))?\s*(am|pm)\s*\(([^)]+)\)",
-                    response,
-                )
-                if match:
-                    hour = int(match.group(1))
-                    minute = int(match.group(2)) if match.group(2) else 0
-                    period = match.group(3).lower()
-                    tz_name = match.group(4).strip()
-
-                    # Convert to 24-hour format
-                    if period == "pm" and hour != 12:
-                        hour += 12
-                    elif period == "am" and hour == 12:
-                        hour = 0
-
-                    try:
-                        tz = ZoneInfo(tz_name)
-                        now = datetime.now(tz)
-                        target = now.replace(
-                            hour=hour, minute=minute, second=0, microsecond=0
-                        )
-
-                        # If target time has already passed today, wait until tomorrow
-                        if target <= now:
-                            target += timedelta(days=1)
-
-                        delta = target - now
-                        delay_seconds = min(max(int(delta.total_seconds()), 1), 24 * 60 * 60)
-                        target_time_str = target.strftime("%B %d, %Y at %I:%M %p %Z")
-
-                    except Exception as e:
-                        print(f"Error parsing reset time: {e}, using default delay")
+                    # Try to extract retry-after from response text first
+                    retry_seconds = parse_retry_after(response)
+                    if retry_seconds is not None:
+                        delay_seconds = clamp_retry_delay(retry_seconds)
+                        target_time_str = None
+                    else:
+                        # Use exponential backoff when retry-after unknown
+                        delay_seconds = calculate_rate_limit_backoff(rate_limit_retries)
+                        rate_limit_retries += 1
+                        target_time_str = None
 
             if target_time_str:
                 print(

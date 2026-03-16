@@ -21,6 +21,8 @@ RATE_LIMIT_REGEX_PATTERNS = [
     r"\b429\s+too\s+many",        # "429 too many"
     r"\b(?:server|api|system)\s+(?:is\s+)?overloaded\b",  # "server is overloaded", "api overloaded"
     r"\bquota\s*exceeded\b",      # "quota exceeded"
+    r"\bclaude\s+usage\s+limit\s+reached",  # "claude usage limit reached"
+    r"\byour\s+limit\s+will\s+reset\s+at", # "your limit will reset at"
 ]
 
 # Compiled regex for efficient matching
@@ -61,6 +63,63 @@ def parse_retry_after(error_message: str) -> Optional[int]:
         if match:
             return int(match.group(1))
 
+    return None
+
+
+def parse_claude_reset_time(error_message: str) -> Optional[tuple[int, str]]:
+    """
+    Extract Claude usage limit reset time and timezone from error message.
+
+    Handles format: "Your limit will reset at 3pm (America/Santiago)"
+    
+    Args:
+        error_message: The error message to parse
+        
+    Returns:
+        Tuple of (seconds_until_reset, formatted_reset_time) or None if not parseable
+    """
+    from datetime import datetime, timedelta
+    from zoneinfo import ZoneInfo
+    
+    # Match patterns like "resets at 3pm (America/Santiago)" or "reset at 3:30pm (UTC)"
+    match = re.search(
+        r"(?i)\b(?:resets?|will\s+reset)\s+at\s+(\d+)(?::(\d+))?\s*(am|pm)\s*\(([^)]+)\)",
+        error_message,
+    )
+    
+    if match:
+        hour = int(match.group(1))
+        minute = int(match.group(2)) if match.group(2) else 0
+        period = match.group(3).lower()
+        tz_name = match.group(4).strip()
+
+        # Convert to 24-hour format
+        if period == "pm" and hour != 12:
+            hour += 12
+        elif period == "am" and hour == 12:
+            hour = 0
+
+        try:
+            tz = ZoneInfo(tz_name)
+            now = datetime.now(tz)
+            target = now.replace(
+                hour=hour, minute=minute, second=0, microsecond=0
+            )
+
+            # If target time has already passed today, wait until tomorrow
+            if target <= now:
+                target += timedelta(days=1)
+
+            delta = target - now
+            seconds_until_reset = min(max(int(delta.total_seconds()), 1), 24 * 60 * 60)
+            formatted_reset_time = target.strftime("%B %d, %Y at %I:%M %p %Z")
+            
+            return seconds_until_reset, formatted_reset_time
+
+        except Exception:
+            # Invalid timezone or other parsing error
+            pass
+    
     return None
 
 
