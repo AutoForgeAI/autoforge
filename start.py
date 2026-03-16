@@ -205,14 +205,14 @@ def ensure_project_scaffolded(project_name: str, project_dir: Path) -> Path:
     return project_dir
 
 
-def run_spec_creation(project_dir: Path) -> bool:
+def create_spec_interactive(project_dir: Path) -> bool:
     """
     Run Claude Code with /create-spec command to create project specification.
 
     The project path is passed as an argument so create-spec knows where to write files.
     Captures stderr to detect authentication errors and provide helpful guidance.
     """
-    # Check authentication status before starting
+    # For interactive create-spec, check authentication since user needs to interact with Claude
     if not check_login_and_report():
         return False
     
@@ -374,17 +374,16 @@ def create_new_project_flow() -> tuple[str, Path] | None:
 
 
 def run_agent(project_name: str, project_dir: Path) -> None:
-    """Run the autonomous agent with the given project.
-
-    Captures stderr to detect authentication errors and provide helpful guidance.
+    """
+    Run the autonomous agent for a project.
 
     Args:
         project_name: Name of the project
         project_dir: Absolute path to the project directory
     """
-    # Check authentication status before starting
-    if not check_login_and_report():
-        return
+    # AutoForge should start and monitor authentication status during runtime
+    # Authentication issues will be detected and handled by individual agents
+    # This allows AutoForge to start and idle until authentication is available
     
     # Final validation before running
     if not has_project_prompts(project_dir):
