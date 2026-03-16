@@ -84,24 +84,32 @@ def setup_usage_limit_logger(project_dir: Path) -> logging.Logger:
 
 async def broadcast_auth_error(project_dir: Path, message: str, requires_login: bool = True):
     """Broadcast authentication error via WebSocket if available."""
+    print(f"[WEBSOCKET] Broadcasting auth error: {message}")
     if WEBSOCKET_AVAILABLE and ws_manager:
         try:
             project_name = project_dir.name
             await ws_manager.broadcast_auth_error(project_name, message, requires_login)
+            print(f"[WEBSOCKET] Auth error broadcast sent successfully")
         except Exception as e:
             # Don't let WebSocket errors break the agent
-            print(f"Failed to broadcast auth error: {e}")
+            print(f"[WEBSOCKET] Failed to broadcast auth error: {e}")
+    else:
+        print(f"[WEBSOCKET] WebSocket not available for auth error broadcast")
 
 
 async def broadcast_usage_limit(project_dir: Path, message: str, reset_time: str, wait_seconds: int):
     """Broadcast usage limit alert via WebSocket if available."""
+    print(f"[WEBSOCKET] Broadcasting usage limit: {message} (reset: {reset_time}, wait: {wait_seconds}s)")
     if WEBSOCKET_AVAILABLE and ws_manager:
         try:
             project_name = project_dir.name
             await ws_manager.broadcast_usage_limit(project_name, message, reset_time, wait_seconds)
+            print(f"[WEBSOCKET] Usage limit broadcast sent successfully")
         except Exception as e:
             # Don't let WebSocket errors break the agent
-            print(f"Failed to broadcast usage limit: {e}")
+            print(f"[WEBSOCKET] Failed to broadcast usage limit: {e}")
+    else:
+        print(f"[WEBSOCKET] WebSocket not available for usage limit broadcast")
 
 
 async def run_agent_session(
@@ -411,7 +419,8 @@ async def run_autonomous_agent(
 
             # Check for rate limit indicators in response text
             if is_rate_limit_error(response):
-                print("Claude Agent SDK indicated rate limit reached.")
+                print("\n⚠️  USAGE LIMIT DETECTED in Claude response", flush=True)
+                print("Claude Agent SDK indicated rate limit reached.", flush=True)
                 if usage_logger:
                     usage_logger.info("Rate limit detected in response text")
                 reset_rate_limit_retries = False
@@ -450,7 +459,31 @@ async def run_autonomous_agent(
 
             if target_time_str:
                 print(
-                    f"\nClaude Code Limit Reached. Agent will auto-continue in {delay_seconds:.0f}s ({target_time_str})...",
+                    f"\n" + "="*70,
+                    flush=True,
+                )
+                print(
+                    f"⏱️  CLAUDE USAGE LIMIT REACHED",
+                    flush=True,
+                )
+                print(
+                    f"🔄 Auto-continue in {delay_seconds:.0f}s ({target_time_str})",
+                    flush=True,
+                )
+                print(
+                    f"💤 Agents are now waiting - not working!",
+                    flush=True,
+                )
+                print(
+                    f"📊 Check UI for real-time status updates",
+                    flush=True,
+                )
+                print(
+                    f"⚠️  Progress will remain frozen until limit resets",
+                    flush=True,
+                )
+                print(
+                    f"="*70,
                     flush=True,
                 )
             else:
@@ -462,6 +495,7 @@ async def run_autonomous_agent(
             print_progress_summary(project_dir)
 
             # Broadcast that agent is waiting on rate limit
+            print(f"[WEBSOCKET] Broadcasting waiting state for rate limit")
             if WEBSOCKET_AVAILABLE and ws_manager:
                 try:
                     project_name = project_dir.name
@@ -477,8 +511,11 @@ async def run_autonomous_agent(
                         "thought": f"Waiting for Claude usage limit to reset at {target_time_str or 'unknown time'}",
                         "timestamp": datetime.now().isoformat(),
                     })
+                    print(f"[WEBSOCKET] Waiting state broadcast sent successfully")
                 except Exception as e:
-                    print(f"Failed to broadcast waiting state: {e}")
+                    print(f"[WEBSOCKET] Failed to broadcast waiting state: {e}")
+            else:
+                print(f"[WEBSOCKET] WebSocket not available for waiting state broadcast")
 
             # Check if all features are complete - exit gracefully if done
             passing, in_progress, total, _nhi = count_passing_tests(project_dir)
