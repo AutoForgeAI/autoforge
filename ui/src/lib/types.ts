@@ -206,10 +206,10 @@ export const AGENT_MASCOTS = [
 export type AgentMascot = typeof AGENT_MASCOTS[number]
 
 // Agent state for Mission Control
-export type AgentState = 'idle' | 'thinking' | 'working' | 'testing' | 'success' | 'error' | 'struggling'
+export type AgentState = 'idle' | 'thinking' | 'working' | 'testing' | 'success' | 'error' | 'struggling' | 'waiting_on_rate_limit'
 
 // Agent type (coding vs testing)
-export type AgentType = 'coding' | 'testing'
+export type AgentType = 'coding' | 'testing' | 'orchestrator'
 
 // Individual log entry for an agent
 export interface AgentLogEntry {
@@ -221,7 +221,7 @@ export interface AgentLogEntry {
 // Agent update from backend
 export interface ActiveAgent {
   agentIndex: number  // -1 for synthetic completions
-  agentName: AgentMascot | 'Unknown'
+  agentName: AgentMascot | 'Unknown' | 'Orchestrator'
   agentType: AgentType  // "coding" or "testing"
   featureId: number        // Current/primary feature (backward compat)
   featureIds: number[]     // All features in batch
@@ -289,13 +289,13 @@ export interface WSLogMessage {
   timestamp: string
   featureId?: number
   agentIndex?: number
-  agentName?: AgentMascot
+  agentName?: AgentMascot | 'Unknown' | 'Orchestrator'
 }
 
 export interface WSAgentUpdateMessage {
   type: 'agent_update'
   agentIndex: number  // -1 for synthetic completions (untracked agents)
-  agentName: AgentMascot | 'Unknown'
+  agentName: AgentMascot | 'Unknown' | 'Orchestrator'
   agentType: AgentType  // "coding" or "testing"
   featureId: number
   featureIds?: number[]  // All features in batch (may be absent for backward compat)

@@ -7,7 +7,7 @@ import {
 } from './mascotData'
 
 interface AgentAvatarProps {
-  name: AgentMascot | 'Unknown'
+  name: AgentMascot | 'Unknown' | 'Orchestrator'
   state: AgentState
   size?: 'sm' | 'md' | 'lg'
   showName?: boolean
@@ -35,6 +35,8 @@ function getStateAnimation(state: AgentState): string {
     case 'error':
     case 'struggling':
       return 'animate-shake-gentle'
+    case 'waiting_on_rate_limit':
+      return 'animate-pulse-slow'
     default:
       return ''
   }
@@ -52,6 +54,8 @@ function getStateGlow(state: AgentState): string {
     case 'error':
     case 'struggling':
       return 'shadow-[0_0_12px_rgba(255,84,0,0.5)]'
+    case 'waiting_on_rate_limit':
+      return 'shadow-[0_0_8px_rgba(255,165,0,0.3)]'
     default:
       return ''
   }
@@ -74,14 +78,16 @@ function getStateDescription(state: AgentState): string {
       return 'encountered an error'
     case 'struggling':
       return 'having difficulty'
+    case 'waiting_on_rate_limit':
+      return 'waiting for usage limit to reset'
     default:
       return state
   }
 }
 
 export function AgentAvatar({ name, state, size = 'md', showName = false }: AgentAvatarProps) {
-  // Handle 'Unknown' agents (synthetic completions from untracked agents)
-  const isUnknown = name === 'Unknown'
+  // Handle 'Unknown' and 'Orchestrator' agents (special cases)
+  const isUnknown = name === 'Unknown' || name === 'Orchestrator'
   const colors = isUnknown ? UNKNOWN_COLORS : AVATAR_COLORS[name]
   const { svg: svgSize, font } = SIZES[size]
   const SvgComponent = isUnknown ? UnknownMascotSVG : MASCOT_SVGS[name]

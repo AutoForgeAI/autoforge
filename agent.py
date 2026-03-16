@@ -52,6 +52,7 @@ try:
     import asyncio
     import sys
     from pathlib import Path
+    from datetime import datetime
     sys.path.insert(0, str(Path(__file__).parent / "server"))
     from websocket import manager as ws_manager
     WEBSOCKET_AVAILABLE = True
@@ -459,6 +460,25 @@ async def run_autonomous_agent(
 
             sys.stdout.flush()  # this should allow the pause to be displayed before sleeping
             print_progress_summary(project_dir)
+
+            # Broadcast that agent is waiting on rate limit
+            if WEBSOCKET_AVAILABLE and ws_manager:
+                try:
+                    project_name = project_dir.name
+                    # Send a special agent update to show waiting state
+                    await ws_manager.broadcast_to_project(project_name, {
+                        "type": "agent_update",
+                        "agentIndex": -1,  # Special index for orchestrator-level status
+                        "agentName": "Orchestrator",
+                        "agentType": "orchestrator",
+                        "featureId": 0,
+                        "featureName": "Rate Limit",
+                        "state": "waiting_on_rate_limit",
+                        "thought": f"Waiting for Claude usage limit to reset at {target_time_str or 'unknown time'}",
+                        "timestamp": datetime.now().isoformat(),
+                    })
+                except Exception as e:
+                    print(f"Failed to broadcast waiting state: {e}")
 
             # Check if all features are complete - exit gracefully if done
             passing, in_progress, total, _nhi = count_passing_tests(project_dir)
