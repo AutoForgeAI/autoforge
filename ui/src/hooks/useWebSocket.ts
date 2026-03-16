@@ -24,7 +24,7 @@ interface ActivityItem {
 
 // Celebration trigger for overlay
 interface CelebrationTrigger {
-  agentName: AgentMascot | 'Unknown'
+  agentName: AgentMascot | 'Unknown' | 'Orchestrator'
   featureName: string
   featureId: number
 }

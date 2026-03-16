@@ -34,7 +34,7 @@ interface DependencyGraphProps {
 
 // Agent info to display on a node
 interface NodeAgentInfo {
-  name: AgentMascot | 'Unknown'
+  name: AgentMascot | 'Unknown' | 'Orchestrator'
   state: AgentState
 }
 

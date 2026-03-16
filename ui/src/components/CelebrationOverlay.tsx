@@ -5,7 +5,7 @@ import type { AgentMascot } from '../lib/types'
 import { Card, CardContent } from '@/components/ui/card'
 
 interface CelebrationOverlayProps {
-  agentName: AgentMascot | 'Unknown'
+  agentName: AgentMascot | 'Unknown' | 'Orchestrator'
   featureName: string
   onComplete?: () => void
 }
