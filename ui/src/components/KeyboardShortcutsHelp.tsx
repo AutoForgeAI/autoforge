@@ -16,13 +16,18 @@ interface Shortcut {
 
 const shortcuts: Shortcut[] = [
   { key: '?', description: 'Show keyboard shortcuts' },
-  { key: 'D', description: 'Toggle debug panel' },
-  { key: 'T', description: 'Toggle terminal tab' },
+  { key: 'H', description: 'Dashboard view' },
+  { key: 'K', description: 'Kanban board' },
+  { key: 'G', description: 'Dependency graph' },
+  { key: 'B', description: 'Browser screenshots' },
+  { key: 'T', description: 'Terminal' },
+  { key: 'D', description: 'Logs' },
+  { key: 'A', description: 'Toggle AI assistant', context: 'with project' },
+  { key: '[', description: 'Toggle sidebar' },
   { key: 'N', description: 'Add new feature', context: 'with project' },
   { key: 'E', description: 'Expand project with AI', context: 'with spec & features' },
-  { key: 'A', description: 'Toggle AI assistant', context: 'with project' },
-  { key: 'G', description: 'Toggle Kanban/Graph view', context: 'with project' },
-  { key: ',', description: 'Open settings' },
+  { key: ',', description: 'Settings' },
+  { key: 'R', description: 'Reset project', context: 'with project' },
   { key: 'Esc', description: 'Close modal/panel' },
 ]
 

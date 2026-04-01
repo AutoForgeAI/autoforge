@@ -1,6 +1,6 @@
 {
   "name": "autoforge-ai",
-  "version": "0.1.20",
+  "version": "0.1.21",
   "description": "Autonomous coding agent with web UI - build complete apps with AI",
   "license": "AGPL-3.0",
   "bin": {
