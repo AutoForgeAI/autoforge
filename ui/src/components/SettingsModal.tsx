@@ -406,24 +406,6 @@ export function SettingsModal({ isOpen, onClose }: SettingsModalProps) {
               />
             </div>
 
-            {/* Headless Browser Toggle */}
-            <div className="flex items-center justify-between">
-              <div className="space-y-0.5">
-                <Label htmlFor="playwright-headless" className="font-medium">
-                  Headless Browser
-                </Label>
-                <p className="text-sm text-muted-foreground">
-                  Run browser without visible window (saves CPU)
-                </p>
-              </div>
-              <Switch
-                id="playwright-headless"
-                checked={settings.playwright_headless}
-                onCheckedChange={() => updateSettings.mutate({ playwright_headless: !settings.playwright_headless })}
-                disabled={isSaving}
-              />
-            </div>
-
             {/* Regression Agents */}
             <div className="space-y-2">
               <Label className="font-medium">Regression Agents</Label>

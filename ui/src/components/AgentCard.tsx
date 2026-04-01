@@ -1,8 +1,9 @@
-import { MessageCircle, ScrollText, X, Copy, Check, Code, FlaskConical } from 'lucide-react'
+import { MessageCircle, ScrollText, X, Copy, Check, Code, FlaskConical, Maximize2 } from 'lucide-react'
 import { useState } from 'react'
 import { createPortal } from 'react-dom'
 import { AgentAvatar } from './AgentAvatar'
-import type { ActiveAgent, AgentLogEntry, AgentType } from '../lib/types'
+import type { ActiveAgent, AgentLogEntry, AgentType, BrowserScreenshot } from '../lib/types'
+import { AGENT_MASCOTS } from '../lib/types'
 import { Card, CardContent } from '@/components/ui/card'
 import { Button } from '@/components/ui/button'
 import { Badge } from '@/components/ui/badge'
@@ -10,6 +11,7 @@ import { Badge } from '@/components/ui/badge'
 interface AgentCardProps {
   agent: ActiveAgent
   onShowLogs?: (agentIndex: number) => void
+  browserScreenshot?: BrowserScreenshot
 }
 
 // Get a friendly state description
@@ -69,14 +71,56 @@ function getAgentTypeBadge(agentType: AgentType): { label: string; className: st
   }
 }
 
-export function AgentCard({ agent, onShowLogs }: AgentCardProps) {
+export function AgentCard({ agent, onShowLogs, browserScreenshot }: AgentCardProps) {
   const isActive = ['thinking', 'working', 'testing'].includes(agent.state)
   const hasLogs = agent.logs && agent.logs.length > 0
   const typeBadge = getAgentTypeBadge(agent.agentType || 'coding')
   const TypeIcon = typeBadge.icon
+  const [screenshotExpanded, setScreenshotExpanded] = useState(false)
 
   return (
-    <Card className={`min-w-[180px] max-w-[220px] py-3 ${isActive ? 'animate-pulse' : ''}`}>
+    <>
+    {/* Expanded screenshot overlay */}
+    {screenshotExpanded && browserScreenshot && createPortal(
+      <div
+        className="fixed inset-0 z-50 flex items-center justify-center bg-black/70"
+        onClick={() => setScreenshotExpanded(false)}
+      >
+        <div
+          className="relative max-w-[90vw] max-h-[90vh] bg-card border-2 border-border rounded-lg overflow-hidden"
+          onClick={(e) => e.stopPropagation()}
+        >
+          <div className="flex items-center justify-between px-3 py-2 bg-muted border-b border-border">
+            <div className="flex items-center gap-2">
+              <TypeIcon size={14} className={agent.agentType === 'testing' ? 'text-purple-500' : 'text-blue-500'} />
+              <span className="font-mono text-sm font-bold">
+                {AGENT_MASCOTS[agent.agentIndex % AGENT_MASCOTS.length]}
+              </span>
+              <Badge variant="outline" className="text-[10px] h-4">
+                {agent.agentType || 'coding'}
+              </Badge>
+              <span className="text-xs text-muted-foreground truncate">
+                {agent.featureName}
+              </span>
+            </div>
+            <button
+              onClick={() => setScreenshotExpanded(false)}
+              className="p-1 hover:bg-accent rounded transition-colors cursor-pointer"
+            >
+              <X size={16} />
+            </button>
+          </div>
+          <img
+            src={browserScreenshot.imageDataUrl}
+            alt={`Browser view - ${agent.featureName}`}
+            className="max-w-full max-h-[calc(90vh-3rem)] object-contain"
+          />
+        </div>
+      </div>,
+      document.body
+    )}
+
+    <Card className={`min-w-[180px] ${browserScreenshot ? 'max-w-[280px]' : 'max-w-[220px]'} py-3 ${isActive ? 'animate-pulse' : ''}`}>
       <CardContent className="p-3 space-y-2">
         {/* Agent type badge */}
         <div className="flex justify-end">
@@ -133,6 +177,29 @@ export function AgentCard({ agent, onShowLogs }: AgentCardProps) {
           )}
         </div>
 
+        {/* Browser screenshot thumbnail with expand */}
+        {browserScreenshot && (
+          <div className="pt-1 relative group">
+            <div
+              className="cursor-pointer overflow-hidden rounded border border-border/50"
+              onClick={() => setScreenshotExpanded(true)}
+            >
+              <img
+                src={browserScreenshot.imageDataUrl}
+                alt="Browser view"
+                className="w-full h-auto max-h-[120px] object-cover object-top"
+              />
+            </div>
+            <button
+              onClick={() => setScreenshotExpanded(true)}
+              className="absolute top-2.5 right-1.5 p-0.5 bg-black/50 hover:bg-black/70 rounded transition-opacity opacity-0 group-hover:opacity-100 cursor-pointer"
+              title="Expand screenshot"
+            >
+              <Maximize2 size={12} className="text-white" />
+            </button>
+          </div>
+        )}
+
         {/* Thought bubble */}
         {agent.thought && (
           <div className="pt-2 border-t border-border/50">
@@ -149,6 +216,7 @@ export function AgentCard({ agent, onShowLogs }: AgentCardProps) {
         )}
       </CardContent>
     </Card>
+    </>
   )
 }
 

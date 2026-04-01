@@ -3,7 +3,7 @@ import { useState } from 'react'
 import { AgentCard, AgentLogModal } from './AgentCard'
 import { ActivityFeed } from './ActivityFeed'
 import { OrchestratorStatusCard } from './OrchestratorStatusCard'
-import type { ActiveAgent, AgentLogEntry, OrchestratorStatus } from '../lib/types'
+import type { ActiveAgent, AgentLogEntry, BrowserScreenshot, OrchestratorStatus } from '../lib/types'
 import { Card, CardContent } from '@/components/ui/card'
 import { Badge } from '@/components/ui/badge'
 import { Button } from '@/components/ui/button'
@@ -21,6 +21,7 @@ interface AgentMissionControlProps {
   }>
   isExpanded?: boolean
   getAgentLogs?: (agentIndex: number) => AgentLogEntry[]
+  browserScreenshots?: Map<string, BrowserScreenshot>
 }
 
 export function AgentMissionControl({
@@ -29,6 +30,7 @@ export function AgentMissionControl({
   recentActivity,
   isExpanded: defaultExpanded = true,
   getAgentLogs,
+  browserScreenshots,
 }: AgentMissionControlProps) {
   const [isExpanded, setIsExpanded] = useState(defaultExpanded)
   const [activityCollapsed, setActivityCollapsed] = useState(() => {
@@ -105,18 +107,25 @@ export function AgentMissionControl({
           {/* Agent Cards Row */}
           {agents.length > 0 && (
             <div className="flex gap-4 overflow-x-auto pb-4">
-              {agents.map((agent) => (
-                <AgentCard
-                  key={`agent-${agent.agentIndex}`}
-                  agent={agent}
-                  onShowLogs={(agentIndex) => {
-                    const agentToShow = agents.find(a => a.agentIndex === agentIndex)
-                    if (agentToShow) {
-                      setSelectedAgentForLogs(agentToShow)
-                    }
-                  }}
-                />
-              ))}
+              {agents.map((agent) => {
+                // Find browser screenshot for this agent by matching agentIndex
+                const screenshot = browserScreenshots
+                  ? Array.from(browserScreenshots.values()).find(s => s.agentIndex === agent.agentIndex)
+                  : undefined
+                return (
+                  <AgentCard
+                    key={`agent-${agent.agentIndex}`}
+                    agent={agent}
+                    onShowLogs={(agentIndex) => {
+                      const agentToShow = agents.find(a => a.agentIndex === agentIndex)
+                      if (agentToShow) {
+                        setSelectedAgentForLogs(agentToShow)
+                      }
+                    }}
+                    browserScreenshot={screenshot}
+                  />
+                )
+              })}
             </div>
           )}
 

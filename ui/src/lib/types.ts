@@ -266,7 +266,7 @@ export interface OrchestratorStatus {
 }
 
 // WebSocket message types
-export type WSMessageType = 'progress' | 'feature_update' | 'log' | 'agent_status' | 'pong' | 'dev_log' | 'dev_server_status' | 'agent_update' | 'orchestrator_update'
+export type WSMessageType = 'progress' | 'feature_update' | 'log' | 'agent_status' | 'pong' | 'dev_log' | 'dev_server_status' | 'agent_update' | 'orchestrator_update' | 'browser_screenshot'
 
 export interface WSProgressMessage {
   type: 'progress'
@@ -342,6 +342,28 @@ export interface WSOrchestratorUpdateMessage {
   featureName?: string
 }
 
+export interface WSBrowserScreenshotMessage {
+  type: 'browser_screenshot'
+  sessionName: string
+  agentIndex: number
+  agentType: AgentType
+  featureId: number
+  featureName: string
+  imageData: string  // base64 PNG
+  timestamp: string
+}
+
+// Browser screenshot stored in UI state
+export interface BrowserScreenshot {
+  sessionName: string
+  agentIndex: number
+  agentType: AgentType
+  featureId: number
+  featureName: string
+  imageDataUrl: string  // "data:image/png;base64,..."
+  timestamp: string
+}
+
 export type WSMessage =
   | WSProgressMessage
   | WSFeatureUpdateMessage
@@ -352,6 +374,7 @@ export type WSMessage =
   | WSDevLogMessage
   | WSDevServerStatusMessage
   | WSOrchestratorUpdateMessage
+  | WSBrowserScreenshotMessage
 
 // ============================================================================
 // Spec Chat Types
@@ -636,7 +659,6 @@ export interface SettingsUpdate {
   yolo_mode?: boolean
   model?: string
   testing_agent_ratio?: number
-  playwright_headless?: boolean
   batch_size?: number
   testing_batch_size?: number
   api_provider?: string

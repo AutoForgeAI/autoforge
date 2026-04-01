@@ -16,6 +16,7 @@ from typing import Set
 from fastapi import WebSocket, WebSocketDisconnect
 
 from .schemas import AGENT_MASCOTS
+from .services.browser_view_service import get_browser_view_service
 from .services.chat_constants import ROOT_DIR
 from .services.dev_server_manager import get_devserver_manager
 from .services.process_manager import get_manager
@@ -787,8 +788,39 @@ async def project_websocket(websocket: WebSocket, project_name: str):
     # Create orchestrator tracker for observability
     orchestrator_tracker = OrchestratorTracker()
 
+    # Get browser view service for embedded browser screenshots
+    browser_view_service = get_browser_view_service(project_name, project_dir)
+    browser_view_subscribed = False
+    # Counter to mirror orchestrator's testing session naming (testing-0, testing-1, ...)
+    testing_session_counter = 0
+    # Deferred session registration: store metadata at agent start, register on first browser command.
+    # This avoids premature polling failures when agents spend time reading/planning before opening a browser.
+    # Key: session_name -> registration kwargs
+    pending_browser_sessions: dict[str, dict] = {}
+    # Track which feature IDs map to which session names (for deferred lookup)
+    feature_to_session: dict[int, str] = {}
+
+    async def on_screenshot(screenshot):
+        """Handle browser screenshot - send to this WebSocket."""
+        try:
+            await websocket.send_json({
+                "type": "browser_screenshot",
+                "sessionName": screenshot.session_name,
+                "agentIndex": screenshot.agent_index,
+                "agentType": screenshot.agent_type,
+                "featureId": screenshot.feature_id,
+                "featureName": screenshot.feature_name,
+                "imageData": screenshot.image_base64,
+                "timestamp": screenshot.timestamp,
+            })
+        except Exception:
+            pass  # Connection may be closed
+
+    browser_view_service.add_screenshot_callback(on_screenshot)
+
     async def on_output(line: str):
         """Handle agent output - broadcast to this WebSocket."""
+        nonlocal testing_session_counter
         try:
             # Extract feature ID from line if present
             feature_id = None
@@ -817,6 +849,48 @@ async def project_websocket(websocket: WebSocket, project_name: str):
             if agent_update:
                 await websocket.send_json(agent_update)
 
+                # Register/unregister browser sessions based on agent lifecycle
+                update_state = agent_update.get("state")
+                update_type = agent_update.get("agentType", "coding")
+                update_feature_id = agent_update.get("featureId", 0)
+                update_feature_name = agent_update.get("featureName", "")
+                update_agent_index = agent_update.get("agentIndex", 0)
+
+                if update_state == "thinking" and agent_update.get("thought") in ("Starting work...", "Starting batch work..."):
+                    # Agent just started - defer browser session registration until
+                    # we detect an actual playwright-cli open/goto command.  This avoids
+                    # polling failures while the agent is still reading code / planning.
+                    if update_type == "coding":
+                        session_name = f"coding-{update_feature_id}"
+                    else:
+                        session_name = f"testing-{testing_session_counter}"
+                        testing_session_counter += 1
+                    pending_browser_sessions[session_name] = dict(
+                        session_name=session_name,
+                        agent_index=update_agent_index,
+                        agent_type=update_type,
+                        feature_id=update_feature_id,
+                        feature_name=update_feature_name,
+                    )
+                    feature_to_session[update_feature_id] = session_name
+                elif update_state in ("success", "error"):
+                    # Agent completed - unregister browser session
+                    if update_type == "coding":
+                        session_name = f"coding-{update_feature_id}"
+                        await browser_view_service.unregister_session(session_name)
+                        pending_browser_sessions.pop(session_name, None)
+                        feature_to_session.pop(update_feature_id, None)
+                    # Testing sessions are cleaned up on orchestrator stop
+
+            # Detect playwright-cli browser commands and activate deferred sessions
+            if feature_id is not None and "playwright-cli" in line and any(
+                kw in line for kw in ("open ", "goto ", "open\t", "goto\t")
+            ):
+                sess_name = feature_to_session.get(feature_id)
+                if sess_name and sess_name in pending_browser_sessions:
+                    reg = pending_browser_sessions.pop(sess_name)
+                    await browser_view_service.register_session(**reg)
+
             # Also check for orchestrator events and emit orchestrator_update messages
             orch_update = await orchestrator_tracker.process_line(line)
             if orch_update:
@@ -826,6 +900,7 @@ async def project_websocket(websocket: WebSocket, project_name: str):
 
     async def on_status_change(status: str):
         """Handle status change - broadcast to this WebSocket."""
+        nonlocal testing_session_counter
         try:
             await websocket.send_json({
                 "type": "agent_status",
@@ -835,6 +910,10 @@ async def project_websocket(websocket: WebSocket, project_name: str):
             if status in ("stopped", "crashed"):
                 await agent_tracker.reset()
                 await orchestrator_tracker.reset()
+                await browser_view_service.stop()
+                testing_session_counter = 0
+                pending_browser_sessions.clear()
+                feature_to_session.clear()
         except Exception:
             pass  # Connection may be closed
 
@@ -908,9 +987,22 @@ async def project_websocket(websocket: WebSocket, project_name: str):
                 data = await websocket.receive_text()
                 message = json.loads(data)
 
+                msg_type = message.get("type")
+
                 # Handle ping
-                if message.get("type") == "ping":
+                if msg_type == "ping":
                     await websocket.send_json({"type": "pong"})
+
+                # Handle browser view subscribe/unsubscribe
+                elif msg_type == "browser_view_subscribe":
+                    if not browser_view_subscribed:
+                        browser_view_subscribed = True
+                        await browser_view_service.add_subscriber()
+
+                elif msg_type == "browser_view_unsubscribe":
+                    if browser_view_subscribed:
+                        browser_view_subscribed = False
+                        await browser_view_service.remove_subscriber()
 
             except WebSocketDisconnect:
                 break
@@ -934,6 +1026,11 @@ async def project_websocket(websocket: WebSocket, project_name: str):
         # Unregister dev server callbacks
         devserver_manager.remove_output_callback(on_dev_output)
         devserver_manager.remove_status_callback(on_dev_status_change)
+
+        # Unregister browser view callbacks and subscriber
+        browser_view_service.remove_screenshot_callback(on_screenshot)
+        if browser_view_subscribed:
+            await browser_view_service.remove_subscriber()
 
         # Disconnect from manager
         await manager.disconnect(websocket, project_name)

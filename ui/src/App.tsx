@@ -436,6 +436,7 @@ function App() {
               orchestratorStatus={wsState.orchestratorStatus}
               recentActivity={wsState.recentActivity}
               getAgentLogs={wsState.getAgentLogs}
+              browserScreenshots={wsState.browserScreenshots}
             />
 
 
@@ -573,6 +574,9 @@ function App() {
           projectName={selectedProject}
           activeTab={debugActiveTab}
           onTabChange={setDebugActiveTab}
+          browserScreenshots={wsState.browserScreenshots}
+          onSubscribeBrowserView={wsState.subscribeBrowserView}
+          onUnsubscribeBrowserView={wsState.unsubscribeBrowserView}
         />
       )}
 

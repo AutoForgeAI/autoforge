@@ -111,7 +111,7 @@ async def get_settings():
         glm_mode=glm_mode,
         ollama_mode=ollama_mode,
         testing_agent_ratio=_parse_int(all_settings.get("testing_agent_ratio"), 1),
-        playwright_headless=_parse_bool(all_settings.get("playwright_headless"), default=True),
+        playwright_headless=True,  # Always headless - embedded browser view replaces desktop windows
         batch_size=_parse_int(all_settings.get("batch_size"), 3),
         testing_batch_size=_parse_int(all_settings.get("testing_batch_size"), 3),
         api_provider=api_provider,
@@ -133,8 +133,8 @@ async def update_settings(update: SettingsUpdate):
     if update.testing_agent_ratio is not None:
         set_setting("testing_agent_ratio", str(update.testing_agent_ratio))
 
-    if update.playwright_headless is not None:
-        set_setting("playwright_headless", "true" if update.playwright_headless else "false")
+    # playwright_headless is no longer user-configurable; always headless
+    # with embedded browser view panel in the UI
 
     if update.batch_size is not None:
         set_setting("batch_size", str(update.batch_size))
@@ -179,7 +179,7 @@ async def update_settings(update: SettingsUpdate):
         glm_mode=glm_mode,
         ollama_mode=ollama_mode,
         testing_agent_ratio=_parse_int(all_settings.get("testing_agent_ratio"), 1),
-        playwright_headless=_parse_bool(all_settings.get("playwright_headless"), default=True),
+        playwright_headless=True,  # Always headless - embedded browser view replaces desktop windows
         batch_size=_parse_int(all_settings.get("batch_size"), 3),
         testing_batch_size=_parse_int(all_settings.get("testing_batch_size"), 3),
         api_provider=api_provider,

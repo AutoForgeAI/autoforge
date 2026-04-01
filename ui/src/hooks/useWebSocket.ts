@@ -10,6 +10,7 @@ import type {
   ActiveAgent,
   AgentMascot,
   AgentLogEntry,
+  BrowserScreenshot,
   OrchestratorStatus,
   OrchestratorEvent,
 } from '../lib/types'
@@ -53,6 +54,9 @@ interface WebSocketState {
   celebration: CelebrationTrigger | null
   // Orchestrator state for Mission Control
   orchestratorStatus: OrchestratorStatus | null
+  // Browser view screenshots (sessionName -> latest screenshot)
+  browserScreenshots: Map<string, BrowserScreenshot>
+  browserViewSubscribed: boolean
 }
 
 const MAX_LOGS = 100 // Keep last 100 log lines
@@ -74,6 +78,8 @@ export function useProjectWebSocket(projectName: string | null) {
     celebrationQueue: [],
     celebration: null,
     orchestratorStatus: null,
+    browserScreenshots: new Map(),
+    browserViewSubscribed: false,
   })
 
   const wsRef = useRef<WebSocket | null>(null)
@@ -119,11 +125,12 @@ export function useProjectWebSocket(projectName: string | null) {
               setState(prev => ({
                 ...prev,
                 agentStatus: message.status,
-                // Clear active agents and orchestrator status when process stops OR crashes to prevent stale UI
+                // Clear active agents, orchestrator status, and browser screenshots when process stops OR crashes
                 ...((message.status === 'stopped' || message.status === 'crashed') && {
                   activeAgents: [],
                   recentActivity: [],
                   orchestratorStatus: null,
+                  browserScreenshots: new Map(),
                 }),
               }))
               break
@@ -328,6 +335,22 @@ export function useProjectWebSocket(projectName: string | null) {
               }))
               break
 
+            case 'browser_screenshot':
+              setState(prev => {
+                const newScreenshots = new Map(prev.browserScreenshots)
+                newScreenshots.set(message.sessionName, {
+                  sessionName: message.sessionName,
+                  agentIndex: message.agentIndex,
+                  agentType: message.agentType,
+                  featureId: message.featureId,
+                  featureName: message.featureName,
+                  imageDataUrl: `data:image/png;base64,${message.imageData}`,
+                  timestamp: message.timestamp,
+                })
+                return { ...prev, browserScreenshots: newScreenshots }
+              })
+              break
+
             case 'pong':
               // Heartbeat response
               break
@@ -400,6 +423,8 @@ export function useProjectWebSocket(projectName: string | null) {
       celebrationQueue: [],
       celebration: null,
       orchestratorStatus: null,
+      browserScreenshots: new Map(),
+      browserViewSubscribed: false,
     })
 
     if (!projectName) {
@@ -473,6 +498,22 @@ export function useProjectWebSocket(projectName: string | null) {
     })
   }, [])
 
+  // Subscribe to browser view screenshots
+  const subscribeBrowserView = useCallback(() => {
+    if (wsRef.current?.readyState === WebSocket.OPEN) {
+      wsRef.current.send(JSON.stringify({ type: 'browser_view_subscribe' }))
+      setState(prev => ({ ...prev, browserViewSubscribed: true }))
+    }
+  }, [])
+
+  // Unsubscribe from browser view screenshots
+  const unsubscribeBrowserView = useCallback(() => {
+    if (wsRef.current?.readyState === WebSocket.OPEN) {
+      wsRef.current.send(JSON.stringify({ type: 'browser_view_unsubscribe' }))
+      setState(prev => ({ ...prev, browserViewSubscribed: false }))
+    }
+  }, [])
+
   return {
     ...state,
     clearLogs,
@@ -480,5 +521,7 @@ export function useProjectWebSocket(projectName: string | null) {
     clearCelebration,
     getAgentLogs,
     clearAgentLogs,
+    subscribeBrowserView,
+    unsubscribeBrowserView,
   }
 }

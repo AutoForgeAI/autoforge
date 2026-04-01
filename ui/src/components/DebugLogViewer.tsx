@@ -7,11 +7,12 @@
  */
 
 import { useEffect, useRef, useState, useCallback } from 'react'
-import { ChevronUp, ChevronDown, Trash2, Terminal as TerminalIcon, GripHorizontal, Cpu, Server } from 'lucide-react'
+import { ChevronUp, ChevronDown, Trash2, Terminal as TerminalIcon, GripHorizontal, Cpu, Server, Monitor } from 'lucide-react'
 import { Terminal } from './Terminal'
 import { TerminalTabs } from './TerminalTabs'
+import { BrowserViewPanel } from './BrowserViewPanel'
 import { listTerminals, createTerminal, renameTerminal, deleteTerminal } from '@/lib/api'
-import type { TerminalInfo } from '@/lib/types'
+import type { TerminalInfo, BrowserScreenshot } from '@/lib/types'
 import { Button } from '@/components/ui/button'
 import { Badge } from '@/components/ui/badge'
 
@@ -21,7 +22,7 @@ const DEFAULT_HEIGHT = 288
 const STORAGE_KEY = 'debug-panel-height'
 const TAB_STORAGE_KEY = 'debug-panel-tab'
 
-type TabType = 'agent' | 'devserver' | 'terminal'
+type TabType = 'agent' | 'devserver' | 'terminal' | 'browsers'
 
 interface DebugLogViewerProps {
   logs: Array<{ line: string; timestamp: string }>
@@ -34,6 +35,9 @@ interface DebugLogViewerProps {
   projectName: string
   activeTab?: TabType
   onTabChange?: (tab: TabType) => void
+  browserScreenshots?: Map<string, BrowserScreenshot>
+  onSubscribeBrowserView?: () => void
+  onUnsubscribeBrowserView?: () => void
 }
 
 type LogLevel = 'error' | 'warn' | 'debug' | 'info'
@@ -49,6 +53,9 @@ export function DebugLogViewer({
   projectName,
   activeTab: controlledActiveTab,
   onTabChange,
+  browserScreenshots,
+  onSubscribeBrowserView,
+  onUnsubscribeBrowserView,
 }: DebugLogViewerProps) {
   const scrollRef = useRef<HTMLDivElement>(null)
   const devScrollRef = useRef<HTMLDivElement>(null)
@@ -395,11 +402,28 @@ export function DebugLogViewer({
                   T
                 </Badge>
               </Button>
+              <Button
+                variant={activeTab === 'browsers' ? 'secondary' : 'ghost'}
+                size="sm"
+                onClick={(e: React.MouseEvent) => {
+                  e.stopPropagation()
+                  setActiveTab('browsers')
+                }}
+                className="h-7 text-xs font-mono gap-1.5"
+              >
+                <Monitor size={12} />
+                Browsers
+                {browserScreenshots && browserScreenshots.size > 0 && (
+                  <Badge variant="default" className="h-4 px-1.5 text-[10px]">
+                    {browserScreenshots.size}
+                  </Badge>
+                )}
+              </Button>
             </div>
           )}
 
           {/* Log count and status - only for log tabs */}
-          {isOpen && activeTab !== 'terminal' && (
+          {isOpen && activeTab !== 'terminal' && activeTab !== 'browsers' && (
             <>
               {getCurrentLogCount() > 0 && (
                 <Badge variant="secondary" className="ml-2 font-mono">
@@ -417,7 +441,7 @@ export function DebugLogViewer({
 
         <div className="flex items-center gap-2">
           {/* Clear button - only for log tabs */}
-          {isOpen && activeTab !== 'terminal' && (
+          {isOpen && activeTab !== 'terminal' && activeTab !== 'browsers' && (
             <Button
               variant="ghost"
               size="icon"
@@ -575,6 +599,15 @@ export function DebugLogViewer({
                 )}
               </div>
             </div>
+          )}
+
+          {/* Browsers Tab */}
+          {activeTab === 'browsers' && browserScreenshots && onSubscribeBrowserView && onUnsubscribeBrowserView && (
+            <BrowserViewPanel
+              screenshots={browserScreenshots}
+              onSubscribe={onSubscribeBrowserView}
+              onUnsubscribe={onUnsubscribeBrowserView}
+            />
           )}
         </div>
       )}

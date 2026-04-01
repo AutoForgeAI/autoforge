@@ -17,11 +17,11 @@ from ..utils.project_helpers import get_project_path as _get_project_path
 from ..utils.validation import validate_project_name
 
 
-def _get_settings_defaults() -> tuple[bool, str, int, bool, int, int]:
+def _get_settings_defaults() -> tuple[bool, str, int, int, int]:
     """Get defaults from global settings.
 
     Returns:
-        Tuple of (yolo_mode, model, testing_agent_ratio, playwright_headless, batch_size, testing_batch_size)
+        Tuple of (yolo_mode, model, testing_agent_ratio, batch_size, testing_batch_size)
     """
     import sys
     root = Path(__file__).parent.parent.parent
@@ -40,8 +40,6 @@ def _get_settings_defaults() -> tuple[bool, str, int, bool, int, int]:
     except (ValueError, TypeError):
         testing_agent_ratio = 1
 
-    playwright_headless = (settings.get("playwright_headless") or "true").lower() == "true"
-
     try:
         batch_size = int(settings.get("batch_size", "3"))
     except (ValueError, TypeError):
@@ -52,7 +50,7 @@ def _get_settings_defaults() -> tuple[bool, str, int, bool, int, int]:
     except (ValueError, TypeError):
         testing_batch_size = 3
 
-    return yolo_mode, model, testing_agent_ratio, playwright_headless, batch_size, testing_batch_size
+    return yolo_mode, model, testing_agent_ratio, batch_size, testing_batch_size
 
 
 router = APIRouter(prefix="/api/projects/{project_name}/agent", tags=["agent"])
@@ -101,7 +99,7 @@ async def start_agent(
     manager = get_project_manager(project_name)
 
     # Get defaults from global settings if not provided in request
-    default_yolo, default_model, default_testing_ratio, playwright_headless, default_batch_size, default_testing_batch_size = _get_settings_defaults()
+    default_yolo, default_model, default_testing_ratio, default_batch_size, default_testing_batch_size = _get_settings_defaults()
 
     yolo_mode = request.yolo_mode if request.yolo_mode is not None else default_yolo
     model = request.model if request.model else default_model
@@ -111,12 +109,13 @@ async def start_agent(
     batch_size = default_batch_size
     testing_batch_size = default_testing_batch_size
 
+    # Always run headless - the embedded browser view panel replaces desktop windows
     success, message = await manager.start(
         yolo_mode=yolo_mode,
         model=model,
         max_concurrency=max_concurrency,
         testing_agent_ratio=testing_agent_ratio,
-        playwright_headless=playwright_headless,
+        playwright_headless=True,
         batch_size=batch_size,
         testing_batch_size=testing_batch_size,
     )
