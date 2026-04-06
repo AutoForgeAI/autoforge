@@ -263,12 +263,15 @@ if UI_DIST_DIR.exists():
 # ============================================================================
 # Main Entry Point
 # ============================================================================
-
+#fix: use Railway host and port
 if __name__ == "__main__":
     import uvicorn
+
+    port = int(os.environ.get("PORT", 8888))
+
     uvicorn.run(
         "server.main:app",
-        host="127.0.0.1",  # Localhost only for security
-        port=8888,
-        reload=True,
+        host="0.0.0.0",
+        port=port,
+        reload=False,
     )
