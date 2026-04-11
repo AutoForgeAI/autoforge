@@ -16,6 +16,8 @@ export interface ProjectSummary {
   has_spec: boolean
   stats: ProjectStats
   default_concurrency: number
+  auto_improve_enabled: boolean
+  auto_improve_interval_minutes: number
 }
 
 export interface ProjectDetail extends ProjectSummary {
@@ -669,6 +671,8 @@ export interface SettingsUpdate {
 
 export interface ProjectSettingsUpdate {
   default_concurrency?: number
+  auto_improve_enabled?: boolean
+  auto_improve_interval_minutes?: number
 }
 
 // ============================================================================

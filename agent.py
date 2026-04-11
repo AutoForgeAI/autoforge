@@ -31,6 +31,7 @@ from progress import (
 )
 from prompts import (
     copy_spec_to_project,
+    get_auto_improve_prompt,
     get_batch_feature_prompt,
     get_coding_prompt,
     get_initializer_prompt,
@@ -163,6 +164,7 @@ async def run_autonomous_agent(
     agent_type: Optional[str] = None,
     testing_feature_id: Optional[int] = None,
     testing_feature_ids: Optional[list[int]] = None,
+    auto_improve: bool = False,
 ) -> None:
     """
     Run the autonomous agent loop.
@@ -177,6 +179,9 @@ async def run_autonomous_agent(
         agent_type: Type of agent: "initializer", "coding", "testing", or None (auto-detect)
         testing_feature_id: For testing agents, the pre-claimed feature ID to test (legacy single mode)
         testing_feature_ids: For testing agents, list of feature IDs to batch test
+        auto_improve: If True, run in auto-improve mode (agent creates one
+            improvement feature, implements it, commits, and exits). Takes
+            precedence over other prompt selection branches.
     """
     print("\n" + "=" * 70)
     print("  AUTONOMOUS CODING AGENT")
@@ -185,6 +190,8 @@ async def run_autonomous_agent(
     print(f"Model: {model}")
     if agent_type:
         print(f"Agent type: {agent_type}")
+    if auto_improve:
+        print("Mode: AUTO-IMPROVE (one improvement + commit per session)")
     if yolo_mode:
         print("Mode: YOLO (testing agents disabled)")
     if feature_ids and len(feature_ids) > 1:
@@ -240,7 +247,8 @@ async def run_autonomous_agent(
 
         # Check if all features are already complete (before starting a new session)
         # Skip this check if running as initializer (needs to create features first)
-        if not is_initializer and iteration == 1:
+        # or auto-improve mode (intentionally runs against finished projects)
+        if not is_initializer and not auto_improve and iteration == 1:
             passing, in_progress, total, _nhi = count_passing_tests(project_dir)
             if total > 0 and passing == total:
                 print("\n" + "=" * 70)
@@ -262,7 +270,11 @@ async def run_autonomous_agent(
         client = create_client(project_dir, model, yolo_mode=yolo_mode, agent_type=agent_type)
 
         # Choose prompt based on agent type
-        if agent_type == "initializer":
+        # auto_improve takes precedence over other branches — it's a distinct
+        # mode where the agent creates its own feature before implementing it.
+        if auto_improve:
+            prompt = get_auto_improve_prompt(project_dir, yolo_mode=yolo_mode)
+        elif agent_type == "initializer":
             prompt = get_initializer_prompt(project_dir)
         elif agent_type == "testing":
             prompt = get_testing_prompt(project_dir, testing_feature_id, testing_feature_ids)

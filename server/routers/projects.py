@@ -66,10 +66,12 @@ def _get_registry_functions():
         sys.path.insert(0, str(root))
 
     from registry import (
+        get_project_auto_improve,
         get_project_concurrency,
         get_project_path,
         list_registered_projects,
         register_project,
+        set_project_auto_improve,
         set_project_concurrency,
         unregister_project,
         validate_project_path,
@@ -82,6 +84,8 @@ def _get_registry_functions():
         validate_project_path,
         get_project_concurrency,
         set_project_concurrency,
+        get_project_auto_improve,
+        set_project_auto_improve,
     )
 
 
@@ -118,7 +122,7 @@ async def list_projects():
     _init_imports()
     assert _check_spec_exists is not None  # guaranteed by _init_imports()
     (_, _, _, list_registered_projects, validate_project_path,
-     get_project_concurrency, _) = _get_registry_functions()
+     get_project_concurrency, _, _, _) = _get_registry_functions()
 
     projects = list_registered_projects()
     result = []
@@ -140,6 +144,10 @@ async def list_projects():
             has_spec=has_spec,
             stats=stats,
             default_concurrency=info.get("default_concurrency", 3),
+            auto_improve_enabled=bool(info.get("auto_improve_enabled", False)),
+            auto_improve_interval_minutes=int(
+                info.get("auto_improve_interval_minutes", 10) or 10
+            ),
         ))
 
     return result
@@ -151,7 +159,7 @@ async def create_project(project: ProjectCreate):
     _init_imports()
     assert _scaffold_project_prompts is not None  # guaranteed by _init_imports()
     (register_project, _, get_project_path, list_registered_projects,
-     _, _, _) = _get_registry_functions()
+     _, _, _, _, _) = _get_registry_functions()
 
     name = validate_project_name(project.name)
     project_path = Path(project.path).resolve()
@@ -232,7 +240,8 @@ async def get_project(name: str):
     _init_imports()
     assert _check_spec_exists is not None  # guaranteed by _init_imports()
     assert _get_project_prompts_dir is not None  # guaranteed by _init_imports()
-    (_, _, get_project_path, _, _, get_project_concurrency, _) = _get_registry_functions()
+    (_, _, get_project_path, _, _, get_project_concurrency, _,
+     get_project_auto_improve, _) = _get_registry_functions()
 
     name = validate_project_name(name)
     project_dir = get_project_path(name)
@@ -246,6 +255,7 @@ async def get_project(name: str):
     has_spec = _check_spec_exists(project_dir)
     stats = get_project_stats(project_dir)
     prompts_dir = _get_project_prompts_dir(project_dir)
+    ai_enabled, ai_interval = get_project_auto_improve(name)
 
     return ProjectDetail(
         name=name,
@@ -254,6 +264,8 @@ async def get_project(name: str):
         stats=stats,
         prompts_dir=str(prompts_dir),
         default_concurrency=get_project_concurrency(name),
+        auto_improve_enabled=ai_enabled,
+        auto_improve_interval_minutes=ai_interval,
     )
 
 
@@ -267,7 +279,7 @@ async def delete_project(name: str, delete_files: bool = False):
         delete_files: If True, also delete the project directory and files
     """
     _init_imports()
-    (_, unregister_project, get_project_path, _, _, _, _) = _get_registry_functions()
+    (_, unregister_project, get_project_path, _, _, _, _, _, _) = _get_registry_functions()
 
     name = validate_project_name(name)
     project_dir = get_project_path(name)
@@ -304,7 +316,7 @@ async def get_project_prompts(name: str):
     """Get the content of project prompt files."""
     _init_imports()
     assert _get_project_prompts_dir is not None  # guaranteed by _init_imports()
-    (_, _, get_project_path, _, _, _, _) = _get_registry_functions()
+    (_, _, get_project_path, _, _, _, _, _, _) = _get_registry_functions()
 
     name = validate_project_name(name)
     project_dir = get_project_path(name)
@@ -338,7 +350,7 @@ async def update_project_prompts(name: str, prompts: ProjectPromptsUpdate):
     """Update project prompt files."""
     _init_imports()
     assert _get_project_prompts_dir is not None  # guaranteed by _init_imports()
-    (_, _, get_project_path, _, _, _, _) = _get_registry_functions()
+    (_, _, get_project_path, _, _, _, _, _, _) = _get_registry_functions()
 
     name = validate_project_name(name)
     project_dir = get_project_path(name)
@@ -368,7 +380,7 @@ async def update_project_prompts(name: str, prompts: ProjectPromptsUpdate):
 async def get_project_stats_endpoint(name: str):
     """Get current progress statistics for a project."""
     _init_imports()
-    (_, _, get_project_path, _, _, _, _) = _get_registry_functions()
+    (_, _, get_project_path, _, _, _, _, _, _) = _get_registry_functions()
 
     name = validate_project_name(name)
     project_dir = get_project_path(name)
@@ -395,7 +407,7 @@ async def reset_project(name: str, full_reset: bool = False):
         Dictionary with list of deleted files and reset type
     """
     _init_imports()
-    (_, _, get_project_path, _, _, _, _) = _get_registry_functions()
+    (_, _, get_project_path, _, _, _, _, _, _) = _get_registry_functions()
 
     name = validate_project_name(name)
     project_dir = get_project_path(name)
@@ -487,12 +499,13 @@ async def reset_project(name: str, full_reset: bool = False):
 
 @router.patch("/{name}/settings", response_model=ProjectDetail)
 async def update_project_settings(name: str, settings: ProjectSettingsUpdate):
-    """Update project-level settings (concurrency, etc.)."""
+    """Update project-level settings (concurrency, auto-improve, etc.)."""
     _init_imports()
     assert _check_spec_exists is not None  # guaranteed by _init_imports()
     assert _get_project_prompts_dir is not None  # guaranteed by _init_imports()
     (_, _, get_project_path, _, _, get_project_concurrency,
-     set_project_concurrency) = _get_registry_functions()
+     set_project_concurrency, get_project_auto_improve,
+     set_project_auto_improve) = _get_registry_functions()
 
     name = validate_project_name(name)
     project_dir = get_project_path(name)
@@ -509,10 +522,43 @@ async def update_project_settings(name: str, settings: ProjectSettingsUpdate):
         if not success:
             raise HTTPException(status_code=500, detail="Failed to update concurrency")
 
+    # Update auto-improve config if either field was provided
+    auto_improve_touched = (
+        settings.auto_improve_enabled is not None
+        or settings.auto_improve_interval_minutes is not None
+    )
+    if auto_improve_touched:
+        try:
+            success = set_project_auto_improve(
+                name,
+                enabled=settings.auto_improve_enabled,
+                interval_minutes=settings.auto_improve_interval_minutes,
+            )
+        except ValueError as e:
+            raise HTTPException(status_code=400, detail=str(e))
+        if not success:
+            raise HTTPException(status_code=500, detail="Failed to update auto-improve settings")
+
+        # Sync the scheduler with the new state.
+        from ..services.scheduler_service import get_scheduler
+        scheduler = get_scheduler()
+        ai_enabled, ai_interval = get_project_auto_improve(name)
+        if ai_enabled:
+            try:
+                await scheduler.register_auto_improve(name, project_dir, ai_interval)
+            except Exception as e:
+                raise HTTPException(
+                    status_code=500,
+                    detail=f"Failed to register auto-improve schedule: {e}",
+                )
+        else:
+            scheduler.remove_auto_improve(name)
+
     # Return updated project details
     has_spec = _check_spec_exists(project_dir)
     stats = get_project_stats(project_dir)
     prompts_dir = _get_project_prompts_dir(project_dir)
+    ai_enabled, ai_interval = get_project_auto_improve(name)
 
     return ProjectDetail(
         name=name,
@@ -521,4 +567,6 @@ async def update_project_settings(name: str, settings: ProjectSettingsUpdate):
         stats=stats,
         prompts_dir=str(prompts_dir),
         default_concurrency=get_project_concurrency(name),
+        auto_improve_enabled=ai_enabled,
+        auto_improve_interval_minutes=ai_interval,
     )

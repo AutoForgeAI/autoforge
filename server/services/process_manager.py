@@ -85,6 +85,7 @@ class AgentProcessManager:
         self.parallel_mode: bool = False  # Parallel execution mode
         self.max_concurrency: int | None = None  # Max concurrent agents
         self.testing_agent_ratio: int = 1  # Regression testing agents (0-3)
+        self.auto_improve: bool = False  # Auto-improve mode (single session)
 
         # Support multiple callbacks (for multiple WebSocket clients)
         self._output_callbacks: Set[Callable[[str], Awaitable[None]]] = set()
@@ -375,6 +376,7 @@ class AgentProcessManager:
         playwright_headless: bool = True,
         batch_size: int = 3,
         testing_batch_size: int = 3,
+        auto_improve: bool = False,
     ) -> tuple[bool, str]:
         """
         Start the agent as a subprocess.
@@ -386,6 +388,10 @@ class AgentProcessManager:
             max_concurrency: Max concurrent coding agents (1-5, default 1)
             testing_agent_ratio: Number of regression testing agents (0-3, default 1)
             playwright_headless: If True, run browser in headless mode
+            auto_improve: If True, run in auto-improve mode. Forces single-agent
+                execution (concurrency=1, testing_ratio=0) and passes
+                --auto-improve to the subprocess so it runs exactly one
+                improvement session and exits.
 
         Returns:
             Tuple of (success, message)
@@ -408,12 +414,19 @@ class AgentProcessManager:
         # Clean up features stuck from a previous crash/stop
         self._cleanup_stale_features()
 
+        # Auto-improve mode forces single-agent execution and skips testing
+        # agents — the subprocess bypasses the orchestrator entirely.
+        if auto_improve:
+            max_concurrency = 1
+            testing_agent_ratio = 0
+
         # Store for status queries
         self.yolo_mode = yolo_mode
         self.model = model
         self.parallel_mode = True  # Always True now (unified orchestrator)
         self.max_concurrency = max_concurrency or 1
         self.testing_agent_ratio = testing_agent_ratio
+        self.auto_improve = auto_improve
 
         # Build command - unified orchestrator with --concurrency
         cmd = [
@@ -431,6 +444,10 @@ class AgentProcessManager:
         # Add --yolo flag if YOLO mode is enabled
         if yolo_mode:
             cmd.append("--yolo")
+
+        # Add --auto-improve flag: bypasses the orchestrator for a one-shot run
+        if auto_improve:
+            cmd.append("--auto-improve")
 
         # Add --concurrency flag (unified orchestrator always uses this)
         cmd.extend(["--concurrency", str(max_concurrency or 1)])

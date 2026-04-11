@@ -151,6 +151,30 @@ def get_coding_prompt(project_dir: Path | None = None, yolo_mode: bool = False) 
     return prompt
 
 
+def get_auto_improve_prompt(project_dir: Path | None = None, yolo_mode: bool = False) -> str:
+    """Load the auto-improve agent prompt (project-specific if available).
+
+    The auto-improve prompt instructs the agent to analyze an already-finished
+    project, pick ONE meaningful improvement, create a feature on the Kanban,
+    implement it, verify with lint/typecheck/build, mark passing, and commit.
+
+    Args:
+        project_dir: Optional project directory for project-specific prompts
+        yolo_mode: If True, strip browser automation sections for YOLO-mode
+            token savings. Browser verification is already optional in
+            auto-improve mode, so this is a small adjustment.
+
+    Returns:
+        The auto-improve prompt, optionally stripped of browser testing.
+    """
+    prompt = load_prompt("auto_improve_prompt", project_dir)
+
+    if yolo_mode:
+        prompt = _strip_browser_testing_sections(prompt)
+
+    return prompt
+
+
 def get_testing_prompt(
     project_dir: Path | None = None,
     testing_feature_id: int | None = None,

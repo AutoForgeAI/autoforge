@@ -46,6 +46,8 @@ class ProjectSummary(BaseModel):
     has_spec: bool
     stats: ProjectStats
     default_concurrency: int = 3
+    auto_improve_enabled: bool = False
+    auto_improve_interval_minutes: int = 10
 
 
 class ProjectDetail(BaseModel):
@@ -56,6 +58,8 @@ class ProjectDetail(BaseModel):
     stats: ProjectStats
     prompts_dir: str
     default_concurrency: int = 3
+    auto_improve_enabled: bool = False
+    auto_improve_interval_minutes: int = 10
 
 
 class ProjectPrompts(BaseModel):
@@ -75,12 +79,21 @@ class ProjectPromptsUpdate(BaseModel):
 class ProjectSettingsUpdate(BaseModel):
     """Request schema for updating project-level settings."""
     default_concurrency: int | None = None
+    auto_improve_enabled: bool | None = None
+    auto_improve_interval_minutes: int | None = None
 
     @field_validator('default_concurrency')
     @classmethod
     def validate_concurrency(cls, v: int | None) -> int | None:
         if v is not None and (v < 1 or v > 5):
             raise ValueError("default_concurrency must be between 1 and 5")
+        return v
+
+    @field_validator('auto_improve_interval_minutes')
+    @classmethod
+    def validate_auto_improve_interval(cls, v: int | None) -> int | None:
+        if v is not None and (v < 1 or v > 1440):
+            raise ValueError("auto_improve_interval_minutes must be between 1 and 1440")
         return v
 
 

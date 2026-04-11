@@ -16,7 +16,7 @@ from datetime import datetime
 from pathlib import Path
 from typing import Any
 
-from sqlalchemy import Column, DateTime, Integer, String, create_engine, text
+from sqlalchemy import Boolean, Column, DateTime, Integer, String, create_engine, text
 from sqlalchemy.orm import DeclarativeBase, sessionmaker
 
 # Module logger
@@ -119,6 +119,8 @@ class Project(Base):
     path = Column(String, nullable=False)  # POSIX format for cross-platform
     created_at = Column(DateTime, nullable=False)
     default_concurrency = Column(Integer, nullable=False, default=3)
+    auto_improve_enabled = Column(Boolean, nullable=False, default=False)
+    auto_improve_interval_minutes = Column(Integer, nullable=False, default=10)
 
 
 class Settings(Base):
@@ -184,6 +186,7 @@ def _get_engine():
                 )
                 Base.metadata.create_all(bind=_engine)
                 _migrate_add_default_concurrency(_engine)
+                _migrate_add_auto_improve(_engine)
                 _SessionLocal = sessionmaker(autocommit=False, autoflush=False, bind=_engine)
                 logger.debug("Initialized registry database at: %s", db_path)
 
@@ -201,6 +204,25 @@ def _migrate_add_default_concurrency(engine) -> None:
             ))
             conn.commit()
             logger.info("Migrated projects table: added default_concurrency column")
+
+
+def _migrate_add_auto_improve(engine) -> None:
+    """Add auto-improve columns if missing (for existing databases)."""
+    with engine.connect() as conn:
+        result = conn.execute(text("PRAGMA table_info(projects)"))
+        columns = [row[1] for row in result.fetchall()]
+        if "auto_improve_enabled" not in columns:
+            conn.execute(text(
+                "ALTER TABLE projects ADD COLUMN auto_improve_enabled INTEGER NOT NULL DEFAULT 0"
+            ))
+            conn.commit()
+            logger.info("Migrated projects table: added auto_improve_enabled column")
+        if "auto_improve_interval_minutes" not in columns:
+            conn.execute(text(
+                "ALTER TABLE projects ADD COLUMN auto_improve_interval_minutes INTEGER NOT NULL DEFAULT 10"
+            ))
+            conn.commit()
+            logger.info("Migrated projects table: added auto_improve_interval_minutes column")
 
 
 @contextmanager
@@ -359,7 +381,11 @@ def list_registered_projects() -> dict[str, dict[str, Any]]:
             p.name: {
                 "path": p.path,
                 "created_at": p.created_at.isoformat() if p.created_at else None,
-                "default_concurrency": getattr(p, 'default_concurrency', 3) or 3
+                "default_concurrency": getattr(p, 'default_concurrency', 3) or 3,
+                "auto_improve_enabled": bool(getattr(p, 'auto_improve_enabled', False)),
+                "auto_improve_interval_minutes": int(
+                    getattr(p, 'auto_improve_interval_minutes', 10) or 10
+                ),
             }
             for p in projects
         }
@@ -386,7 +412,11 @@ def get_project_info(name: str) -> dict[str, Any] | None:
         return {
             "path": project.path,
             "created_at": project.created_at.isoformat() if project.created_at else None,
-            "default_concurrency": getattr(project, 'default_concurrency', 3) or 3
+            "default_concurrency": getattr(project, 'default_concurrency', 3) or 3,
+            "auto_improve_enabled": bool(getattr(project, 'auto_improve_enabled', False)),
+            "auto_improve_interval_minutes": int(
+                getattr(project, 'auto_improve_interval_minutes', 10) or 10
+            ),
         }
     finally:
         session.close()
@@ -461,6 +491,71 @@ def set_project_concurrency(name: str, concurrency: int) -> bool:
         project.default_concurrency = concurrency
 
     logger.info("Set project '%s' default_concurrency to %d", name, concurrency)
+    return True
+
+
+def get_project_auto_improve(name: str) -> tuple[bool, int]:
+    """
+    Get a project's auto-improve configuration.
+
+    Args:
+        name: The project name.
+
+    Returns:
+        Tuple of (enabled, interval_minutes). Defaults to (False, 10) if
+        the project is not found or the columns are missing.
+    """
+    _, SessionLocal = _get_engine()
+    session = SessionLocal()
+    try:
+        project = session.query(Project).filter(Project.name == name).first()
+        if project is None:
+            return (False, 10)
+        enabled = bool(getattr(project, "auto_improve_enabled", False))
+        interval = int(getattr(project, "auto_improve_interval_minutes", 10) or 10)
+        return (enabled, interval)
+    finally:
+        session.close()
+
+
+def set_project_auto_improve(
+    name: str,
+    enabled: bool | None = None,
+    interval_minutes: int | None = None,
+) -> bool:
+    """
+    Update a project's auto-improve configuration.
+
+    Either field can be updated independently by passing None for the other.
+
+    Args:
+        name: The project name.
+        enabled: If provided, set the enabled flag.
+        interval_minutes: If provided, set the interval in minutes (1-1440).
+
+    Returns:
+        True if updated, False if the project wasn't found.
+
+    Raises:
+        ValueError: If interval_minutes is outside the 1-1440 range.
+    """
+    if interval_minutes is not None and (interval_minutes < 1 or interval_minutes > 1440):
+        raise ValueError("interval_minutes must be between 1 and 1440")
+
+    with _get_session() as session:
+        project = session.query(Project).filter(Project.name == name).first()
+        if not project:
+            return False
+
+        if enabled is not None:
+            project.auto_improve_enabled = bool(enabled)
+        if interval_minutes is not None:
+            project.auto_improve_interval_minutes = int(interval_minutes)
+
+    logger.info(
+        "Set project '%s' auto_improve: enabled=%s, interval=%s",
+        name, enabled, interval_minutes,
+    )
     return True
 
 

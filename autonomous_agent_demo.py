@@ -186,6 +186,17 @@ Authentication:
         help="Max features per coding agent batch (1-15, default: 3)",
     )
 
+    parser.add_argument(
+        "--auto-improve",
+        action="store_true",
+        default=False,
+        help=(
+            "Run in auto-improve mode: a single agent session that analyses "
+            "the codebase, creates one improvement feature, implements it, "
+            "verifies with lint/typecheck/build, commits, and exits."
+        ),
+    )
+
     return parser.parse_args()
 
 
@@ -262,7 +273,22 @@ def main() -> None:
             return
 
     try:
-        if args.agent_type:
+        if args.auto_improve:
+            # Auto-improve mode: single agent session, one improvement per run.
+            # Bypasses the parallel orchestrator entirely — auto-improve is
+            # always single-agent, single-feature, and exits after one commit.
+            print("[AUTO-IMPROVE] Starting single-session improvement run...", flush=True)
+            asyncio.run(
+                run_autonomous_agent(
+                    project_dir=project_dir,
+                    model=args.model,
+                    max_iterations=1,
+                    yolo_mode=args.yolo,
+                    agent_type="coding",
+                    auto_improve=True,
+                )
+            )
+        elif args.agent_type:
             # Subprocess mode - spawned by orchestrator for a specific role
             asyncio.run(
                 run_autonomous_agent(

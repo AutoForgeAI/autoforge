@@ -15,6 +15,7 @@ from typing import Optional
 
 from apscheduler.schedulers.asyncio import AsyncIOScheduler
 from apscheduler.triggers.cron import CronTrigger
+from apscheduler.triggers.interval import IntervalTrigger
 
 # Add parent directory for imports
 sys.path.insert(0, str(Path(__file__).parent.parent.parent))
@@ -73,19 +74,39 @@ class SchedulerService:
         logger.info("Scheduler service stopped")
 
     async def _load_all_schedules(self):
-        """Load schedules for all registered projects."""
+        """Load schedules and auto-improve jobs for all registered projects."""
         from registry import list_registered_projects
 
         try:
             projects = list_registered_projects()
             total_loaded = 0
+            total_auto_improve = 0
             for project_name, info in projects.items():
                 project_path = Path(info.get("path", ""))
-                if project_path.exists():
-                    count = await self._load_project_schedules(project_name, project_path)
-                    total_loaded += count
+                if not project_path.exists():
+                    continue
+
+                # Windowed schedules (cron-based)
+                count = await self._load_project_schedules(project_name, project_path)
+                total_loaded += count
+
+                # Auto-improve interval jobs (stored in the registry directly)
+                if info.get("auto_improve_enabled"):
+                    interval = int(info.get("auto_improve_interval_minutes", 10) or 10)
+                    try:
+                        await self.register_auto_improve(project_name, project_path, interval)
+                        total_auto_improve += 1
+                    except Exception as e:
+                        logger.error(
+                            f"Failed to register auto-improve for {project_name}: {e}"
+                        )
+
             if total_loaded > 0:
                 logger.info(f"Loaded {total_loaded} schedule(s) across all projects")
+            if total_auto_improve > 0:
+                logger.info(
+                    f"Registered {total_auto_improve} auto-improve job(s) across all projects"
+                )
         except Exception as e:
             logger.error(f"Error loading schedules: {e}")
 
@@ -204,6 +225,135 @@ class SchedulerService:
             logger.info(f"Removed schedule {schedule_id} jobs: {', '.join(removed)}")
         else:
             logger.warning(f"No jobs found to remove for schedule {schedule_id}")
+
+    # ------------------------------------------------------------------
+    # Auto-improve interval jobs
+    # ------------------------------------------------------------------
+
+    @staticmethod
+    def _auto_improve_job_id(project_name: str) -> str:
+        return f"auto_improve_{project_name}"
+
+    async def register_auto_improve(
+        self,
+        project_name: str,
+        project_dir: Path,
+        interval_minutes: int,
+    ):
+        """Register or replace the auto-improve interval job for a project.
+
+        Uses APScheduler IntervalTrigger to fire every ``interval_minutes``.
+        On each tick, a single one-shot auto-improve agent session is started
+        (unless the project's agent is already running, in which case the tick
+        is silently skipped).
+        """
+        if interval_minutes < 1 or interval_minutes > 1440:
+            raise ValueError("interval_minutes must be between 1 and 1440")
+
+        job_id = self._auto_improve_job_id(project_name)
+        trigger = IntervalTrigger(minutes=interval_minutes)
+
+        self.scheduler.add_job(
+            self._handle_auto_improve_tick,
+            trigger,
+            id=job_id,
+            args=[project_name, str(project_dir)],
+            replace_existing=True,
+            misfire_grace_time=300,
+            max_instances=1,  # Never overlap ticks
+            coalesce=True,    # Collapse missed ticks during long runs
+        )
+
+        job = self.scheduler.get_job(job_id)
+        next_run = job.next_run_time if job else None
+        logger.info(
+            f"Registered auto-improve for {project_name}: "
+            f"every {interval_minutes} min (next: {next_run})"
+        )
+
+    def remove_auto_improve(self, project_name: str):
+        """Remove the auto-improve interval job for a project (no-op if missing)."""
+        job_id = self._auto_improve_job_id(project_name)
+        try:
+            self.scheduler.remove_job(job_id)
+            logger.info(f"Removed auto-improve job for {project_name}")
+        except Exception:
+            logger.debug(f"No auto-improve job to remove for {project_name}")
+
+    async def _handle_auto_improve_tick(
+        self,
+        project_name: str,
+        project_dir_str: str,
+    ):
+        """Fire one auto-improve agent session for a project.
+
+        Silently skips if the agent is already running (manual run, another
+        tick still executing, etc.). The scheduler's ``max_instances=1`` and
+        ``coalesce=True`` settings make sure ticks never stack up.
+        """
+        logger.info(f"Auto-improve tick for {project_name}")
+        project_dir = Path(project_dir_str)
+
+        if not project_dir.exists():
+            logger.warning(
+                f"Auto-improve tick: project dir missing for {project_name}, skipping"
+            )
+            return
+
+        try:
+            from .process_manager import get_manager
+
+            root_dir = Path(__file__).parent.parent.parent
+            manager = get_manager(project_name, project_dir, root_dir)
+
+            if manager.status in ("running", "paused", "pausing", "paused_graceful"):
+                logger.info(
+                    f"Auto-improve tick for {project_name}: agent already "
+                    f"{manager.status}, skipping this tick"
+                )
+                return
+
+            # Resolve effective yolo/model from global settings, mirroring the
+            # agent router's _get_settings_defaults() pattern so auto-improve
+            # respects whatever the user has configured globally.
+            yolo_mode, model = self._resolve_agent_defaults()
+
+            logger.info(
+                f"Starting auto-improve agent for {project_name} "
+                f"(yolo={yolo_mode}, model={model})"
+            )
+            success, msg = await manager.start(
+                yolo_mode=yolo_mode,
+                model=model,
+                max_concurrency=1,
+                testing_agent_ratio=0,
+                playwright_headless=True,
+                auto_improve=True,
+            )
+
+            if success:
+                logger.info(f"Auto-improve agent started for {project_name}")
+            else:
+                logger.warning(
+                    f"Auto-improve agent failed to start for {project_name}: {msg}"
+                )
+        except Exception as e:
+            logger.error(f"Error in auto-improve tick for {project_name}: {e}")
+
+    @staticmethod
+    def _resolve_agent_defaults() -> tuple[bool, str]:
+        """Resolve (yolo_mode, model) from global settings.
+
+        Kept separate from the agent router's helper so the scheduler never
+        has to import FastAPI routers. Mirrors the parsing behavior of
+        ``server/routers/agent.py::_get_settings_defaults``.
+        """
+        from registry import DEFAULT_MODEL, get_all_settings
+
+        settings = get_all_settings()
+        yolo_mode = (settings.get("yolo_mode") or "false").lower() == "true"
+        model = settings.get("api_model") or settings.get("model", DEFAULT_MODEL)
+        return yolo_mode, model
 
     async def _handle_scheduled_start(
         self, project_name: str, schedule_id: int, project_dir_str: str
