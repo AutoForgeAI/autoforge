@@ -418,11 +418,18 @@ Run coding agents via Google Cloud Vertex AI:
 
 **Note:** Use `@` instead of `-` in model names for Vertex AI.
 
-### Alternative API Providers (GLM, Ollama, Kimi, Custom)
+### Alternative API Providers (GLM, Ollama, Kimi, GitHub Copilot, Custom)
 
 Alternative providers are configured via the **Settings UI** (gear icon > API Provider section). Select a provider, set the base URL, auth token, and model — no `.env` changes needed.
 
-**Available providers:** Claude (default), GLM (Zhipu AI), Ollama (local models), Kimi (Moonshot), Custom
+**Available providers:** Claude (default), GLM (Zhipu AI), Ollama (local models), Kimi (Moonshot), GitHub Copilot (Enterprise), Custom
+
+**GitHub Copilot (Enterprise) notes:**
+- Uses the [copilot-api](https://github.com/ericc-ch/copilot-api) proxy to expose your GitHub Copilot Enterprise subscription as an Anthropic-compatible API
+- Setup: `npx copilot-api@latest start` (authenticates via GitHub OAuth in browser)
+- Available models: Claude Opus 4.6, Claude Opus 4.6 Fast, GPT 5.2 Codex, GPT 5.3 Codex
+- No API key needed in AutoCoder — the proxy handles authentication
+- Check proxy status: `curl http://localhost:4141/v1/models`
 
 **Ollama notes:**
 - Requires Ollama v0.14.0+ with Anthropic API compatibility

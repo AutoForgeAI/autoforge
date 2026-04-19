@@ -347,12 +347,13 @@ def create_client(
     effort = get_effort_setting()
     print(f"   - Reasoning effort: {effort}")
 
-    # Detect alternative API mode (Ollama, GLM, or Vertex AI)
+    # Detect alternative API mode (Ollama, GLM, GitHub Copilot, or Vertex AI)
     base_url = sdk_env.get("ANTHROPIC_BASE_URL", "")
     is_vertex = sdk_env.get("CLAUDE_CODE_USE_VERTEX") == "1"
     is_alternative_api = bool(base_url) or is_vertex
     is_ollama = "localhost:11434" in base_url or "127.0.0.1:11434" in base_url
     is_azure = "services.ai.azure.com" in base_url
+    is_github_copilot = "localhost:4141" in base_url or "127.0.0.1:4141" in base_url
     model = convert_model_for_vertex(model)
     if sdk_env:
         print(f"   - API overrides: {', '.join(sdk_env.keys())}")
@@ -360,6 +361,8 @@ def create_client(
             project_id = sdk_env.get("ANTHROPIC_VERTEX_PROJECT_ID", "unknown")
             region = sdk_env.get("CLOUD_ML_REGION", "unknown")
             print(f"   - Vertex AI Mode: Using GCP project '{project_id}' with model '{model}' in region '{region}'")
+        elif is_github_copilot:
+            print("   - GitHub Copilot Mode: Using copilot-api proxy (auth via GitHub OAuth)")
         elif is_ollama:
             print("   - Ollama Mode: Using local models")
         elif is_azure:
