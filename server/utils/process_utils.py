@@ -6,7 +6,11 @@ Shared utilities for process management across the codebase.
 """
 
 import logging
+import os
+import signal
 import subprocess
+import sys
+import time
 from dataclasses import dataclass
 from typing import Literal
 
@@ -40,9 +44,11 @@ class KillResult:
 def kill_process_tree(proc: subprocess.Popen, timeout: float = 5.0) -> KillResult:
     """Kill a process and all its child processes.
 
-    On Windows, subprocess.terminate() only kills the immediate process, leaving
-    orphaned child processes (e.g., spawned browser instances, coding/testing agents).
-    This function uses psutil to kill the entire process tree.
+    Uses a two-phase approach for reliable cleanup:
+    1. If the process is a process group leader (start_new_session=True on Unix),
+       kill the entire group via os.killpg(). This is atomic and immune to the
+       TOCTOU race where children get reparented to PID 1.
+    2. Fall back to psutil tree walk for Windows and any stragglers.
 
     Args:
         proc: The subprocess.Popen object to kill
@@ -53,82 +59,75 @@ def kill_process_tree(proc: subprocess.Popen, timeout: float = 5.0) -> KillResul
     """
     result = KillResult(status="success", parent_pid=proc.pid)
 
+    # Phase 1: Process group kill (Unix only, atomic, no TOCTOU race)
+    if sys.platform != "win32":
+        try:
+            pgid = os.getpgid(proc.pid)
+            if pgid == proc.pid:
+                logger.debug("Killing process group PGID %d", pgid)
+                try:
+                    os.killpg(pgid, signal.SIGTERM)
+                except ProcessLookupError:
+                    pass
+
+                deadline = time.monotonic() + timeout
+                while time.monotonic() < deadline:
+                    try:
+                        os.killpg(pgid, 0)
+                    except ProcessLookupError:
+                        break
+                    time.sleep(0.1)
+                else:
+                    try:
+                        os.killpg(pgid, signal.SIGKILL)
+                        result.status = "partial"
+                    except ProcessLookupError:
+                        pass
+        except (ProcessLookupError, OSError) as e:
+            logger.debug("Process group kill skipped for PID %d: %s", proc.pid, e)
+
+    # Phase 2: psutil tree walk (catches Windows + non-group-leader children)
     try:
         parent = psutil.Process(proc.pid)
-        # Get all children recursively before terminating
         children = parent.children(recursive=True)
         result.children_found = len(children)
 
-        logger.debug(
-            "Killing process tree: PID %d with %d children",
-            proc.pid, len(children)
-        )
-
-        # Terminate children first (graceful)
         for child in children:
             try:
-                logger.debug("Terminating child PID %d (%s)", child.pid, child.name())
                 child.terminate()
-            except (psutil.NoSuchProcess, psutil.AccessDenied) as e:
-                # NoSuchProcess: already dead
-                # AccessDenied: Windows can raise this for system processes or already-exited processes
-                logger.debug("Child PID %d already gone or inaccessible: %s", child.pid, e)
+            except (psutil.NoSuchProcess, psutil.AccessDenied):
+                pass
 
-        # Wait for children to terminate
         gone, still_alive = psutil.wait_procs(children, timeout=timeout)
         result.children_terminated = len(gone)
 
-        logger.debug(
-            "Children after graceful wait: %d terminated, %d still alive",
-            len(gone), len(still_alive)
-        )
-
-        # Force kill any remaining children
         for child in still_alive:
             try:
-                logger.debug("Force-killing child PID %d", child.pid)
                 child.kill()
                 result.children_killed += 1
-            except (psutil.NoSuchProcess, psutil.AccessDenied) as e:
-                logger.debug("Child PID %d gone during force-kill: %s", child.pid, e)
+            except (psutil.NoSuchProcess, psutil.AccessDenied):
+                pass
 
         if result.children_killed > 0:
             result.status = "partial"
 
-        # Now terminate the parent
-        logger.debug("Terminating parent PID %d", proc.pid)
         proc.terminate()
         try:
             proc.wait(timeout=timeout)
-            logger.debug("Parent PID %d terminated gracefully", proc.pid)
         except subprocess.TimeoutExpired:
-            logger.debug("Parent PID %d did not terminate, force-killing", proc.pid)
             proc.kill()
             proc.wait()
             result.parent_forcekilled = True
             result.status = "partial"
 
-        logger.debug(
-            "Process tree kill complete: status=%s, children=%d (terminated=%d, killed=%d)",
-            result.status, result.children_found,
-            result.children_terminated, result.children_killed
-        )
-
-    except (psutil.NoSuchProcess, psutil.AccessDenied) as e:
-        # NoSuchProcess: Process already dead
-        # AccessDenied: Windows can raise this for protected/system processes
-        # In either case, just ensure cleanup
-        logger.debug("Parent PID %d inaccessible (%s), attempting direct cleanup", proc.pid, e)
+    except (psutil.NoSuchProcess, psutil.AccessDenied):
         try:
             proc.terminate()
             proc.wait(timeout=1)
-            logger.debug("Direct termination of PID %d succeeded", proc.pid)
         except (subprocess.TimeoutExpired, OSError):
             try:
                 proc.kill()
-                logger.debug("Direct force-kill of PID %d succeeded", proc.pid)
-            except OSError as kill_error:
-                logger.debug("Direct force-kill of PID %d failed: %s", proc.pid, kill_error)
+            except OSError:
                 result.status = "failure"
 
     return result
