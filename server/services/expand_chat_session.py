@@ -27,6 +27,7 @@ from .chat_constants import (
     ROOT_DIR,
     build_attachment_content_blocks,
     check_rate_limit_error,
+    format_client_init_error,
     make_multimodal_message,
     safe_receive_response,
 )
@@ -135,7 +136,7 @@ class ExpandChatSession:
 
         # Create temporary security settings file (unique per session to avoid conflicts)
         # Note: permission_mode="bypassPermissions" is safe here because:
-        # 1. Only Read/Glob file tools are allowed (no Write/Edit)
+        # 1. Write/Edit/Bash are removed via disallowed_tools and the "deny" list below
         # 2. MCP tools are restricted to feature creation only
         # 3. No Bash access - cannot execute arbitrary commands
         security_settings = {
@@ -147,6 +148,7 @@ class ExpandChatSession:
                     "Glob(./**)",
                     *EXPAND_FEATURE_TOOLS,
                 ],
+                "deny": ["Write", "Edit", "MultiEdit", "NotebookEdit", "Bash"],
             },
         }
         from autoforge_paths import get_expand_settings_path
@@ -196,6 +198,7 @@ class ExpandChatSession:
                         "WebSearch",
                         *EXPAND_FEATURE_TOOLS,
                     ],
+                    disallowed_tools=["Write", "Edit", "MultiEdit", "NotebookEdit", "Bash"],
                     mcp_servers=mcp_servers,  # type: ignore[arg-type]  # SDK accepts dict config at runtime
                     permission_mode="bypassPermissions",
                     max_turns=100,
@@ -206,11 +209,11 @@ class ExpandChatSession:
             )
             await self.client.__aenter__()
             self._client_entered = True
-        except Exception:
+        except Exception as e:
             logger.exception("Failed to create Claude client")
             yield {
                 "type": "error",
-                "content": "Failed to initialize Claude"
+                "content": format_client_init_error(e)
             }
             return
 

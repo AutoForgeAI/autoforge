@@ -67,6 +67,35 @@ def check_rate_limit_error(exc: Exception) -> tuple[bool, int | None]:
     return False, None
 
 
+def format_client_init_error(exc: Exception) -> str:
+    """Build an actionable error message for Claude client startup failures.
+
+    The Claude Agent SDK raises an opaque ``Control request timeout:
+    initialize`` when the Claude CLI subprocess never completes the
+    initialize handshake (auth problems, broken/missing CLI, PATH issues,
+    unsupported Python, antivirus interference, slow machines).  Translate
+    that into concrete guidance instead of surfacing the raw error.
+    """
+    if "Control request timeout" in str(exc):
+        msg = (
+            "Claude client timed out during startup (the Claude CLI did not "
+            "respond to the initialize handshake). Common causes:\n"
+            "- Claude CLI not authenticated: run `claude login` or set ANTHROPIC_API_KEY\n"
+            "- Claude CLI not installed or outdated: run `npm install -g @anthropic-ai/claude-code`\n"
+            "- Antivirus/firewall blocking the CLI subprocess (common on Windows)\n"
+            "- Slow machine: raise the timeout by setting the environment variable "
+            "CLAUDE_CODE_STREAM_CLOSE_TIMEOUT=120000 before starting AutoForge"
+        )
+        if sys.version_info < (3, 11):
+            py = f"{sys.version_info.major}.{sys.version_info.minor}.{sys.version_info.micro}"
+            msg = (
+                f"You are running Python {py}, but AutoForge requires Python 3.11+. "
+                "Recreate your virtual environment with Python 3.11+ and try again.\n\n" + msg
+            )
+        return msg
+    return f"Failed to initialize Claude: {exc}"
+
+
 async def safe_receive_response(client: Any, log: logging.Logger) -> AsyncGenerator:
     """Wrap ``client.receive_response()`` to skip ``MessageParseError``.
 

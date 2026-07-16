@@ -62,6 +62,8 @@ interface WebSocketState {
 const MAX_LOGS = 100 // Keep last 100 log lines
 const MAX_ACTIVITY = 20 // Keep last 20 activity items
 const MAX_AGENT_LOGS = 500 // Keep last 500 log lines per agent
+const HEARTBEAT_INTERVAL_MS = 20_000 // App-level ping cadence (well inside common 60s proxy idle timeouts)
+const STALE_TIMEOUT_MS = 90_000 // No inbound traffic for this long => treat connection as dead
 
 export function useProjectWebSocket(projectName: string | null) {
   const [state, setState] = useState<WebSocketState>({
@@ -85,9 +87,24 @@ export function useProjectWebSocket(projectName: string | null) {
   const wsRef = useRef<WebSocket | null>(null)
   const reconnectTimeoutRef = useRef<number | null>(null)
   const reconnectAttempts = useRef(0)
+  const lastMessageAtRef = useRef<number>(Date.now())
 
   const connect = useCallback(() => {
     if (!projectName) return
+
+    // Cancel any pending reconnect so we never stack duplicate attempts
+    if (reconnectTimeoutRef.current) {
+      clearTimeout(reconnectTimeoutRef.current)
+      reconnectTimeoutRef.current = null
+    }
+
+    // Guard against duplicate sockets
+    if (
+      wsRef.current &&
+      (wsRef.current.readyState === WebSocket.OPEN || wsRef.current.readyState === WebSocket.CONNECTING)
+    ) {
+      return
+    }
 
     // Build WebSocket URL
     const protocol = window.location.protocol === 'https:' ? 'wss:' : 'ws:'
@@ -95,15 +112,25 @@ export function useProjectWebSocket(projectName: string | null) {
     const wsUrl = `${protocol}//${host}/ws/projects/${encodeURIComponent(projectName)}`
 
     try {
+      // Detach any old socket so its onclose can't schedule a stale reconnect
+      if (wsRef.current) {
+        wsRef.current.onclose = null
+        wsRef.current.onerror = null
+        wsRef.current.onmessage = null
+        wsRef.current.close()
+      }
+
       const ws = new WebSocket(wsUrl)
       wsRef.current = ws
 
       ws.onopen = () => {
+        lastMessageAtRef.current = Date.now()
         setState(prev => ({ ...prev, isConnected: true }))
         reconnectAttempts.current = 0
       }
 
       ws.onmessage = (event) => {
+        lastMessageAtRef.current = Date.now()
         try {
           const message: WSMessage = JSON.parse(event.data)
 
@@ -385,11 +412,19 @@ export function useProjectWebSocket(projectName: string | null) {
     }
   }, [projectName])
 
-  // Send ping to keep connection alive
-  const sendPing = useCallback(() => {
-    if (wsRef.current?.readyState === WebSocket.OPEN) {
-      wsRef.current.send(JSON.stringify({ type: 'ping' }))
+  // Heartbeat: detect dead connections and keep live ones alive.
+  // Any inbound message (including the server's pong) refreshes lastMessageAtRef.
+  const heartbeat = useCallback(() => {
+    if (wsRef.current?.readyState !== WebSocket.OPEN) return
+
+    if (Date.now() - lastMessageAtRef.current > STALE_TIMEOUT_MS) {
+      // Half-open socket (sleep/wake, network change, proxy idle drop):
+      // send() won't throw, so force-close to trigger the onclose reconnect path
+      wsRef.current.close()
+      return
     }
+
+    wsRef.current.send(JSON.stringify({ type: 'ping' }))
   }, [])
 
   // Clear celebration and show next one from queue if available
@@ -430,6 +465,9 @@ export function useProjectWebSocket(projectName: string | null) {
     if (!projectName) {
       // Disconnect if no project
       if (wsRef.current) {
+        wsRef.current.onclose = null
+        wsRef.current.onerror = null
+        wsRef.current.onmessage = null
         wsRef.current.close()
         wsRef.current = null
       }
@@ -438,20 +476,49 @@ export function useProjectWebSocket(projectName: string | null) {
 
     connect()
 
-    // Ping every 30 seconds
-    const pingInterval = setInterval(sendPing, 30000)
+    // App-level heartbeat (protects against proxy idle timeouts and detects dead sockets)
+    const pingInterval = setInterval(heartbeat, HEARTBEAT_INTERVAL_MS)
+
+    // Reconnect immediately when the tab becomes visible or the network comes back,
+    // instead of waiting for a background-throttled reconnect timer
+    const wakeUp = () => {
+      if (document.visibilityState === 'hidden') return
+      const ws = wsRef.current
+      if (!ws || ws.readyState === WebSocket.CLOSED || ws.readyState === WebSocket.CLOSING) {
+        if (reconnectTimeoutRef.current) {
+          clearTimeout(reconnectTimeoutRef.current)
+          reconnectTimeoutRef.current = null
+        }
+        reconnectAttempts.current = 0
+        connect()
+      } else if (ws.readyState === WebSocket.OPEN && Date.now() - lastMessageAtRef.current > STALE_TIMEOUT_MS) {
+        ws.close() // dead after sleep/wake — onclose reconnects immediately
+      } else if (ws.readyState === WebSocket.OPEN) {
+        ws.send(JSON.stringify({ type: 'ping' })) // probe liveness right away
+      }
+    }
+    document.addEventListener('visibilitychange', wakeUp)
+    window.addEventListener('online', wakeUp)
 
     return () => {
       clearInterval(pingInterval)
+      document.removeEventListener('visibilitychange', wakeUp)
+      window.removeEventListener('online', wakeUp)
       if (reconnectTimeoutRef.current) {
         clearTimeout(reconnectTimeoutRef.current)
+        reconnectTimeoutRef.current = null
       }
+      reconnectAttempts.current = 0
       if (wsRef.current) {
+        // Detach handlers so this intentional close can't schedule a stale reconnect
+        wsRef.current.onclose = null
+        wsRef.current.onerror = null
+        wsRef.current.onmessage = null
         wsRef.current.close()
         wsRef.current = null
       }
     }
-  }, [projectName, connect, sendPing])
+  }, [projectName, connect, heartbeat])
 
   // Defense-in-depth: cleanup stale agents for users who leave UI open for hours
   // This catches edge cases where completion messages are missed

@@ -28,6 +28,7 @@ from .assistant_database import (
 from .chat_constants import (
     ROOT_DIR,
     check_rate_limit_error,
+    format_client_init_error,
     safe_receive_response,
 )
 
@@ -68,6 +69,24 @@ READONLY_BUILTIN_TOOLS = [
     "WebSearch",
 ]
 
+# Tools explicitly removed from the assistant's toolset.
+# allowed_tools only pre-approves permissions; disallowed_tools actually
+# removes tools from the model, which matters with bypassPermissions.
+DISALLOWED_ASSISTANT_TOOLS = [
+    # File mutation / execution
+    "Write",
+    "Edit",
+    "MultiEdit",
+    "NotebookEdit",
+    "Bash",
+    # Feature MCP tools reserved for coding agents
+    "mcp__features__feature_mark_passing",
+    "mcp__features__feature_mark_failing",
+    "mcp__features__feature_mark_in_progress",
+    "mcp__features__feature_claim_and_get",
+    "mcp__features__feature_clear_in_progress",
+]
+
 
 def get_system_prompt(project_name: str, project_dir: Path) -> str:
     """Generate the system prompt for the assistant with project context."""
@@ -105,11 +124,11 @@ You have MCP tools available for feature management. Use them directly by callin
 
 ## What You CANNOT Do
 
-- Modify, create, or delete source code files
-- Mark features as passing (that requires actual implementation by the coding agent)
+- Modify, create, or delete source code files -- you have NO Write/Edit/Bash tools
+- Mark features as passing or failing (that is the coding agent's job after real implementation)
 - Run bash commands or execute code
 
-If the user asks you to modify code, explain that you're a project assistant and they should use the main coding agent for implementation.
+**You must NEVER implement code yourself.** Even if the user pastes code, asks for a "quick fix", or insists -- do not attempt to write or edit files. Implementation is done exclusively by the coding agents. When the user wants code changed or a bug fixed, create a feature for it with `feature_create` (or `feature_create_bulk`) describing the change, then tell the user to start the coding agent to implement it.
 
 ## Project Specification
 
@@ -234,6 +253,7 @@ class AssistantChatSession:
             "permissions": {
                 "defaultMode": "bypassPermissions",  # Read-only, no dangerous ops
                 "allow": permissions_list,
+                "deny": ["Write", "Edit", "MultiEdit", "NotebookEdit", "Bash"],
             },
         }
         from autoforge_paths import get_claude_assistant_settings_path
@@ -288,6 +308,7 @@ class AssistantChatSession:
                     # This avoids Windows command line length limit (~8191 chars)
                     setting_sources=["project"],
                     allowed_tools=[*READONLY_BUILTIN_TOOLS, *ASSISTANT_FEATURE_TOOLS],
+                    disallowed_tools=DISALLOWED_ASSISTANT_TOOLS,
                     mcp_servers=mcp_servers,  # type: ignore[arg-type]  # SDK accepts dict config at runtime
                     permission_mode="bypassPermissions",
                     max_turns=100,
@@ -302,7 +323,7 @@ class AssistantChatSession:
             logger.info("Claude client ready")
         except Exception as e:
             logger.exception("Failed to create Claude client")
-            yield {"type": "error", "content": f"Failed to initialize assistant: {str(e)}"}
+            yield {"type": "error", "content": format_client_init_error(e)}
             return
 
         # Send initial greeting only for NEW conversations

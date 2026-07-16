@@ -14,6 +14,18 @@ import sys
 from contextlib import asynccontextmanager
 from pathlib import Path
 
+# Fail fast on unsupported Python versions. Older interpreters surface as
+# opaque Claude SDK errors (e.g. "Control request timeout: initialize").
+if sys.version_info < (3, 11):
+    sys.exit(
+        "ERROR: AutoForge requires Python 3.11 or newer "
+        f"(you are running Python {sys.version.split()[0]}). "
+        "Older versions cause opaque Claude SDK errors such as "
+        "'Control request timeout: initialize'. "
+        "Recreate your virtual environment with Python 3.11+ "
+        "(python3.11 -m venv venv && pip install -r requirements.txt)."
+    )
+
 # Fix for Windows subprocess support in asyncio
 if sys.platform == "win32":
     asyncio.set_event_loop_policy(asyncio.WindowsProactorEventLoopPolicy())
@@ -53,6 +65,7 @@ from .services.expand_chat_session import cleanup_all_expand_sessions
 from .services.process_manager import cleanup_all_managers, cleanup_orphaned_locks
 from .services.scheduler_service import cleanup_scheduler, get_scheduler
 from .services.terminal_manager import cleanup_all_terminals
+from .utils.ws_security import WebSocketOriginMiddleware
 from .websocket import project_websocket
 
 # Paths
@@ -141,6 +154,13 @@ else:
 # ============================================================================
 # Security Middleware
 # ============================================================================
+
+# WebSocket Origin validation (CSWSH protection). Starlette's @app.middleware("http")
+# never runs for WebSocket handshakes, so the require_localhost guard below does not
+# cover WS routes. Browsers do not enforce same-origin on WebSocket connects either,
+# so without this check any web page could hijack the terminal/chat sockets.
+# Registered unconditionally so it applies even when AUTOFORGE_ALLOW_REMOTE=1.
+app.add_middleware(WebSocketOriginMiddleware, allow_remote=ALLOW_REMOTE)
 
 if not ALLOW_REMOTE:
     @app.middleware("http")

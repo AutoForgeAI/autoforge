@@ -13,6 +13,18 @@ import subprocess
 import sys
 from pathlib import Path
 
+# Fail fast on unsupported Python versions. Older interpreters surface as
+# opaque Claude SDK errors (e.g. "Control request timeout: initialize").
+if sys.version_info < (3, 11):
+    sys.exit(
+        "ERROR: AutoForge requires Python 3.11 or newer "
+        f"(you are running Python {sys.version.split()[0]}). "
+        "Older versions cause opaque Claude SDK errors such as "
+        "'Control request timeout: initialize'. "
+        "Recreate your virtual environment with Python 3.11+ "
+        "(python3.11 -m venv venv && pip install -r requirements.txt)."
+    )
+
 from dotenv import load_dotenv
 
 from auth import is_auth_error, print_auth_error_help
