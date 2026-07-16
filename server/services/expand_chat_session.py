@@ -27,6 +27,7 @@ from .chat_constants import (
     ROOT_DIR,
     build_attachment_content_blocks,
     check_rate_limit_error,
+    format_client_init_error,
     make_multimodal_message,
     safe_receive_response,
 )
@@ -208,11 +209,11 @@ class ExpandChatSession:
             )
             await self.client.__aenter__()
             self._client_entered = True
-        except Exception:
+        except Exception as e:
             logger.exception("Failed to create Claude client")
             yield {
                 "type": "error",
-                "content": "Failed to initialize Claude"
+                "content": format_client_init_error(e)
             }
             return
 

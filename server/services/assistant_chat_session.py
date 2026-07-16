@@ -28,6 +28,7 @@ from .assistant_database import (
 from .chat_constants import (
     ROOT_DIR,
     check_rate_limit_error,
+    format_client_init_error,
     safe_receive_response,
 )
 
@@ -322,7 +323,7 @@ class AssistantChatSession:
             logger.info("Claude client ready")
         except Exception as e:
             logger.exception("Failed to create Claude client")
-            yield {"type": "error", "content": f"Failed to initialize assistant: {str(e)}"}
+            yield {"type": "error", "content": format_client_init_error(e)}
             return
 
         # Send initial greeting only for NEW conversations
