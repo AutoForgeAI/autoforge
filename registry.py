@@ -827,6 +827,19 @@ API_PROVIDERS: dict[str, dict[str, Any]] = {
         ],
         "default_model": "qwen3-coder",
     },
+    "github-copilot": {
+        "name": "GitHub Copilot (Enterprise)",
+        "base_url": "http://localhost:4141",
+        "requires_auth": False,  # copilot-api handles auth via GitHub OAuth
+        "models": [
+            {"id": "claude-opus-4.6", "name": "Claude Opus 4.6"},
+            {"id": "claude-opus-4.6-fast", "name": "Claude Opus 4.6 Fast"},
+            {"id": "gpt-5.2-codex", "name": "GPT 5.2 Codex"},
+            {"id": "gpt-5.3-codex", "name": "GPT 5.3 Codex"},
+        ],
+        "default_model": "claude-opus-4.6",
+        "setup_instructions": "npx copilot-api@latest start",
+    },
     "custom": {
         "name": "Custom Provider",
         "base_url": "",
