@@ -827,6 +827,18 @@ API_PROVIDERS: dict[str, dict[str, Any]] = {
         ],
         "default_model": "qwen3-coder",
     },
+    "orcarouter": {
+        "name": "OrcaRouter",
+        "base_url": "https://api.orcarouter.ai",
+        "requires_auth": True,
+        "auth_env_var": "ANTHROPIC_AUTH_TOKEN",
+        "models": [
+            {"id": "anthropic/claude-opus-5", "name": "Claude Opus"},
+            {"id": "anthropic/claude-sonnet-5", "name": "Claude Sonnet"},
+            {"id": "anthropic/claude-haiku-4.5", "name": "Claude Haiku"},
+        ],
+        "default_model": "anthropic/claude-sonnet-5",
+    },
     "custom": {
         "name": "Custom Provider",
         "base_url": "",

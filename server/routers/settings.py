@@ -107,12 +107,14 @@ async def get_settings():
 
     glm_mode = api_provider == "glm"
     ollama_mode = api_provider == "ollama"
+    orcarouter_mode = api_provider == "orcarouter"
 
     return SettingsResponse(
         yolo_mode=_parse_yolo_mode(all_settings.get("yolo_mode")),
         model=all_settings.get("model", DEFAULT_MODEL),
         glm_mode=glm_mode,
         ollama_mode=ollama_mode,
+        orcarouter_mode=orcarouter_mode,
         testing_agent_ratio=_parse_int(all_settings.get("testing_agent_ratio"), 1),
         playwright_headless=True,  # Always headless - embedded browser view replaces desktop windows
         batch_size=_parse_int(all_settings.get("batch_size"), 3),
@@ -179,12 +181,14 @@ async def update_settings(update: SettingsUpdate):
     api_provider = all_settings.get("api_provider", "claude")
     glm_mode = api_provider == "glm"
     ollama_mode = api_provider == "ollama"
+    orcarouter_mode = api_provider == "orcarouter"
 
     return SettingsResponse(
         yolo_mode=_parse_yolo_mode(all_settings.get("yolo_mode")),
         model=all_settings.get("model", DEFAULT_MODEL),
         glm_mode=glm_mode,
         ollama_mode=ollama_mode,
+        orcarouter_mode=orcarouter_mode,
         testing_agent_ratio=_parse_int(all_settings.get("testing_agent_ratio"), 1),
         playwright_headless=True,  # Always headless - embedded browser view replaces desktop windows
         batch_size=_parse_int(all_settings.get("batch_size"), 3),

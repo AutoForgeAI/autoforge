@@ -299,6 +299,7 @@ const DEFAULT_SETTINGS: Settings = {
   model: 'claude-opus-4-7',
   glm_mode: false,
   ollama_mode: false,
+  orcarouter_mode: false,
   testing_agent_ratio: 1,
   playwright_headless: true,
   batch_size: 3,

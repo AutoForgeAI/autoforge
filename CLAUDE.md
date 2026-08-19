@@ -418,11 +418,11 @@ Run coding agents via Google Cloud Vertex AI:
 
 **Note:** Use `@` instead of `-` in model names for Vertex AI.
 
-### Alternative API Providers (GLM, Ollama, Kimi, Custom)
+### Alternative API Providers (GLM, Ollama, Kimi, OrcaRouter, Custom)
 
 Alternative providers are configured via the **Settings UI** (gear icon > API Provider section). Select a provider, set the base URL, auth token, and model — no `.env` changes needed.
 
-**Available providers:** Claude (default), GLM (Zhipu AI), Ollama (local models), Kimi (Moonshot), Custom
+**Available providers:** Claude (default), GLM (Zhipu AI), Ollama (local models), Kimi (Moonshot), OrcaRouter, Custom
 
 **Ollama notes:**
 - Requires Ollama v0.14.0+ with Anthropic API compatibility

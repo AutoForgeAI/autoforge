@@ -49,6 +49,12 @@ export function ControlBar() {
         </Badge>
       )}
 
+      {settings?.orcarouter_mode && (
+        <Badge className="hidden sm:inline-flex bg-slate-700 text-white hover:bg-slate-800 text-[11px]">
+          OrcaRouter
+        </Badge>
+      )}
+
       <Tooltip>
         <TooltipTrigger asChild>
           <Button

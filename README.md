@@ -332,13 +332,15 @@ When test progress increases, the agent sends:
 }
 ```
 
-### Alternative API Providers (GLM, Ollama, Kimi, Custom)
+### Alternative API Providers (GLM, Ollama, Kimi, OrcaRouter, Custom)
 
 Alternative providers are configured via the **Settings UI** (gear icon > API Provider). Select your provider, set the base URL, auth token, and model directly in the UI — no `.env` changes needed.
 
-Available providers: **Claude** (default), **GLM** (Zhipu AI), **Ollama** (local models), **Kimi** (Moonshot), **Custom**
+Available providers: **Claude** (default), **GLM** (Zhipu AI), **Ollama** (local models), **Kimi** (Moonshot), **OrcaRouter**, **Custom**
 
 For Ollama, install [Ollama v0.14.0+](https://ollama.com), run `ollama serve`, and pull a coding model (e.g., `ollama pull qwen3-coder`). Then select "Ollama" in the Settings UI.
+
+For OrcaRouter, get an API key at [https://www.orcarouter.ai](https://www.orcarouter.ai), then select "OrcaRouter" in the Settings UI and paste your API key. OrcaRouter routes to Claude and other models through a unified Anthropic-compatible endpoint (`https://api.orcarouter.ai/v1/messages`).
 
 ### Using Vertex AI
 

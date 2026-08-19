@@ -340,7 +340,7 @@ def create_client(
     }
     # Build environment overrides for API endpoint configuration
     # Uses get_effective_sdk_env() which reads provider settings from the database,
-    # ensuring UI-configured alternative providers (GLM, Ollama, Kimi, Custom) propagate
+    # ensuring UI-configured alternative providers (GLM, Ollama, Kimi, OrcaRouter, Custom) propagate
     # correctly to the Claude CLI subprocess
     from registry import get_effective_sdk_env, get_effort_setting
     sdk_env = get_effective_sdk_env()
