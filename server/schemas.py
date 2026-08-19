@@ -480,6 +480,7 @@ class SettingsResponse(BaseModel):
     model: str = DEFAULT_MODEL
     glm_mode: bool = False  # True when api_provider is "glm"
     ollama_mode: bool = False  # True when api_provider is "ollama"
+    orcarouter_mode: bool = False  # True when api_provider is "orcarouter"
     testing_agent_ratio: int = 1  # Regression testing agents (0-3)
     playwright_headless: bool = True
     batch_size: int = 3  # Features per coding agent batch (1-15)
