@@ -29,10 +29,56 @@ export function useCreateProject() {
   const queryClient = useQueryClient()
 
   return useMutation({
-    mutationFn: ({ name, path, specMethod }: { name: string; path: string; specMethod?: 'claude' | 'manual' }) =>
-      api.createProject(name, path, specMethod),
+    mutationFn: ({ name, path, specMethod, skills }: {
+      name: string
+      path: string
+      specMethod?: 'claude' | 'manual'
+      skills?: string[]
+    }) => api.createProject(name, path, specMethod, skills),
     onSuccess: () => {
       queryClient.invalidateQueries({ queryKey: ['projects'] })
+    },
+  })
+}
+
+// ============================================================================
+// Skills
+// ============================================================================
+
+export function useSkillLibrary(enabled: boolean = true) {
+  return useQuery({
+    queryKey: ['skill-library'],
+    queryFn: api.listSkillLibrary,
+    enabled,
+  })
+}
+
+export function useProjectSkills(projectName: string | null, enabled: boolean = true) {
+  return useQuery({
+    queryKey: ['project-skills', projectName],
+    queryFn: () => api.listProjectSkills(projectName!),
+    enabled: !!projectName && enabled,
+  })
+}
+
+export function useInstallProjectSkills(projectName: string) {
+  const queryClient = useQueryClient()
+
+  return useMutation({
+    mutationFn: (names: string[]) => api.installProjectSkills(projectName, names),
+    onSuccess: () => {
+      queryClient.invalidateQueries({ queryKey: ['project-skills', projectName] })
+    },
+  })
+}
+
+export function useRemoveProjectSkill(projectName: string) {
+  const queryClient = useQueryClient()
+
+  return useMutation({
+    mutationFn: (skillName: string) => api.removeProjectSkill(projectName, skillName),
+    onSuccess: () => {
+      queryClient.invalidateQueries({ queryKey: ['project-skills', projectName] })
     },
   })
 }

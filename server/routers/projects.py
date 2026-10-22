@@ -216,6 +216,15 @@ async def create_project(project: ProjectCreate):
     # Scaffold prompts
     _scaffold_project_prompts(project_path)
 
+    # Install skills selected at set-up time
+    # (names are validated by the schema; a copy failure should not abort creation)
+    if project.skills:
+        from project_skills import install_skills
+        try:
+            install_skills(project_path, project.skills)
+        except (OSError, ValueError) as e:
+            print(f"  Warning: Could not install skills: {e}")
+
     # Register in registry
     try:
         register_project(name, project_path)

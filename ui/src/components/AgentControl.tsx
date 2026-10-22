@@ -1,5 +1,5 @@
 import { useState, useEffect, useRef, useCallback } from 'react'
-import { Play, Square, Loader2, GitBranch, Clock, Pause, PlayCircle, Sparkles } from 'lucide-react'
+import { Play, Square, Loader2, GitBranch, Clock, Pause, PlayCircle, Sparkles, Wand2 } from 'lucide-react'
 import {
   useStartAgent,
   useStopAgent,
@@ -13,6 +13,7 @@ import { useNextScheduledRun } from '../hooks/useSchedules'
 import { formatNextRun, formatEndTime } from '../lib/timeUtils'
 import { ScheduleModal } from './ScheduleModal'
 import { AutoImproveModal } from './AutoImproveModal'
+import { ProjectSkillsModal } from './ProjectSkillsModal'
 import type { AgentStatus } from '../lib/types'
 import { Button } from '@/components/ui/button'
 import { Badge } from '@/components/ui/badge'
@@ -73,6 +74,7 @@ export function AgentControl({ projectName, status, defaultConcurrency = 3 }: Ag
 
   const [showScheduleModal, setShowScheduleModal] = useState(false)
   const [showAutoImproveModal, setShowAutoImproveModal] = useState(false)
+  const [showSkillsModal, setShowSkillsModal] = useState(false)
 
   const isLoading = startAgent.isPending || stopAgent.isPending || gracefulPause.isPending || gracefulResume.isPending
   const isRunning = status === 'running' || status === 'paused' || status === 'pausing' || status === 'paused_graceful'
@@ -244,6 +246,16 @@ export function AgentControl({ projectName, status, defaultConcurrency = 3 }: Ag
         >
           <Sparkles size={18} />
         </Button>
+
+        {/* Wand button to open project skills modal */}
+        <Button
+          variant="outline"
+          size="sm"
+          onClick={() => setShowSkillsModal(true)}
+          title="Manage project skills"
+        >
+          <Wand2 size={18} />
+        </Button>
       </div>
 
       {/* Schedule Modal */}
@@ -258,6 +270,13 @@ export function AgentControl({ projectName, status, defaultConcurrency = 3 }: Ag
         projectName={projectName}
         isOpen={showAutoImproveModal}
         onClose={() => setShowAutoImproveModal(false)}
+      />
+
+      {/* Project Skills Modal */}
+      <ProjectSkillsModal
+        projectName={projectName}
+        isOpen={showSkillsModal}
+        onClose={() => setShowSkillsModal(false)}
       />
     </>
   )

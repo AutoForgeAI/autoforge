@@ -5,15 +5,17 @@
  * 1. Enter project name
  * 2. Select project folder
  * 3. Choose project template (blank or agentic starter)
- * 4. Choose spec method (Claude or manual)
- * 5a. If Claude: Show SpecCreationChat
- * 5b. If manual: Create project and close
+ * 4. Choose Claude Code skills for the project
+ * 5. Choose spec method (Claude or manual)
+ * 6a. If Claude: Show SpecCreationChat
+ * 6b. If manual: Create project and close
  */
 
 import { useRef, useState } from 'react'
 import { createPortal } from 'react-dom'
 import { Bot, FileEdit, ArrowRight, ArrowLeft, Loader2, CheckCircle2, Folder, Zap, FileCode2, AlertCircle, RotateCcw } from 'lucide-react'
-import { useCreateProject } from '../hooks/useProjects'
+import { useCreateProject, useSkillLibrary } from '../hooks/useProjects'
+import { SkillPicker } from './SkillPicker'
 import { SpecCreationChat } from './SpecCreationChat'
 import { FolderBrowser } from './FolderBrowser'
 import { startAgent } from '../lib/api'
@@ -35,7 +37,7 @@ import { Card, CardContent } from '@/components/ui/card'
 type InitializerStatus = 'idle' | 'starting' | 'error'
 type ScaffoldStatus = 'idle' | 'running' | 'success' | 'error'
 
-type Step = 'name' | 'folder' | 'template' | 'method' | 'chat' | 'complete'
+type Step = 'name' | 'folder' | 'template' | 'skills' | 'method' | 'chat' | 'complete'
 type SpecMethod = 'claude' | 'manual'
 
 interface NewProjectModalProps {
@@ -63,11 +65,14 @@ export function NewProjectModal({
   const [scaffoldOutput, setScaffoldOutput] = useState<string[]>([])
   const [scaffoldError, setScaffoldError] = useState<string | null>(null)
   const scaffoldLogRef = useRef<HTMLDivElement>(null)
+  // Skills to install; the self-improving project-learnings skill is on by default
+  const [selectedSkills, setSelectedSkills] = useState<Set<string>>(() => new Set(['project-learnings']))
 
   // Suppress unused variable warning - specMethod may be used in future
   void _specMethod
 
   const createProject = useCreateProject()
+  const skillLibrary = useSkillLibrary(isOpen)
 
   // Wrapper to notify parent of step changes
   const changeStep = (newStep: Step) => {
@@ -106,7 +111,7 @@ export function NewProjectModal({
 
   const handleTemplateSelect = async (choice: 'blank' | 'agentic-starter') => {
     if (choice === 'blank') {
-      changeStep('method')
+      changeStep('skills')
       return
     }
 
@@ -155,7 +160,7 @@ export function NewProjectModal({
             } else if (event.type === 'complete') {
               if (event.success) {
                 setScaffoldStatus('success')
-                setTimeout(() => changeStep('method'), 1200)
+                setTimeout(() => changeStep('skills'), 1200)
               } else {
                 setScaffoldStatus('error')
                 setScaffoldError(`Scaffold exited with code ${event.exit_code}`)
@@ -175,6 +180,21 @@ export function NewProjectModal({
     }
   }
 
+  const handleSkillToggle = (name: string, checked: boolean) => {
+    setSelectedSkills(prev => {
+      const next = new Set(prev)
+      if (checked) next.add(name)
+      else next.delete(name)
+      return next
+    })
+  }
+
+  // Only send skills that exist in the library (the default may be missing)
+  const getSkillsToInstall = () => {
+    const available = new Set((skillLibrary.data ?? []).map(s => s.name))
+    return [...selectedSkills].filter(name => available.has(name))
+  }
+
   const handleMethodSelect = async (method: SpecMethod) => {
     setSpecMethod(method)
 
@@ -191,6 +211,7 @@ export function NewProjectModal({
           name: projectName.trim(),
           path: projectPath,
           specMethod: 'manual',
+          skills: getSkillsToInstall(),
         })
         changeStep('complete')
         setTimeout(() => {
@@ -207,6 +228,7 @@ export function NewProjectModal({
           name: projectName.trim(),
           path: projectPath,
           specMethod: 'claude',
+          skills: getSkillsToInstall(),
         })
         changeStep('chat')
       } catch (err: unknown) {
@@ -268,13 +290,19 @@ export function NewProjectModal({
     setScaffoldStatus('idle')
     setScaffoldOutput([])
     setScaffoldError(null)
+    setSelectedSkills(new Set(['project-learnings']))
     onClose()
   }
 
   const handleBack = () => {
     if (step === 'method') {
-      changeStep('template')
+      changeStep('skills')
       setSpecMethod(null)
+    } else if (step === 'skills') {
+      changeStep('template')
+      setScaffoldStatus('idle')
+      setScaffoldOutput([])
+      setScaffoldError(null)
     } else if (step === 'template') {
       changeStep('folder')
       setScaffoldStatus('idle')
@@ -341,6 +369,7 @@ export function NewProjectModal({
           <DialogTitle>
             {step === 'name' && 'Create New Project'}
             {step === 'template' && 'Choose Project Template'}
+            {step === 'skills' && 'Choose Skills'}
             {step === 'method' && 'Choose Setup Method'}
             {step === 'complete' && 'Project Created!'}
           </DialogTitle>
@@ -500,7 +529,44 @@ export function NewProjectModal({
           </div>
         )}
 
-        {/* Step 3: Spec Method */}
+        {/* Step 3: Skills */}
+        {step === 'skills' && (
+          <div className="space-y-4">
+            <DialogDescription>
+              Pick the Claude Code skills your agents should use in this project. They are copied
+              into <code className="font-mono">.claude/skills/</code> and can be changed later.
+            </DialogDescription>
+
+            {skillLibrary.isLoading ? (
+              <div className="flex items-center justify-center py-8">
+                <Loader2 size={20} className="animate-spin text-muted-foreground" />
+              </div>
+            ) : skillLibrary.isError ? (
+              <Alert variant="destructive">
+                <AlertDescription>Could not load the skill library. You can add skills later.</AlertDescription>
+              </Alert>
+            ) : (
+              <SkillPicker
+                skills={skillLibrary.data ?? []}
+                selected={selectedSkills}
+                onToggle={handleSkillToggle}
+              />
+            )}
+
+            <DialogFooter className="sm:justify-between">
+              <Button variant="ghost" onClick={handleBack}>
+                <ArrowLeft size={16} />
+                Back
+              </Button>
+              <Button onClick={() => changeStep('method')}>
+                Next
+                <ArrowRight size={16} />
+              </Button>
+            </DialogFooter>
+          </div>
+        )}
+
+        {/* Step 4: Spec Method */}
         {step === 'method' && (
           <div className="space-y-4">
             <DialogDescription>

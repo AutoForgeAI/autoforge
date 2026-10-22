@@ -29,6 +29,20 @@ class ProjectCreate(BaseModel):
     name: str = Field(..., min_length=1, max_length=50, pattern=r'^[a-zA-Z0-9_-]+$')
     path: str = Field(..., min_length=1, description="Absolute path to project directory")
     spec_method: Literal["claude", "manual"] = "claude"
+    skills: list[str] = Field(
+        default_factory=list,
+        max_length=50,
+        description="Names of library skills to install into the project's .claude/skills/",
+    )
+
+    @field_validator('skills')
+    @classmethod
+    def validate_skill_names(cls, v: list[str]) -> list[str]:
+        from project_skills import is_valid_skill_name
+        for name in v:
+            if not is_valid_skill_name(name):
+                raise ValueError(f"Invalid skill name: {name!r}")
+        return v
 
 
 class ProjectStats(BaseModel):
@@ -95,6 +109,31 @@ class ProjectSettingsUpdate(BaseModel):
         if v is not None and (v < 1 or v > 1440):
             raise ValueError("auto_improve_interval_minutes must be between 1 and 1440")
         return v
+
+
+# ============================================================================
+# Skill Schemas
+# ============================================================================
+
+class SkillInfo(BaseModel):
+    """A Claude Code skill, either in the library or installed in a project."""
+    name: str
+    description: str = ""
+    source: Literal["bundled", "user", "claude", "project"]
+    required: bool = False  # Always installed; cannot be removed
+    recommended: bool = False
+
+
+class SkillInstallRequest(BaseModel):
+    """Request schema for installing library skills into a project."""
+    names: list[str] = Field(..., min_length=1, max_length=50)
+
+
+class SkillInstallResponse(BaseModel):
+    """Result of installing skills into a project."""
+    installed: list[str]
+    skipped: list[str]
+    skills: list[SkillInfo]
 
 
 # ============================================================================

@@ -120,6 +120,7 @@ python test_security_integration.py   # Integration tests (9 tests)
 python -m pytest test_client.py       # Client tests (20 tests)
 python -m pytest test_dependency_resolver.py  # Dependency resolver tests (12 tests)
 python -m pytest test_rate_limit_utils.py     # Rate limit tests (22 tests)
+python -m pytest test_project_skills.py       # Project skills tests
 ```
 
 ### React UI
@@ -172,6 +173,7 @@ Publishing: `npm publish` (triggers `prepublishOnly` which builds UI, then publi
 - `auth.py` - Authentication error detection for Claude CLI
 - `env_constants.py` - Shared environment variable constants (API_ENV_VARS) used by client.py and chat sessions
 - `rate_limit_utils.py` - Rate limit detection, retry parsing, exponential backoff with jitter
+- `project_skills.py` - Skill library (bundled + `~/.autoforge/skills/` + `~/.claude/skills/`) and per-project skill install/remove
 - `api/database.py` - SQLAlchemy models (Feature, Schedule, ScheduleOverride)
 - `api/dependency_resolver.py` - Cycle detection (Kahn's algorithm + DFS) and dependency validation
 - `api/migration.py` - JSON-to-SQLite migration utility
@@ -202,6 +204,7 @@ The FastAPI server provides REST and WebSocket endpoints for the UI:
 - `devserver.py` - Dev server control (start/stop) and config
 - `schedules.py` - CRUD for time-based agent scheduling
 - `settings.py` - Global settings management (model selection, YOLO, batch size, headless browser)
+- `skills.py` - Skill library listing and per-project skill install/remove
 
 **Services** (`server/services/`):
 - `process_manager.py` - Agent process lifecycle management
@@ -455,6 +458,14 @@ Alternative providers are configured via the **Settings UI** (gear icon > API Pr
 - `examples/` - Configuration examples and documentation for security settings
 
 ## Key Patterns
+
+### Project Skills
+
+Agents load skills from the project's `.claude/skills/` (they run with `setting_sources=["project"]` and have the `Skill` tool).
+- Skills are picked at project creation (New Project > Choose Skills) or later via the wand button next to the agent controls.
+- Library sources, first match wins: `.claude/templates/skills/`, `.claude/skills/` (bundled), `~/.autoforge/skills/`, `~/.claude/skills/`. Symlinks inside skills are not copied.
+- `playwright-cli` is always installed and cannot be removed.
+- **Skill learning:** installing `project-learnings` makes `get_coding_prompt()` / `get_auto_improve_prompt()` append instructions telling the agent to update `.claude/skills/project-learnings/SKILL.md` with reusable learnings after each passing feature.
 
 ### Prompt Loading Fallback Chain
 

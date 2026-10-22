@@ -728,3 +728,23 @@ export interface NextRunResponse {
   is_currently_running: boolean
   active_schedule_count: number
 }
+
+// ============================================================================
+// Skills
+// ============================================================================
+
+export type SkillSource = 'bundled' | 'user' | 'claude' | 'project'
+
+export interface SkillInfo {
+  name: string
+  description: string
+  source: SkillSource
+  required: boolean
+  recommended: boolean
+}
+
+export interface SkillInstallResponse {
+  installed: string[]
+  skipped: string[]
+  skills: SkillInfo[]
+}

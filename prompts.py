@@ -131,6 +131,39 @@ def _strip_browser_testing_sections(prompt: str) -> str:
     return prompt
 
 
+_LEARNINGS_SECTION = """
+
+---
+
+### SKILL LEARNING: UPDATE `project-learnings` AFTER EACH PASSING FEATURE
+
+This project has a self-improving skill at `.claude/skills/project-learnings/SKILL.md`.
+It is how knowledge carries over between sessions and agents.
+
+- **Before implementing:** read `.claude/skills/project-learnings/SKILL.md` and follow it.
+- **After marking a feature passing (and before committing):** reflect briefly on what
+  you learned that a future agent would want to know - a convention you established, a
+  command that works, an error you hit and how you fixed it, a technique that saved time.
+  If there is something new, edit the skill following the rules written in it (short,
+  concrete bullets; merge instead of duplicating; remove anything that proved wrong).
+  If nothing new was learned, leave it unchanged.
+- Never record secrets or feature progress there. Commit the skill update together with
+  the feature.
+"""
+
+
+def get_learnings_section(project_dir: Path | None) -> str:
+    """Return the skill-learning instructions if the project opted in.
+
+    Projects opt in by installing the ``project-learnings`` skill (at project
+    creation or later from the Skills dialog).
+    """
+    if project_dir is None:
+        return ""
+    from project_skills import has_learnings_skill
+    return _LEARNINGS_SECTION if has_learnings_skill(project_dir) else ""
+
+
 def get_coding_prompt(project_dir: Path | None = None, yolo_mode: bool = False) -> str:
     """Load the coding agent prompt (project-specific if available).
 
@@ -141,14 +174,15 @@ def get_coding_prompt(project_dir: Path | None = None, yolo_mode: bool = False) 
             prompt tokens since YOLO mode skips all browser testing anyway.
 
     Returns:
-        The coding prompt, optionally stripped of testing instructions.
+        The coding prompt, optionally stripped of testing instructions, plus
+        skill-learning instructions when the project has project-learnings.
     """
     prompt = load_prompt("coding_prompt", project_dir)
 
     if yolo_mode:
         prompt = _strip_browser_testing_sections(prompt)
 
-    return prompt
+    return prompt + get_learnings_section(project_dir)
 
 
 def get_auto_improve_prompt(project_dir: Path | None = None, yolo_mode: bool = False) -> str:
@@ -172,7 +206,7 @@ def get_auto_improve_prompt(project_dir: Path | None = None, yolo_mode: bool = F
     if yolo_mode:
         prompt = _strip_browser_testing_sections(prompt)
 
-    return prompt
+    return prompt + get_learnings_section(project_dir)
 
 
 def get_testing_prompt(
