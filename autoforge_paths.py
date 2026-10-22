@@ -45,6 +45,9 @@ assistant.db-shm
 .claude_settings.expand.*.json
 .progress_cache
 .migration_version
+
+# Validation artifacts (screenshots, etc.) captured during feature verification
+validation/
 """
 
 
@@ -169,6 +172,15 @@ def get_prompts_dir(project_dir: Path) -> Path:
 # ---------------------------------------------------------------------------
 # Non-dual-path helpers (always use new location)
 # ---------------------------------------------------------------------------
+
+def get_validation_dir(project_dir: Path) -> Path:
+    """Return the ``.autoforge/validation/`` directory for verification artifacts.
+
+    Screenshots and other artifacts captured while agents verify features are
+    stored here.  The directory is gitignored via ``.autoforge/.gitignore``.
+    """
+    return project_dir / ".autoforge" / "validation"
+
 
 def get_expand_settings_path(project_dir: Path, uuid_hex: str) -> Path:
     """Return the path for an ephemeral expand-session settings file.

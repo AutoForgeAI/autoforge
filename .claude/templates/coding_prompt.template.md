@@ -94,14 +94,18 @@ Use `playwright-cli` for browser automation:
 - Click elements by ref: `playwright-cli click e5`
 - Type text: `playwright-cli type "search query"`
 - Fill form fields: `playwright-cli fill e3 "value"`
-- Take screenshots: `playwright-cli screenshot`
+- Take screenshots: `playwright-cli screenshot --filename=.autoforge/validation/feature-<id>-<step>.png`
 - Read the screenshot file to verify visual appearance
 - Check console errors: `playwright-cli console`
 - Close browser when done: `playwright-cli close`
 
 **Token-efficient workflow:** `playwright-cli screenshot` and `snapshot` save files
-to `.playwright-cli/`. You will see a file link in the output. Read the file only
-when you need to verify visual appearance or find element refs.
+to disk. You will see a file link in the output. Read the file only when you need
+to verify visual appearance or find element refs.
+
+**Validation artifacts:** Always save screenshots to `.autoforge/validation/` (it is
+gitignored) by passing `--filename=.autoforge/validation/<name>.png`. Never save
+screenshots anywhere else in the project, and never commit them.
 
 **DO:**
 - Test through the UI with clicks and keyboard input
@@ -205,7 +209,8 @@ Use `playwright-cli` commands for UI verification. Key commands: `open`, `goto`,
 `snapshot`, `click`, `type`, `fill`, `screenshot`, `console`, `close`.
 
 **How it works:** `playwright-cli` uses a persistent browser daemon. `open` starts it,
-subsequent commands interact via socket, `close` shuts it down. Screenshots and snapshots
+subsequent commands interact via socket, `close` shuts it down. Save screenshots to
+`.autoforge/validation/` with `--filename=.autoforge/validation/<name>.png`; snapshots
 save to `.playwright-cli/` -- read the files when you need to verify content.
 
 Test like a human user with mouse and keyboard. Use `playwright-cli console` to detect

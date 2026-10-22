@@ -39,7 +39,7 @@ For the feature returned:
 **Navigation & Screenshots:**
 - `playwright-cli open <url>` - Open browser and navigate
 - `playwright-cli goto <url>` - Navigate to URL
-- `playwright-cli screenshot` - Save screenshot to `.playwright-cli/`
+- `playwright-cli screenshot --filename=.autoforge/validation/<name>.png` - Save screenshot to `.autoforge/validation/`
 - `playwright-cli snapshot` - Save page snapshot with element refs to `.playwright-cli/`
 
 **Element Interaction:**
@@ -57,6 +57,8 @@ For the feature returned:
 - `playwright-cli close` - Close browser when done (ALWAYS do this)
 
 **Note:** Screenshots and snapshots save to files. Read the file to see the content.
+Always save screenshots to `.autoforge/validation/` (it is gitignored) -- never anywhere
+else in the project, and never commit them.
 
 ### STEP 3: HANDLE RESULTS
 
@@ -116,7 +118,7 @@ A regression has been introduced. You MUST fix it:
 Use `playwright-cli` commands for browser interaction. Key commands:
 - `playwright-cli open <url>` - Open browser
 - `playwright-cli goto <url>` - Navigate to URL
-- `playwright-cli screenshot` - Take screenshot (saved to `.playwright-cli/`)
+- `playwright-cli screenshot --filename=.autoforge/validation/<name>.png` - Take screenshot (save to `.autoforge/validation/`)
 - `playwright-cli snapshot` - Get page snapshot with element refs
 - `playwright-cli click <ref>` - Click element
 - `playwright-cli type <text>` - Type text

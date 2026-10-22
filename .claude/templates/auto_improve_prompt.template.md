@@ -143,7 +143,7 @@ When the commit is created successfully, your work for this session is done. Do 
 If your improvement is visual and the dev server is running, you may use `playwright-cli` to verify it renders correctly:
 
 - Open: `playwright-cli open http://localhost:PORT`
-- Screenshot: `playwright-cli screenshot`
+- Screenshot: `playwright-cli screenshot --filename=.autoforge/validation/<name>.png` (always save to `.autoforge/validation/`, which is gitignored)
 - Read the screenshot file to verify visual appearance
 - Close: `playwright-cli close`
 

@@ -17,7 +17,7 @@ from pathlib import Path
 TEMPLATES_DIR = Path(__file__).parent / ".claude" / "templates"
 
 # Migration version — bump when adding new migration steps
-CURRENT_MIGRATION_VERSION = 1
+CURRENT_MIGRATION_VERSION = 2
 
 
 def get_project_prompts_dir(project_dir: Path) -> Path:
@@ -346,6 +346,10 @@ def scaffold_project_prompts(project_dir: Path) -> Path:
     from autoforge_paths import ensure_autoforge_dir
     autoforge_dir = ensure_autoforge_dir(project_dir)
 
+    # Create .autoforge/validation/ for verification screenshots (gitignored)
+    from autoforge_paths import get_validation_dir
+    get_validation_dir(project_dir).mkdir(parents=True, exist_ok=True)
+
     # Define template mappings: (source_template, destination_name)
     templates = [
         ("app_spec.template.txt", "app_spec.txt"),
@@ -629,6 +633,58 @@ Use `playwright-cli` commands for browser interaction. Key commands:
 """
 
 
+# v1 -> v2: exact-text replacements that point screenshots at .autoforge/validation/.
+# Only default template wording is matched, so customized prompts are left untouched.
+_VALIDATION_CODING_REPLACEMENTS: list[tuple[str, str]] = [
+    (
+        "- Take screenshots: `playwright-cli screenshot`\n",
+        "- Take screenshots: `playwright-cli screenshot --filename=.autoforge/validation/feature-<id>-<step>.png`\n",
+    ),
+    (
+        """**Token-efficient workflow:** `playwright-cli screenshot` and `snapshot` save files
+to `.playwright-cli/`. You will see a file link in the output. Read the file only
+when you need to verify visual appearance or find element refs.
+""",
+        """**Token-efficient workflow:** `playwright-cli screenshot` and `snapshot` save files
+to disk. You will see a file link in the output. Read the file only when you need
+to verify visual appearance or find element refs.
+
+**Validation artifacts:** Always save screenshots to `.autoforge/validation/` (it is
+gitignored) by passing `--filename=.autoforge/validation/<name>.png`. Never save
+screenshots anywhere else in the project, and never commit them.
+""",
+    ),
+    (
+        """subsequent commands interact via socket, `close` shuts it down. Screenshots and snapshots
+save to `.playwright-cli/` -- read the files when you need to verify content.
+""",
+        """subsequent commands interact via socket, `close` shuts it down. Save screenshots to
+`.autoforge/validation/` with `--filename=.autoforge/validation/<name>.png`; snapshots
+save to `.playwright-cli/` -- read the files when you need to verify content.
+""",
+    ),
+]
+
+_VALIDATION_TESTING_REPLACEMENTS: list[tuple[str, str]] = [
+    (
+        "- `playwright-cli screenshot` - Save screenshot to `.playwright-cli/`\n",
+        "- `playwright-cli screenshot --filename=.autoforge/validation/<name>.png`"
+        " - Save screenshot to `.autoforge/validation/`\n",
+    ),
+    (
+        "**Note:** Screenshots and snapshots save to files. Read the file to see the content.\n",
+        "**Note:** Screenshots and snapshots save to files. Read the file to see the content.\n"
+        "Always save screenshots to `.autoforge/validation/` (it is gitignored) -- never anywhere\n"
+        "else in the project, and never commit them.\n",
+    ),
+    (
+        "- `playwright-cli screenshot` - Take screenshot (saved to `.playwright-cli/`)\n",
+        "- `playwright-cli screenshot --filename=.autoforge/validation/<name>.png`"
+        " - Take screenshot (save to `.autoforge/validation/`)\n",
+    ),
+]
+
+
 def _get_migration_version(project_dir: Path) -> int:
     """Read the migration version from .autoforge/.migration_version."""
     from autoforge_paths import get_autoforge_dir
@@ -821,6 +877,52 @@ def _migrate_v0_to_v1(project_dir: Path) -> list[str]:
     return migrated
 
 
+def _migrate_v1_to_v2(project_dir: Path) -> list[str]:
+    """Migrate from v1 to v2 (validation artifacts in ``.autoforge/validation/``).
+
+    Idempotent sub-steps:
+    A. Refresh ``.autoforge/.gitignore`` (now ignores ``validation/``)
+    B. Create the ``.autoforge/validation/`` directory
+    C. Point screenshot instructions in coding_prompt.md / testing_prompt.md
+       at ``.autoforge/validation/``
+    """
+    from autoforge_paths import ensure_autoforge_dir, get_validation_dir
+
+    migrated: list[str] = []
+
+    # A + B. Gitignore and validation directory
+    try:
+        ensure_autoforge_dir(project_dir)
+        validation_dir = get_validation_dir(project_dir)
+        if not validation_dir.exists():
+            validation_dir.mkdir(parents=True, exist_ok=True)
+            migrated.append("Created .autoforge/validation/")
+    except (OSError, PermissionError) as e:
+        print(f"  Warning: Could not create .autoforge/validation/: {e}")
+
+    # C. Update prompts
+    prompts_dir = get_project_prompts_dir(project_dir)
+    for filename, replacements in (
+        ("coding_prompt.md", _VALIDATION_CODING_REPLACEMENTS),
+        ("testing_prompt.md", _VALIDATION_TESTING_REPLACEMENTS),
+    ):
+        prompt_path = prompts_dir / filename
+        if not prompt_path.exists():
+            continue
+        try:
+            content = prompt_path.read_text(encoding="utf-8")
+            updated = content
+            for old, new in replacements:
+                updated = updated.replace(old, new)
+            if updated != content:
+                prompt_path.write_text(updated, encoding="utf-8")
+                migrated.append(f"Updated {filename} to save screenshots in .autoforge/validation/")
+        except (OSError, PermissionError) as e:
+            print(f"  Warning: Could not update {filename}: {e}")
+
+    return migrated
+
+
 def migrate_project_to_current(project_dir: Path) -> list[str]:
     """Migrate an existing project to the current AutoForge version.
 
@@ -836,7 +938,10 @@ def migrate_project_to_current(project_dir: Path) -> list[str]:
     if current < 1:
         migrated.extend(_migrate_v0_to_v1(project_dir))
 
-    # Future: if current < 2: migrated.extend(_migrate_v1_to_v2(project_dir))
+    if current < 2:
+        migrated.extend(_migrate_v1_to_v2(project_dir))
+
+    # Future: if current < 3: migrated.extend(_migrate_v2_to_v3(project_dir))
 
     _set_migration_version(project_dir, CURRENT_MIGRATION_VERSION)
     return migrated
