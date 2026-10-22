@@ -8,6 +8,7 @@ Provides REST API, WebSocket, and static file serving.
 
 import asyncio
 import logging
+import mimetypes
 import os
 import shutil
 import sys
@@ -29,6 +30,18 @@ if sys.version_info < (3, 11):
 # Fix for Windows subprocess support in asyncio
 if sys.platform == "win32":
     asyncio.set_event_loop_policy(asyncio.WindowsProactorEventLoopPolicy())
+
+# Register correct MIME types for frontend assets. On Windows, Python's
+# mimetypes module reads the registry, where .js is often mapped to
+# "text/plain" (e.g. by editors). Browsers then refuse to execute the module
+# script and the UI renders a blank page. add_type() runs after the registry
+# is loaded, so these mappings take precedence.
+mimetypes.add_type("text/javascript", ".js")
+mimetypes.add_type("text/javascript", ".mjs")
+mimetypes.add_type("text/css", ".css")
+mimetypes.add_type("image/svg+xml", ".svg")
+mimetypes.add_type("application/json", ".json")
+mimetypes.add_type("application/wasm", ".wasm")
 
 from dotenv import load_dotenv
 
