@@ -7,7 +7,8 @@
  */
 
 import { useState, useRef, useEffect, useCallback, useMemo } from 'react'
-import { Send, Loader2, Wifi, WifiOff, Plus, History } from 'lucide-react'
+import { Send, Loader2, Wifi, WifiOff, Plus, History, HelpCircle, Sparkles, Bug } from 'lucide-react'
+import type { LucideIcon } from 'lucide-react'
 import { useAssistantChat } from '../hooks/useAssistantChat'
 import { ChatMessage as ChatMessageComponent } from './ChatMessage'
 import { ConversationHistory } from './ConversationHistory'
@@ -16,6 +17,29 @@ import type { ChatMessage } from '../lib/types'
 import { isSubmitEnter } from '../lib/keyboard'
 import { Button } from '@/components/ui/button'
 import { Textarea } from '@/components/ui/textarea'
+
+// Quick-start choices shown before the user sends their first message.
+// Each one prefills the input so the user can add details before sending.
+const QUICK_ACTIONS: { label: string; icon: LucideIcon; prefill: string; placeholder: string }[] = [
+  {
+    label: 'Ask for help',
+    icon: HelpCircle,
+    prefill: 'Question: ',
+    placeholder: 'Ask about the codebase...',
+  },
+  {
+    label: 'New feature',
+    icon: Sparkles,
+    prefill: 'New feature request: ',
+    placeholder: 'Describe the feature you want added...',
+  },
+  {
+    label: 'Report a bug',
+    icon: Bug,
+    prefill: 'Bug report: ',
+    placeholder: 'Describe what is broken (which feature, observed vs. expected)...',
+  },
+]
 
 interface AssistantChatProps {
   projectName: string
@@ -38,6 +62,7 @@ export function AssistantChat({
 }: AssistantChatProps) {
   const [inputValue, setInputValue] = useState('')
   const [showHistory, setShowHistory] = useState(false)
+  const [placeholder, setPlaceholder] = useState(QUICK_ACTIONS[0].placeholder)
   const messagesEndRef = useRef<HTMLDivElement>(null)
   const inputRef = useRef<HTMLTextAreaElement>(null)
   const hasStartedRef = useRef(false)
@@ -137,6 +162,19 @@ export function AssistantChat({
     setInputValue('')
   }
 
+  const handleQuickAction = (action: (typeof QUICK_ACTIONS)[number]) => {
+    setInputValue(action.prefill)
+    setPlaceholder(action.placeholder)
+    // Focus and move the caret after the prefilled text
+    requestAnimationFrame(() => {
+      const el = inputRef.current
+      if (el) {
+        el.focus()
+        el.setSelectionRange(el.value.length, el.value.length)
+      }
+    })
+  }
+
   const handleKeyDown = (e: React.KeyboardEvent<HTMLTextAreaElement>) => {
     if (isSubmitEnter(e)) {
       e.preventDefault()
@@ -169,6 +207,9 @@ export function AssistantChat({
     }
     return Array.from(messageMap.values())
   }, [initialMessages, messages, conversationId, isLoadingConversation])
+
+  const hasUserMessages = displayMessages.some((m) => m.role === 'user')
+  const showQuickActions = !hasUserMessages && !isLoadingConversation && !currentQuestions
 
   return (
     <div className="flex flex-col h-full">
@@ -252,6 +293,25 @@ export function AssistantChat({
             {displayMessages.map((message) => (
               <ChatMessageComponent key={message.id} message={message} />
             ))}
+            {showQuickActions && !isLoading && (
+              <div className="flex flex-wrap gap-2 px-4 pt-2" data-testid="assistant-quick-actions">
+                {QUICK_ACTIONS.map((action) => {
+                  const Icon = action.icon
+                  return (
+                    <Button
+                      key={action.label}
+                      variant="outline"
+                      size="sm"
+                      onClick={() => handleQuickAction(action)}
+                      disabled={connectionStatus !== 'connected'}
+                    >
+                      <Icon size={14} />
+                      {action.label}
+                    </Button>
+                  )
+                })}
+              </div>
+            )}
             <div ref={messagesEndRef} />
           </div>
         )}
@@ -289,7 +349,7 @@ export function AssistantChat({
             value={inputValue}
             onChange={(e) => setInputValue(e.target.value)}
             onKeyDown={handleKeyDown}
-            placeholder="Ask about the codebase..."
+            placeholder={placeholder}
             disabled={isLoading || isLoadingConversation || connectionStatus !== 'connected' || !!currentQuestions}
             className="flex-1 resize-none min-h-[44px] max-h-[120px]"
             rows={1}

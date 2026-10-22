@@ -17,6 +17,7 @@ Tools:
 - feature_clear_in_progress: Clear in-progress status
 - feature_create_bulk: Create multiple features at once
 - feature_create: Create a single feature
+- feature_report_bug: Report a bug on an existing feature (reopens it as pending)
 - feature_add_dependency: Add a dependency between features
 - feature_remove_dependency: Remove a dependency
 - feature_get_ready: Get features ready to implement
@@ -687,6 +688,73 @@ def feature_create(
         })
     except Exception as e:
         return json.dumps({"error": str(e)})
+
+
+@mcp.tool()
+def feature_report_bug(
+    feature_id: Annotated[int, Field(description="The ID of the existing feature the bug belongs to", ge=1)],
+    bug_description: Annotated[str, Field(min_length=1, description="What is broken: observed vs. expected behavior")],
+    steps: Annotated[list[str] | None, Field(
+        default=None,
+        description="Optional steps to reproduce the bug / verify the fix; appended to the feature's steps",
+    )] = None,
+) -> str:
+    """Report a bug against an existing feature and send it back to pending.
+
+    Use this instead of creating a new feature when the user reports that
+    something which was already implemented does not work correctly. The bug
+    report is appended to the feature's description (and any extra steps to
+    its steps), and the feature is marked as not passing so a coding agent
+    picks it up again. This keeps the backlog small and tied to the original
+    feature rather than accumulating "fix X" features.
+
+    Args:
+        feature_id: The ID of the feature that has the bug
+        bug_description: Clear description of the bug (observed vs. expected)
+        steps: Optional reproduction/verification steps to add to the feature
+
+    Returns:
+        JSON with the updated feature details, or error if not found.
+    """
+    bug_description = bug_description.strip()
+    if not bug_description:
+        return json.dumps({"error": "bug_description must not be empty"})
+    extra_steps = [s.strip() for s in (steps or []) if s and s.strip()]
+
+    session = get_session()
+    try:
+        feature = session.query(Feature).filter(Feature.id == feature_id).first()
+        if feature is None:
+            return json.dumps({"error": f"Feature with ID {feature_id} not found"})
+
+        if feature.in_progress:
+            return json.dumps({
+                "error": f"Feature #{feature_id} is currently in progress; "
+                         "wait for the agent to finish before reporting a bug against it"
+            })
+
+        was_passing = bool(feature.passes)
+        feature.description = f"{feature.description}\n\n**Bug report:** {bug_description}"
+        if extra_steps:
+            # Reassign (not mutate) so SQLAlchemy detects the JSON change
+            feature.steps = [*(feature.steps or []), *extra_steps]
+        feature.passes = False
+        feature.in_progress = False
+        session.commit()
+        session.refresh(feature)
+
+        status = "reopened and moved back to pending" if was_passing else "updated (still pending)"
+        return json.dumps({
+            "success": True,
+            "message": f"Bug reported on feature #{feature_id} '{feature.name}': {status}",
+            "was_passing": was_passing,
+            "feature": feature.to_dict(),
+        })
+    except Exception as e:
+        session.rollback()
+        return json.dumps({"error": f"Failed to report bug: {str(e)}"})
+    finally:
+        session.close()
 
 
 @mcp.tool()
