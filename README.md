@@ -258,6 +258,71 @@ This project uses a defense-in-depth security approach (see `security.py` and `c
 
 Commands not in the allowlist are blocked by the security hook.
 
+### Authentication & Roles (LAN / Remote Access)
+
+By default the UI only listens on localhost and has no login. When exposing it to other people (`--host 0.0.0.0`), turn on one of two auth modes:
+
+- **Built-in OIDC login** (`AUTOFORGE_AUTH_MODE=oidc`): AutoForge signs people in directly with Microsoft Entra ID, Authentik, Keycloak or any other OpenID Connect provider. No proxy needed.
+- **Proxy-header auth** (`AUTOFORGE_AUTH_MODE=header`): an authenticating reverse proxy you already run (Authentik outpost, oauth2-proxy, Authelia, Pomerium, ...) handles SSO and passes the user and their groups in HTTP headers.
+
+Either way, AutoForge maps users and groups to roles per project:
+
+| Role | Access |
+|------|--------|
+| `viewer` | Read-only: features, graph, logs, live progress |
+| `developer` | Full project control: agent, features, terminal, dev server, chats, schedules, prompts |
+| `admin` | Everything, plus global settings, the server folder browser, creating/deleting projects |
+
+Users only see projects they have a role on. Start by copying [`examples/auth.yaml`](examples/auth.yaml) to `~/.autoforge/auth.yaml` and listing your admins, groups and projects. The file is reloaded when it changes.
+
+#### Built-in OIDC login
+
+1. Register AutoForge as a web application with your identity provider. Use the redirect URI `http(s)://<your-host>:<port>/api/auth/callback`.
+   - **Entra ID**: App registrations → New registration → Web platform. Add App roles (e.g. `autoforge-admins`, `my-app-devs`) and assign them to users or groups; they arrive in the `roles` claim.
+   - **Authentik**: create an OAuth2/OpenID provider and application. Group names arrive in the `groups` claim.
+2. Set environment variables (e.g. in `~/.autoforge/.env` or `.env`):
+
+   ```bash
+   AUTOFORGE_AUTH_MODE=oidc
+   AUTOFORGE_ALLOW_REMOTE=1          # when serving other machines (set by --host)
+   AUTOFORGE_OIDC_ISSUER=https://login.microsoftonline.com/<tenant-id>/v2.0
+   # Authentik: https://authentik.example.com/application/o/<app-slug>/
+   AUTOFORGE_OIDC_CLIENT_ID=<client id>
+   AUTOFORGE_OIDC_CLIENT_SECRET=<client secret>   # omit for a public client (PKCE is always used)
+   # Optional:
+   # AUTOFORGE_OIDC_REDIRECT_URI=https://autoforge.example.com/api/auth/callback   # behind a proxy / TLS terminator
+   # AUTOFORGE_OIDC_GROUPS_CLAIM=groups,roles
+   # AUTOFORGE_OIDC_SCOPES=openid profile email
+   # AUTOFORGE_SESSION_TTL_HOURS=12
+   # AUTOFORGE_COOKIE_SECURE=auto      # auto (https only) | true | false
+   ```
+
+Opening the UI redirects you to the provider. Afterwards a "Sign out" entry appears in the sidebar. Sessions are kept in server memory, so restarting AutoForge signs everyone out. In `auth.yaml`, `users:` entries match the `preferred_username`, `email` or `sub` claim.
+
+#### Proxy-header auth
+
+1. Configure your proxy to authenticate users and forward their identity headers.
+2. Set environment variables (e.g. in `~/.autoforge/.env` or `.env`):
+
+   ```bash
+   AUTOFORGE_AUTH_MODE=header
+   # Header names (defaults suit oauth2-proxy; these are the Authentik values)
+   AUTOFORGE_AUTH_USER_HEADER=X-authentik-username
+   AUTOFORGE_AUTH_GROUPS_HEADER=X-authentik-groups
+   # Only these addresses may send identity headers (default: 127.0.0.1,::1)
+   AUTOFORGE_AUTH_TRUSTED_PROXIES=127.0.0.1,::1
+   # Recommended: the proxy must also send X-AutoForge-Proxy-Secret: <value>
+   AUTOFORGE_AUTH_PROXY_SECRET=change-me
+   ```
+
+3. Make sure clients can only reach AutoForge through the proxy (bind to `127.0.0.1` with the proxy on the same host, or firewall the port).
+4. If users reach the proxy on a non-localhost hostname, also set `AUTOFORGE_ALLOW_REMOTE=1` (`--host 0.0.0.0` sets it for you). Otherwise the WebSocket Origin check refuses the live-update socket, and a forwarded client address (`X-Forwarded-For`) trips the localhost-only check.
+5. Configure the proxy to pass the original `Host` header through (e.g. nginx `proxy_set_header Host $host;`). Cross-origin write protection compares the browser's `Origin` with `Host`, so a rewritten `Host` makes every write fail.
+
+**oauth2-proxy (Entra ID)** sends `X-Forwarded-User` / `X-Forwarded-Groups` (the defaults) when run with `--set-xauthrequest` / `--pass-user-headers`; Entra ID groups arrive as object IDs, so use those in `auth.yaml`.
+
+Requests from addresses not in `AUTOFORGE_AUTH_TRUSTED_PROXIES` are rejected. If your proxy sends `X-Forwarded-For`, uvicorn replaces the client address with the forwarded one for proxies it trusts (127.0.0.1 by default); in that case set `AUTOFORGE_AUTH_PROXY_SECRET` and `AUTOFORGE_AUTH_TRUSTED_PROXIES=*`. `/api/health` stays unauthenticated for proxy health checks.
+
 ---
 
 ## Web UI Development

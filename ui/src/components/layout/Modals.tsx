@@ -1,4 +1,5 @@
 import { useAppContext } from '@/contexts/AppContext'
+import { useAuth } from '@/hooks/useProjects'
 import { AddFeatureForm } from '../AddFeatureForm'
 import { FeatureModal } from '../FeatureModal'
 import { ExpandProjectModal } from '../ExpandProjectModal'
@@ -34,11 +35,12 @@ export function Modals() {
     wsState,
     queryClient,
   } = useAppContext()
+  const { canEdit } = useAuth()
 
   return (
     <>
       {/* Add Feature Modal */}
-      {showAddFeature && selectedProject && (
+      {showAddFeature && selectedProject && canEdit(selectedProject) && (
         <AddFeatureForm
           projectName={selectedProject}
           onClose={() => setShowAddFeature(false)}
@@ -55,7 +57,7 @@ export function Modals() {
       )}
 
       {/* Expand Project Modal */}
-      {showExpandProject && selectedProject && hasSpec && (
+      {showExpandProject && selectedProject && canEdit(selectedProject) && hasSpec && (
         <ExpandProjectModal
           isOpen={showExpandProject}
           projectName={selectedProject}
@@ -67,7 +69,7 @@ export function Modals() {
       )}
 
       {/* Spec Creation Chat - full screen overlay */}
-      {showSpecChat && selectedProject && (
+      {showSpecChat && selectedProject && canEdit(selectedProject) && (
         <div className="fixed inset-0 z-50 bg-background">
           <SpecCreationChat
             projectName={selectedProject}
@@ -100,7 +102,7 @@ export function Modals() {
       )}
 
       {/* Assistant FAB and Panel - hide when expand modal or spec creation is open */}
-      {selectedProject && !showExpandProject && !isSpecCreating && !showSpecChat && (
+      {selectedProject && canEdit(selectedProject) && !showExpandProject && !isSpecCreating && !showSpecChat && (
         <>
           <AssistantFAB
             onClick={() => setAssistantOpen(!assistantOpen)}

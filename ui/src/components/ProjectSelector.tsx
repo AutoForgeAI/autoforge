@@ -3,7 +3,7 @@ import { ChevronDown, Plus, FolderOpen, Loader2, Trash2 } from 'lucide-react'
 import type { ProjectSummary } from '../lib/types'
 import { NewProjectModal } from './NewProjectModal'
 import { ConfirmDialog } from './ConfirmDialog'
-import { useDeleteProject } from '../hooks/useProjects'
+import { useAuth, useDeleteProject } from '../hooks/useProjects'
 import { Button } from '@/components/ui/button'
 import { Badge } from '@/components/ui/badge'
 import {
@@ -34,6 +34,7 @@ export function ProjectSelector({
   const [projectToDelete, setProjectToDelete] = useState<string | null>(null)
 
   const deleteProject = useDeleteProject()
+  const { isAdmin } = useAuth()
 
   const handleProjectCreated = (projectName: string) => {
     onSelectProject(projectName)
@@ -119,14 +120,16 @@ export function ProjectSelector({
                       </span>
                     )}
                   </span>
-                  <Button
-                    variant="ghost"
-                    size="icon-xs"
-                    onClick={(e: React.MouseEvent) => handleDeleteClick(e, project.name)}
-                    className="text-muted-foreground hover:text-destructive"
-                  >
-                    <Trash2 size={14} />
-                  </Button>
+                  {isAdmin && (
+                    <Button
+                      variant="ghost"
+                      size="icon-xs"
+                      onClick={(e: React.MouseEvent) => handleDeleteClick(e, project.name)}
+                      className="text-muted-foreground hover:text-destructive"
+                    >
+                      <Trash2 size={14} />
+                    </Button>
+                  )}
                 </DropdownMenuItem>
               ))}
             </div>
@@ -136,9 +139,9 @@ export function ProjectSelector({
             </div>
           )}
 
-          <DropdownMenuSeparator className="my-0" />
+          {isAdmin && <DropdownMenuSeparator className="my-0" />}
 
-          <div className="p-1">
+          {isAdmin && <div className="p-1">
             <DropdownMenuItem
               onSelect={() => {
                 setShowNewProjectModal(true)
@@ -148,7 +151,7 @@ export function ProjectSelector({
               <Plus size={16} />
               New Project
             </DropdownMenuItem>
-          </div>
+          </div>}
         </DropdownMenuContent>
       </DropdownMenu>
 

@@ -2,9 +2,10 @@
  * React Query hooks for project data
  */
 
+import { useCallback } from 'react'
 import { useQuery, useMutation, useQueryClient } from '@tanstack/react-query'
 import * as api from '../lib/api'
-import type { DevServerConfig, FeatureCreate, FeatureUpdate, ModelsResponse, ProjectSettingsUpdate, ProvidersResponse, Settings, SettingsUpdate } from '../lib/types'
+import type { AuthInfo, AuthRole, DevServerConfig, FeatureCreate, FeatureUpdate, ModelsResponse, ProjectSettingsUpdate, ProvidersResponse, Settings, SettingsUpdate } from '../lib/types'
 
 // ============================================================================
 // Projects
@@ -240,6 +241,59 @@ export function useSetupStatus() {
     queryKey: ['setup-status'],
     queryFn: api.getSetupStatus,
     staleTime: 60000, // Cache for 1 minute
+  })
+}
+
+// ============================================================================
+// Auth
+// ============================================================================
+
+// Used while /api/auth/me is loading or unavailable (auth disabled = full access)
+const AUTH_DISABLED: AuthInfo = {
+  enabled: false,
+  user: null,
+  groups: [],
+  is_admin: true,
+  default_role: 'admin',
+  projects: {},
+}
+
+export function useAuth() {
+  const { data } = useQuery({
+    queryKey: ['auth-me'],
+    queryFn: api.getAuthInfo,
+    staleTime: 60000,
+    retry: 1,
+  })
+  const auth = data ?? AUTH_DISABLED
+
+  // Stable callbacks so consumers can list them as effect dependencies
+  const roleFor = useCallback((projectName: string | null): AuthRole => {
+    if (!auth.enabled || auth.is_admin) return 'admin'
+    if (!projectName) return auth.default_role
+    return auth.projects[projectName] ?? auth.default_role
+  }, [auth])
+
+  const canEdit = useCallback(
+    (projectName: string | null) => ['developer', 'admin'].includes(roleFor(projectName)),
+    [roleFor],
+  )
+
+  return {
+    auth,
+    roleFor,
+    isAdmin: !auth.enabled || auth.is_admin,
+    canEdit,
+  }
+}
+
+export function useLogout() {
+  return useMutation({
+    mutationFn: api.logout,
+    onSuccess: (result) => {
+      // Also end the identity provider session when it supports RP-initiated logout
+      window.location.href = result.end_session_url ?? '/'
+    },
   })
 }
 

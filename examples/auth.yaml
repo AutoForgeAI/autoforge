@@ -1,0 +1,60 @@
+# AutoForge Roles Configuration
+# =============================
+# Location: ~/.autoforge/auth.yaml (override with AUTOFORGE_AUTH_CONFIG)
+#
+# Used when AUTOFORGE_AUTH_MODE is "header" or "oidc":
+#   header - AutoForge trusts the identity headers set by an authenticating
+#            reverse proxy (Authentik, oauth2-proxy for Entra ID / Google /
+#            GitHub / Keycloak, Authelia, ...)
+#   oidc   - AutoForge signs users in itself with an OpenID Connect provider
+#            (Entra ID, Authentik, Keycloak, ...)
+# Either way, users and groups are mapped onto the roles defined here.
+#
+# OIDC mode: "users" entries match the preferred_username, email or sub
+# claim; "groups" entries match the values of AUTOFORGE_OIDC_GROUPS_CLAIM
+# (default: the "groups" and "roles" claims). For Entra ID, define App roles
+# on the app registration and list those role values here; the "groups"
+# claim only contains group object IDs.
+#
+# The file is reloaded automatically when it changes. If it is missing or
+# invalid, nobody gets access (fail closed) - check the server log.
+#
+# Roles (lowest to highest):
+#   none       - no access to the project (it is hidden from the project list)
+#   viewer     - read-only: browse features, graph, logs, live progress
+#   developer  - full project control: agent, features, terminal, dev server,
+#                assistant / spec / expand chats, schedules, prompts, reset
+#   admin      - everything on every project, plus global settings, the server
+#                filesystem browser, and creating / deleting projects
+#
+# User and group names are matched case-insensitively. When a user matches
+# several rules, the highest role wins.
+
+version: 1
+
+# Role for authenticated users who match no rule below: none | viewer | developer
+default_role: none
+
+# Global administrators
+admins:
+  users:
+    - alice@example.com
+  groups:
+    - autoforge-admins          # Authentik group, Entra ID app role, or Entra ID group object ID
+
+# Per-project roles. "*" applies to every project.
+projects:
+  "*":
+    viewer:
+      groups:
+        - engineering
+
+  my-app:
+    developer:
+      users:
+        - bob@example.com
+      groups:
+        - my-app-devs
+    viewer:
+      groups:
+        - qa

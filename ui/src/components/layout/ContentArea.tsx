@@ -6,6 +6,7 @@
  */
 
 import { useAppContext } from '@/contexts/AppContext'
+import { useAuth } from '@/hooks/useProjects'
 import { SetupWizard } from '../SetupWizard'
 import { ProjectSetupRequired } from '../ProjectSetupRequired'
 import { DashboardView } from '../views/DashboardView'
@@ -27,6 +28,7 @@ export function ContentArea() {
     activeView,
     selectedProjectData,
   } = useAppContext()
+  const { canEdit } = useAuth()
 
   // Step 1: First-run setup wizard
   if (!setupComplete) {
@@ -57,11 +59,25 @@ export function ContentArea() {
         <ProjectSetupRequired
           projectName={selectedProject}
           projectPath={selectedProjectData?.path}
-          onCreateWithClaude={() => setShowSpecChat(true)}
+          onCreateWithClaude={canEdit(selectedProject) ? () => setShowSpecChat(true) : undefined}
           onEditManually={() => {
             /* Could navigate to terminal view */
           }}
         />
+      </div>
+    )
+  }
+
+  // Interactive tools need the developer role when auth is enabled
+  if ((activeView === 'terminal' || activeView === 'assistant') && !canEdit(selectedProject)) {
+    return (
+      <div className="flex-1 flex items-center justify-center">
+        <div className="text-center">
+          <h2 className="font-display text-2xl font-bold mb-2">Read-only access</h2>
+          <p className="text-muted-foreground">
+            You need the developer role on this project to use the {activeView}.
+          </p>
+        </div>
       </div>
     )
   }

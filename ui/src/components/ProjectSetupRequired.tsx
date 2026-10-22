@@ -5,7 +5,8 @@ import { Card, CardContent, CardDescription, CardHeader, CardTitle } from '@/com
 interface ProjectSetupRequiredProps {
   projectName: string
   projectPath?: string
-  onCreateWithClaude: () => void
+  /** Omitted for read-only users: the setup options are replaced by a notice */
+  onCreateWithClaude?: () => void
   onEditManually: () => void
 }
 
@@ -33,6 +34,12 @@ export function ProjectSetupRequired({
           )}
         </CardHeader>
         <CardContent className="space-y-4">
+          {!onCreateWithClaude ? (
+            <p className="text-center text-muted-foreground" data-testid="setup-read-only">
+              You have read-only access to this project. Someone with the developer role needs to create the app spec.
+            </p>
+          ) : (
+          <>
           <p className="text-center text-muted-foreground">
             Choose how you want to create your app specification:
           </p>
@@ -78,6 +85,8 @@ export function ProjectSetupRequired({
               </CardContent>
             </Card>
           </div>
+          </>
+          )}
 
           <p className="text-center text-xs text-muted-foreground pt-4">
             The app spec tells the agent what to build. It includes the application name,

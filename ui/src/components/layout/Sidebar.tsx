@@ -1,4 +1,5 @@
 import { useAppContext } from '@/contexts/AppContext'
+import { useAuth, useLogout } from '@/hooks/useProjects'
 import { SidebarItem } from './SidebarItem'
 import { ProjectSelector } from '../ProjectSelector'
 import {
@@ -15,6 +16,8 @@ import {
   BookOpen,
   PanelLeftClose,
   PanelLeftOpen,
+  UserRound,
+  LogOut,
 } from 'lucide-react'
 import { Button } from '@/components/ui/button'
 import { Tooltip, TooltipTrigger, TooltipContent } from '@/components/ui/tooltip'
@@ -42,6 +45,9 @@ export function Sidebar() {
     wsState,
     setIsSpecCreating,
   } = useAppContext()
+  const { auth, roleFor, canEdit } = useAuth()
+  const logoutMutation = useLogout()
+  const editable = canEdit(selectedProject)
 
   const browserCount = wsState.browserScreenshots.size
   const logCount = wsState.logs.length
@@ -164,14 +170,14 @@ export function Sidebar() {
               </p>
             )}
 
-            <SidebarItem
+            {editable && <SidebarItem
               icon={Terminal}
               label="Terminal"
               isActive={activeView === 'terminal'}
               isCollapsed={sidebarCollapsed}
               onClick={() => setActiveView('terminal')}
               shortcutKey="T"
-            />
+            />}
             <SidebarItem
               icon={ScrollText}
               label="Logs"
@@ -181,14 +187,14 @@ export function Sidebar() {
               shortcutKey="D"
               badge={logCount > 0 ? logCount : undefined}
             />
-            <SidebarItem
+            {editable && <SidebarItem
               icon={Bot}
               label="Assistant"
               isActive={activeView === 'assistant'}
               isCollapsed={sidebarCollapsed}
               onClick={() => setActiveView('assistant')}
               shortcutKey="A"
-            />
+            />}
           </>
         ) : (
           /* Prompt when no project selected */
@@ -207,6 +213,25 @@ export function Sidebar() {
           ─────────────────────────────────────────────────────────────────── */}
       <div className="flex-shrink-0 mt-auto px-2 py-2.5 border-t border-sidebar-border/60">
         <div className={cn('flex flex-col', sidebarCollapsed ? 'items-center gap-1' : 'gap-0.5')}>
+          {/* Signed-in user (only when proxy auth is enabled) */}
+          {auth.enabled && auth.user && (
+            <UserBadge
+              user={auth.display_name || auth.user}
+              role={selectedProject || auth.is_admin ? roleFor(selectedProject) : null}
+              collapsed={sidebarCollapsed}
+            />
+          )}
+
+          {/* Sign out (built-in OIDC login only; a proxy owns its own logout) */}
+          {auth.mode === 'oidc' && auth.user && (
+            <UtilityButton
+              icon={LogOut}
+              label="Sign out"
+              collapsed={sidebarCollapsed}
+              onClick={() => logoutMutation.mutate()}
+            />
+          )}
+
           {/* Settings - navigates to settings view */}
           <UtilityButton
             icon={Settings}
@@ -245,6 +270,43 @@ export function Sidebar() {
         </div>
       </div>
     </aside>
+  )
+}
+
+/* ─────────────────────────────────────────────────────────────────────────────
+   Signed-in user and their role on the selected project.
+   ───────────────────────────────────────────────────────────────────────────── */
+
+function UserBadge({ user, role, collapsed }: { user: string; role: string | null; collapsed: boolean }) {
+  const label = role ? `${user} (${role === 'none' ? 'no access' : role})` : user
+
+  if (collapsed) {
+    return (
+      <Tooltip>
+        <TooltipTrigger asChild>
+          <span
+            aria-label={label}
+            className="h-8 w-8 flex items-center justify-center text-sidebar-foreground/60"
+          >
+            <UserRound size={16} />
+          </span>
+        </TooltipTrigger>
+        <TooltipContent side="right" sideOffset={8}>{label}</TooltipContent>
+      </Tooltip>
+    )
+  }
+
+  return (
+    <div
+      title={label}
+      className="flex items-center gap-3 w-full h-8 px-3 text-[13px] text-sidebar-foreground/60"
+    >
+      <UserRound size={16} className="shrink-0" />
+      <span className="flex-1 truncate">{user}</span>
+      {role && (
+        <span className="text-[10px] font-semibold uppercase tracking-wider opacity-70">{role}</span>
+      )}
+    </div>
   )
 }
 

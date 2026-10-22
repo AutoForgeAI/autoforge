@@ -1,7 +1,8 @@
 import { useAppContext } from '@/contexts/AppContext'
+import { useAuth } from '@/hooks/useProjects'
 import { AgentControl } from '../AgentControl'
 import { DevServerControl } from '../DevServerControl'
-import { RotateCcw } from 'lucide-react'
+import { Eye, RotateCcw } from 'lucide-react'
 import { Button } from '@/components/ui/button'
 import { Badge } from '@/components/ui/badge'
 import { Tooltip, TooltipTrigger, TooltipContent } from '@/components/ui/tooltip'
@@ -19,20 +20,36 @@ export function ControlBar() {
     settings,
     setShowResetModal,
   } = useAppContext()
+  const { canEdit } = useAuth()
+  const editable = canEdit(selectedProject)
 
   return (
     <div className="sticky top-0 z-20 w-full flex items-center gap-3 bg-card/80 backdrop-blur-md border-b border-border px-4 py-2 shrink-0">
-      <AgentControl
-        projectName={selectedProject!}
-        status={wsState.agentStatus}
-        defaultConcurrency={selectedProjectData?.default_concurrency}
-      />
+      {editable ? (
+        <>
+          <AgentControl
+            projectName={selectedProject!}
+            status={wsState.agentStatus}
+            defaultConcurrency={selectedProjectData?.default_concurrency}
+          />
 
-      <DevServerControl
-        projectName={selectedProject!}
-        status={wsState.devServerStatus}
-        url={wsState.devServerUrl}
-      />
+          <DevServerControl
+            projectName={selectedProject!}
+            status={wsState.devServerStatus}
+            url={wsState.devServerUrl}
+          />
+        </>
+      ) : (
+        <Tooltip>
+          <TooltipTrigger asChild>
+            <Badge variant="outline" className="gap-1.5 text-[11px]">
+              <Eye size={14} />
+              Read-only
+            </Badge>
+          </TooltipTrigger>
+          <TooltipContent>You have viewer access to this project</TooltipContent>
+        </Tooltip>
+      )}
 
       <div className="flex-1" />
 
@@ -49,7 +66,7 @@ export function ControlBar() {
         </Badge>
       )}
 
-      <Tooltip>
+      {editable && <Tooltip>
         <TooltipTrigger asChild>
           <Button
             onClick={() => setShowResetModal(true)}
@@ -62,7 +79,7 @@ export function ControlBar() {
           </Button>
         </TooltipTrigger>
         <TooltipContent>Reset (R)</TooltipContent>
-      </Tooltip>
+      </Tooltip>}
     </div>
   )
 }

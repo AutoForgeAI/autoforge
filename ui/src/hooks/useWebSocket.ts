@@ -391,6 +391,13 @@ export function useProjectWebSocket(projectName: string | null) {
         setState(prev => ({ ...prev, isConnected: false }))
         wsRef.current = null
 
+        // Not signed in (auth enabled, session expired): reload so the
+        // server can send the browser through the login again
+        if (event.code === 4401) {
+          window.location.reload()
+          return
+        }
+
         // Don't retry on application-level errors (4xxx codes won't resolve on retry)
         const isAppError = event.code >= 4000 && event.code <= 4999
         if (isAppError) return

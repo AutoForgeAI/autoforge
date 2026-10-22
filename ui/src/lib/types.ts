@@ -173,6 +173,21 @@ export interface SetupStatus {
   npm: boolean
 }
 
+// Auth types
+export type AuthRole = 'none' | 'viewer' | 'developer' | 'admin'
+
+export interface AuthInfo {
+  enabled: boolean
+  // 'oidc' = built-in login (the UI offers "Sign out"); 'header' = reverse proxy
+  mode?: 'none' | 'header' | 'oidc'
+  user: string | null
+  display_name?: string | null
+  groups: string[]
+  is_admin: boolean
+  default_role: AuthRole
+  projects: Record<string, AuthRole>
+}
+
 // Dev Server types
 export type DevServerStatus = 'stopped' | 'running' | 'crashed'
 

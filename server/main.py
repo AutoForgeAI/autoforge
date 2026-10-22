@@ -43,6 +43,7 @@ from fastapi.staticfiles import StaticFiles
 from .routers import (
     agent_router,
     assistant_chat_router,
+    auth_router,
     devserver_router,
     expand_project_router,
     features_router,
@@ -65,6 +66,7 @@ from .services.expand_chat_session import cleanup_all_expand_sessions
 from .services.process_manager import cleanup_all_managers, cleanup_orphaned_locks
 from .services.scheduler_service import cleanup_scheduler, get_scheduler
 from .services.terminal_manager import cleanup_all_terminals
+from .utils import auth
 from .utils.ws_security import WebSocketOriginMiddleware
 from .websocket import project_websocket
 
@@ -127,8 +129,24 @@ if ALLOW_REMOTE:
         "Only use this in trusted network environments."
     )
 
-# CORS - allow all origins when remote access is enabled, otherwise localhost only
-if ALLOW_REMOTE:
+# Optional authentication & roles via a trusted reverse proxy (see server/utils/auth.py)
+AUTH_SETTINGS = auth.load_auth_settings()
+auth.configure(AUTH_SETTINGS)
+
+if AUTH_SETTINGS.enabled:
+    logger.info(
+        "Auth enabled (mode=%s, user header=%s, roles file=%s)",
+        AUTH_SETTINGS.mode, AUTH_SETTINGS.user_header, AUTH_SETTINGS.config_path,
+    )
+    if AUTH_SETTINGS.trust_any_proxy and not AUTH_SETTINGS.proxy_secret:
+        logger.warning(
+            "AUTOFORGE_AUTH_TRUSTED_PROXIES='*' without AUTOFORGE_AUTH_PROXY_SECRET: anyone who can "
+            "reach this server can impersonate any user by setting the identity header."
+        )
+
+# CORS - allow all origins when remote access is enabled, otherwise localhost only.
+# With auth enabled the proxy authenticates via cookies, so never reflect foreign origins.
+if ALLOW_REMOTE and not AUTH_SETTINGS.enabled:
     app.add_middleware(
         CORSMiddleware,
         allow_origins=["*"],  # Allow all origins for remote access
@@ -162,6 +180,10 @@ else:
 # Registered unconditionally so it applies even when AUTOFORGE_ALLOW_REMOTE=1.
 app.add_middleware(WebSocketOriginMiddleware, allow_remote=ALLOW_REMOTE)
 
+_auth_store = auth.get_store()
+if _auth_store is not None:
+    app.add_middleware(auth.AuthMiddleware, settings=AUTH_SETTINGS, store=_auth_store)
+
 if not ALLOW_REMOTE:
     @app.middleware("http")
     async def require_localhost(request: Request, call_next):
@@ -191,6 +213,7 @@ app.include_router(assistant_chat_router)
 app.include_router(settings_router)
 app.include_router(terminal_router)
 app.include_router(scaffold_router)
+app.include_router(auth_router)
 
 
 # ============================================================================

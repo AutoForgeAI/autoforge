@@ -120,6 +120,8 @@ python test_security_integration.py   # Integration tests (9 tests)
 python -m pytest test_client.py       # Client tests (20 tests)
 python -m pytest test_dependency_resolver.py  # Dependency resolver tests (12 tests)
 python -m pytest test_rate_limit_utils.py     # Rate limit tests (22 tests)
+python -m pytest test_auth.py                 # Auth & roles tests (proxy-header mode)
+python -m pytest test_auth_oidc.py            # Built-in OIDC login tests (fake identity provider)
 ```
 
 ### React UI
@@ -202,6 +204,7 @@ The FastAPI server provides REST and WebSocket endpoints for the UI:
 - `devserver.py` - Dev server control (start/stop) and config
 - `schedules.py` - CRUD for time-based agent scheduling
 - `settings.py` - Global settings management (model selection, YOLO, batch size, headless browser)
+- `auth.py` - `GET /api/auth/me` (current user and effective project roles); OIDC mode adds `/login`, `/callback`, `POST /logout`
 
 **Services** (`server/services/`):
 - `process_manager.py` - Agent process lifecycle management
@@ -218,6 +221,9 @@ The FastAPI server provides REST and WebSocket endpoints for the UI:
 - `process_utils.py` - Process management utilities
 - `project_helpers.py` - Project path resolution helpers
 - `validation.py` - Project name validation
+- `ws_security.py` - WebSocket Origin validation (CSWSH protection)
+- `auth.py` - Optional auth (`AUTOFORGE_AUTH_MODE=header` for a reverse proxy, `oidc` for built-in login) with per-project roles (viewer/developer/admin) from `~/.autoforge/auth.yaml`; pure-ASGI `AuthMiddleware` covers HTTP and WebSocket; see `examples/auth.yaml` and the README "Authentication & Roles" section
+- `oidc.py` - OIDC Authorization Code + PKCE client, ID token verification via JWKS (PyJWT); used by `auth.py` in `oidc` mode
 
 ### Feature Management
 
