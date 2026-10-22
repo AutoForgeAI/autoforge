@@ -120,6 +120,7 @@ python test_security_integration.py   # Integration tests (9 tests)
 python -m pytest test_client.py       # Client tests (20 tests)
 python -m pytest test_dependency_resolver.py  # Dependency resolver tests (12 tests)
 python -m pytest test_rate_limit_utils.py     # Rate limit tests (22 tests)
+python -m pytest test_knowledge.py            # Knowledge files tests
 ```
 
 ### React UI
@@ -202,6 +203,7 @@ The FastAPI server provides REST and WebSocket endpoints for the UI:
 - `devserver.py` - Dev server control (start/stop) and config
 - `schedules.py` - CRUD for time-based agent scheduling
 - `settings.py` - Global settings management (model selection, YOLO, batch size, headless browser)
+- `knowledge.py` - Upload/list/delete project knowledge files (`.autoforge/knowledge/*.md`)
 
 **Services** (`server/services/`):
 - `process_manager.py` - Agent process lifecycle management
@@ -287,6 +289,7 @@ Projects can be stored in any directory (registered in `~/.autoforge/registry.db
 - `.autoforge/features.db` - SQLite database with feature test cases
 - `.autoforge/.agent.lock` - Lock file to prevent multiple agent instances
 - `.autoforge/allowed_commands.yaml` - Project-specific bash command allowlist (optional)
+- `.autoforge/knowledge/` - User-uploaded reference docs (.md/.markdown/.txt); listed in every agent/chat prompt so agents read them for extra requirements context (upload via the book icon in the UI)
 - `.autoforge/.gitignore` - Ignores runtime files
 - `.claude/skills/playwright-cli/` - Playwright CLI skill for browser automation
 - `.playwright/cli.config.json` - Browser configuration (headless, viewport, etc.)

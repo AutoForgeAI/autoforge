@@ -69,6 +69,55 @@ def load_prompt(name: str, project_dir: Path | None = None) -> str:
     )
 
 
+KNOWLEDGE_FILE_EXTENSIONS = (".md", ".markdown", ".txt")
+
+
+def list_knowledge_files(project_dir: Path) -> list[Path]:
+    """Return the project's knowledge files (``.autoforge/knowledge/*.md`` etc.), sorted by name."""
+    from autoforge_paths import get_knowledge_dir
+    knowledge_dir = get_knowledge_dir(project_dir)
+    if not knowledge_dir.is_dir():
+        return []
+    try:
+        return sorted(
+            (p for p in knowledge_dir.iterdir()
+             if p.is_file() and p.suffix.lower() in KNOWLEDGE_FILE_EXTENSIONS),
+            key=lambda p: p.name.lower(),
+        )
+    except OSError:
+        return []
+
+
+def get_knowledge_prompt_section(project_dir: Path | None) -> str:
+    """Build a prompt section pointing the agent at the project's knowledge files.
+
+    Files are referenced by path rather than inlined so large documents don't
+    bloat every session's prompt; the agent reads them on demand.
+
+    Returns:
+        The section text (starting with a separator), or "" if there are no files.
+    """
+    if project_dir is None:
+        return ""
+    files = list_knowledge_files(project_dir)
+    if not files:
+        return ""
+    listing = "\n".join(
+        f"- `{p.relative_to(project_dir).as_posix()}`" for p in files
+    )
+    return (
+        "\n\n---\n\n"
+        "## PROJECT KNOWLEDGE FILES\n\n"
+        "The user has provided the following reference documents (requirements, research, "
+        "design notes, etc.) with additional context for this project:\n\n"
+        f"{listing}\n\n"
+        "Read the ones relevant to your current task with the Read tool before you start. "
+        "Treat them as supplementary requirements: where they add detail, follow them; "
+        "if they conflict with the app spec or feature descriptions, prefer the app spec "
+        "and features.\n"
+    )
+
+
 def get_initializer_prompt(project_dir: Path | None = None) -> str:
     """Load the initializer prompt (project-specific if available)."""
     return load_prompt("initializer_prompt", project_dir)

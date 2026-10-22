@@ -181,7 +181,13 @@ You: Done! I've added "S3 Sync Integration" to your backlog. It's now visible on
 3. Use the feature tools to answer questions about project progress
 4. Search the codebase to find relevant information before answering
 5. When creating features, confirm what was created
-6. If you're unsure about details, ask for clarification"""
+6. If you're unsure about details, ask for clarification""" + _knowledge_section(project_dir)
+
+
+def _knowledge_section(project_dir: Path) -> str:
+    """Return the prompt section listing user-uploaded knowledge files (or "")."""
+    from prompts import get_knowledge_prompt_section
+    return get_knowledge_prompt_section(project_dir)
 
 
 class AssistantChatSession:

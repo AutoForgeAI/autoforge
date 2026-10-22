@@ -162,6 +162,10 @@ class ExpandChatSession:
         project_path = str(self.project_dir.resolve())
         system_prompt = skill_content.replace("$ARGUMENTS", project_path)
 
+        # Point Claude at any user-uploaded reference docs (.autoforge/knowledge/)
+        from prompts import get_knowledge_prompt_section
+        system_prompt += get_knowledge_prompt_section(self.project_dir)
+
         # Build environment overrides for API configuration
         from registry import DEFAULT_MODEL, get_effective_sdk_env, get_effort_setting
         sdk_env = get_effective_sdk_env()

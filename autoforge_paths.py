@@ -170,6 +170,15 @@ def get_prompts_dir(project_dir: Path) -> Path:
 # Non-dual-path helpers (always use new location)
 # ---------------------------------------------------------------------------
 
+def get_knowledge_dir(project_dir: Path) -> Path:
+    """Return the ``.autoforge/knowledge/`` directory for user-supplied reference docs.
+
+    Holds markdown/text files (requirements, research notes, ...) uploaded by
+    the user to give agents additional project context.  Does NOT create it.
+    """
+    return project_dir / ".autoforge" / "knowledge"
+
+
 def get_expand_settings_path(project_dir: Path, uuid_hex: str) -> Path:
     """Return the path for an ephemeral expand-session settings file.
 

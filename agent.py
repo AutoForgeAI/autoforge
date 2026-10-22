@@ -35,6 +35,7 @@ from prompts import (
     get_batch_feature_prompt,
     get_coding_prompt,
     get_initializer_prompt,
+    get_knowledge_prompt_section,
     get_single_feature_prompt,
     get_testing_prompt,
 )
@@ -288,6 +289,9 @@ async def run_autonomous_agent(
         else:
             # General coding prompt (legacy path)
             prompt = get_coding_prompt(project_dir, yolo_mode=yolo_mode)
+
+        # Point the agent at any user-uploaded knowledge files (.autoforge/knowledge/)
+        prompt += get_knowledge_prompt_section(project_dir)
 
         # Run session with async context manager
         # Wrap in try/except to handle MCP server startup failures gracefully

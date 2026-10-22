@@ -728,3 +728,18 @@ export interface NextRunResponse {
   is_currently_running: boolean
   active_schedule_count: number
 }
+
+// ============================================================================
+// Knowledge Files (.autoforge/knowledge/)
+// ============================================================================
+
+export interface KnowledgeFileInfo {
+  filename: string
+  size: number
+  modified_at: string
+}
+
+export interface KnowledgeFileContent {
+  filename: string
+  content: string
+}

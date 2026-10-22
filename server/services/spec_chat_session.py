@@ -135,6 +135,10 @@ class SpecChatSession:
         project_path = str(self.project_dir.resolve())
         system_prompt = skill_content.replace("$ARGUMENTS", project_path)
 
+        # Point Claude at any user-uploaded reference docs (.autoforge/knowledge/)
+        from prompts import get_knowledge_prompt_section
+        system_prompt += get_knowledge_prompt_section(self.project_dir)
+
         # Write system prompt to CLAUDE.md file to avoid Windows command line length limit
         # The SDK will read this via setting_sources=["project"]
         claude_md_path = self.project_dir / "CLAUDE.md"

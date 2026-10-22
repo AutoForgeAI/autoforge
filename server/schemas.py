@@ -717,3 +717,26 @@ class NextRunResponse(BaseModel):
     next_end: datetime | None  # UTC (latest end if overlapping)
     is_currently_running: bool
     active_schedule_count: int
+
+
+# ============================================================================
+# Knowledge File Schemas
+# ============================================================================
+
+class KnowledgeFileInfo(BaseModel):
+    """Metadata for a project knowledge file (.autoforge/knowledge/)."""
+    filename: str
+    size: int
+    modified_at: datetime
+
+
+class KnowledgeFileContent(BaseModel):
+    """Content of a project knowledge file."""
+    filename: str
+    content: str
+
+
+class KnowledgeFileUpload(BaseModel):
+    """Request body for uploading a knowledge file (text content)."""
+    filename: str = Field(..., min_length=1, max_length=255)
+    content: str

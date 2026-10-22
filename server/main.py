@@ -47,6 +47,7 @@ from .routers import (
     expand_project_router,
     features_router,
     filesystem_router,
+    knowledge_router,
     projects_router,
     scaffold_router,
     schedules_router,
@@ -191,6 +192,7 @@ app.include_router(assistant_chat_router)
 app.include_router(settings_router)
 app.include_router(terminal_router)
 app.include_router(scaffold_router)
+app.include_router(knowledge_router)
 
 
 # ============================================================================
