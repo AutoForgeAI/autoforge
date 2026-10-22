@@ -251,6 +251,17 @@ def create_client(
     }
     max_turns = max_turns_map.get(agent_type, 300)
 
+    # Optional global override via AUTOFORGE_MAX_TURNS (positive integer)
+    max_turns_override = os.getenv("AUTOFORGE_MAX_TURNS", "").strip()
+    if max_turns_override:
+        try:
+            parsed_turns = int(max_turns_override)
+            if parsed_turns < 1:
+                raise ValueError
+            max_turns = parsed_turns
+        except ValueError:
+            print(f"   - Warning: ignoring invalid AUTOFORGE_MAX_TURNS={max_turns_override!r} (expected positive integer)")
+
     # Build allowed tools list based on agent type.
     allowed_tools = [*BUILTIN_TOOLS, *feature_tools]
 
@@ -328,6 +339,7 @@ def create_client(
     # Build MCP servers config - features is always included, playwright only in standard mode
     mcp_servers = {
         "features": {
+            "type": "stdio",
             "command": sys.executable,  # Use the same Python that's running this script
             "args": ["-m", "mcp_server.feature_mcp"],
             "env": {
@@ -458,7 +470,14 @@ def create_client(
             # --effort flag accepts it; the SDK forwards the string unchanged.
             effort=effort,  # type: ignore[arg-type]
             cli_path=system_cli,  # Use system CLI to avoid bundled Bun crash (exit code 3)
-            system_prompt="You are an expert full-stack developer building a production-quality web application.",
+            # Use Claude Code's built-in system prompt (tool usage guidance, multi-file
+            # editing patterns, error recovery) and append our role on top of it.
+            # A plain string would replace the preset entirely.
+            system_prompt={
+                "type": "preset",
+                "preset": "claude_code",
+                "append": "You are an expert full-stack developer building a production-quality web application.",
+            },
             setting_sources=["project"],  # Enable skills, commands, and CLAUDE.md from project dir
             max_buffer_size=10 * 1024 * 1024,  # 10MB for large Playwright screenshots
             allowed_tools=allowed_tools,

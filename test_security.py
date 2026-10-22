@@ -27,6 +27,7 @@ from security import (
     validate_pkill_command,
     validate_playwright_command,
     validate_project_command,
+    validate_rm_command,
 )
 
 
@@ -988,6 +989,86 @@ def test_playwright_cli_validation():
     return passed, failed
 
 
+def test_validate_rm():
+    """Test rm target validation against the project directory."""
+    print("\nTesting rm validation:\n")
+    passed = 0
+    failed = 0
+
+    with tempfile.TemporaryDirectory() as tmpdir:
+        project = Path(tmpdir) / "proj"
+        (project / "src").mkdir(parents=True)
+
+        # Test cases: (command, should_be_allowed, description)
+        test_cases = [
+            # Allowed cases
+            ("rm file.txt", True, "single file in project"),
+            ("rm -rf node_modules", True, "dir in project"),
+            ("rm -rf temp/", True, "dir with trailing slash"),
+            ("rm -rf dist/*", True, "glob inside subdir"),
+            ("rm *.log", True, "extension glob at project root"),
+            ("rm -f src/a.ts src/b.ts", True, "multiple targets"),
+            ("rm -- -weird-name", True, "end of options marker"),
+            (f"rm -rf {project}/build", True, "absolute path inside project"),
+            ("cd src && rm -rf old", True, "cd into subdir then rm"),
+            ("rm -rf .autoforge/tmp", True, "file inside .autoforge"),
+            ("rm -f", True, "no targets is harmless"),
+            # Blocked cases
+            ("rm -rf /", False, "filesystem root"),
+            ("rm -rf /*", False, "filesystem root glob"),
+            ("rm -rf ~", False, "home directory"),
+            ("rm -rf ~/Documents", False, "path under home"),
+            ("rm -rf .", False, "project root"),
+            ("rm -rf ./", False, "project root with slash"),
+            ("rm -rf ..", False, "parent directory"),
+            ("rm -rf ../other", False, "sibling directory"),
+            ("rm -rf *", False, "bare glob at project root"),
+            ("rm -rf .*", False, "dotfile glob at project root"),
+            ("rm -rf .git", False, "git directory"),
+            ("rm -rf .autoforge", False, "autoforge directory"),
+            ("rm -rf /etc/passwd", False, "absolute path outside project"),
+            ("rm -rf $HOME", False, "variable expansion"),
+            ("rm -rf `pwd`", False, "command substitution"),
+            ("rm -rf --no-preserve-root /", False, "no-preserve-root"),
+            ("cd .. && rm -rf proj", False, "cd out then delete project"),
+            ("cd / && rm -rf tmp", False, "cd to root then rm"),
+            ("cd $TMP && rm -rf x", False, "cd to unverifiable dir"),
+            ("rm a.txt && rm -rf /", False, "second rm segment checked"),
+            ("echo y | rm -rf /", False, "rm after pipe checked"),
+            ("rm -rf src/../..", False, "traversal out of project"),
+        ]
+
+        for cmd, should_allow, description in test_cases:
+            allowed, reason = validate_rm_command(cmd, project)
+            if allowed == should_allow:
+                print(f"  PASS: {cmd!r} ({description})")
+                passed += 1
+            else:
+                expected = "allowed" if should_allow else "blocked"
+                actual = "allowed" if allowed else "blocked"
+                print(f"  FAIL: {cmd!r} ({description})")
+                print(f"         Expected: {expected}, Got: {actual}")
+                if reason:
+                    print(f"         Reason: {reason}")
+                failed += 1
+
+        # Integration test: verify through the security hook with project context
+        print("\n  Integration tests (via security hook):\n")
+        context = {"project_dir": str(project)}
+        for cmd, should_block in [("rm -rf build", False), ("rm -rf ~", True), ("ls && rm -rf ..", True)]:
+            input_data = {"tool_name": "Bash", "tool_input": {"command": cmd}}
+            result = asyncio.run(bash_security_hook(input_data, context=context))
+            blocked = result.get("decision") == "block"
+            if blocked == should_block:
+                print(f"  PASS: {cmd!r} {'blocked' if blocked else 'allowed'} via hook")
+                passed += 1
+            else:
+                print(f"  FAIL: {cmd!r} should be {'blocked' if should_block else 'allowed'} via hook")
+                failed += 1
+
+    return passed, failed
+
+
 def main():
     print("=" * 70)
     print("  SECURITY HOOK TESTS")
@@ -1055,6 +1136,11 @@ def main():
     pkill_passed, pkill_failed = test_pkill_extensibility()
     passed += pkill_passed
     failed += pkill_failed
+
+    # Test rm validation
+    rm_passed, rm_failed = test_validate_rm()
+    passed += rm_passed
+    failed += rm_failed
 
     # Test playwright-cli validation
     pw_passed, pw_failed = test_playwright_cli_validation()

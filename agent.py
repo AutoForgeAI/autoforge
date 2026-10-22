@@ -124,6 +124,25 @@ async def run_agent_session(
                                     # Tool succeeded - just show brief confirmation
                                     print("   [Done]", flush=True)
 
+                    # Handle SystemMessage (init, compaction boundaries, notifications)
+                    elif msg_type == "SystemMessage":
+                        subtype = getattr(msg, "subtype", "")
+                        if subtype != "init":
+                            print(f"\n[System: {subtype}]", flush=True)
+
+                    # Handle ResultMessage (final turn summary, including error stops
+                    # such as hitting max_turns or an API failure)
+                    elif msg_type == "ResultMessage":
+                        subtype = getattr(msg, "subtype", "")
+                        num_turns = getattr(msg, "num_turns", 0)
+                        cost = getattr(msg, "total_cost_usd", None)
+                        cost_str = f", cost ${cost:.4f}" if isinstance(cost, (int, float)) else ""
+                        print(f"\n[Result: {subtype}, {num_turns} turns{cost_str}]", flush=True)
+                        if getattr(msg, "is_error", False):
+                            errors = getattr(msg, "errors", None) or []
+                            detail = "; ".join(str(e) for e in errors) or str(getattr(msg, "result", "") or "")
+                            print(f"   [Error] Session ended with error ({subtype}): {detail[:500]}", flush=True)
+
                 break  # Normal completion
             except Exception as inner_exc:
                 if type(inner_exc).__name__ == "MessageParseError":

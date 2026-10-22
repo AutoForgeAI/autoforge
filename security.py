@@ -59,7 +59,7 @@ ALLOWED_COMMANDS = {
     "curl",
     # File operations
     "mv",
-    "rm",  # Use with caution
+    "rm",  # Restricted to the project directory; validated separately
     "touch",
     # Shell scripts
     "sh",
@@ -71,7 +71,7 @@ ALLOWED_COMMANDS = {
 }
 
 # Commands that need additional validation even when in the allowlist
-COMMANDS_NEEDING_EXTRA_VALIDATION = {"pkill", "chmod", "init.sh", "playwright-cli"}
+COMMANDS_NEEDING_EXTRA_VALIDATION = {"pkill", "chmod", "init.sh", "playwright-cli", "rm"}
 
 # Commands that are NEVER allowed, even with user approval
 # These commands can cause permanent system damage or security breaches
@@ -467,6 +467,136 @@ def validate_playwright_command(command_string: str) -> tuple[bool, str]:
         if token in BLOCKED_SUBCOMMANDS:
             return False, f"playwright-cli '{token}' is not allowed"
         break  # first non-flag token is the subcommand
+
+    return True, ""
+
+
+# Directories inside the project that must never be deleted wholesale
+PROTECTED_PROJECT_SUBDIRS = {".git", ".autoforge"}
+
+_GLOB_CHARS = set("*?[")
+
+
+def _is_bare_glob(name: str) -> bool:
+    """True for wildcard-only path components like '*', '.*', '*.*', '**'."""
+    return bool(name) and any(c in _GLOB_CHARS for c in name) and all(c in "*?[]." for c in name)
+
+
+def _strip_assignments(tokens: list[str]) -> list[str]:
+    """Drop leading VAR=value assignments (and a leading '(' subshell marker)."""
+    if tokens and tokens[0].startswith("("):
+        tokens = [tokens[0][1:], *tokens[1:]] if tokens[0] != "(" else tokens[1:]
+    while tokens and "=" in tokens[0] and not tokens[0].startswith("="):
+        tokens = tokens[1:]
+    return tokens
+
+
+def _check_rm_target(target: str, base_dir: Path, project_root: Path) -> tuple[bool, str]:
+    """Validate a single rm operand against the project directory."""
+    if "$" in target or "`" in target:
+        return False, f"rm target '{target}' uses shell expansion and cannot be verified"
+
+    raw = Path(os.path.expanduser(target))
+    path = raw if raw.is_absolute() else base_dir / raw
+
+    # For globs, validate the directory the glob expands in
+    name = path.name
+    has_glob = any(c in _GLOB_CHARS for c in str(path))
+    check_path = path.parent if has_glob else path
+    if has_glob and any(c in _GLOB_CHARS for c in str(check_path)):
+        # Wildcards in intermediate directories - validate the static prefix
+        static_parts = []
+        for part in path.parts:
+            if any(c in _GLOB_CHARS for c in part):
+                break
+            static_parts.append(part)
+        check_path = Path(*static_parts) if static_parts else base_dir
+
+    resolved = check_path.resolve(strict=False)
+    root = project_root.resolve(strict=False)
+
+    if resolved != root and root not in resolved.parents:
+        return False, f"rm target '{target}' is outside the project directory"
+
+    if not has_glob and resolved == root:
+        return False, f"rm target '{target}' would delete the project directory itself"
+
+    if has_glob and resolved == root and _is_bare_glob(name):
+        return False, f"rm target '{target}' would delete the entire project directory contents"
+
+    for protected in PROTECTED_PROJECT_SUBDIRS:
+        if not has_glob and resolved == root / protected:
+            return False, f"rm target '{target}' would delete the protected '{protected}' directory"
+
+    return True, ""
+
+
+def validate_rm_command(command_string: str, project_dir: Optional[Path] = None) -> tuple[bool, str]:
+    """
+    Validate rm commands - restrict deletions to paths inside the project directory.
+
+    Blocks:
+    - Targets outside the project directory (/, ~, ../.., absolute paths elsewhere)
+    - Deleting the project root itself, or bare wildcards at the root (rm -rf *)
+    - Deleting the .git or .autoforge directories
+    - Targets with $VAR / `cmd` expansion that can't be verified statically
+    - --no-preserve-root
+
+    Tracks `cd` within the same command string so `cd .. && rm -rf x` is resolved
+    relative to the directory rm actually runs in. This is defense in depth on top
+    of the OS-level sandbox.
+
+    Returns:
+        Tuple of (is_allowed, reason_if_blocked)
+    """
+    project_root = project_dir if project_dir is not None else Path.cwd()
+    base_dir: Optional[Path] = project_root
+
+    for segment in split_command_segments(command_string):
+        for piece in segment.split("|"):
+            try:
+                tokens = _strip_assignments(shlex.split(piece))
+            except ValueError:
+                return False, "Could not parse rm command"
+            if not tokens:
+                continue
+
+            if tokens[0] == "cd":
+                dest = tokens[1] if len(tokens) > 1 else "~"
+                if dest == "-" or "$" in dest or "`" in dest:
+                    base_dir = None
+                else:
+                    raw = Path(os.path.expanduser(dest))
+                    if raw.is_absolute():
+                        base_dir = raw.resolve(strict=False)
+                    elif base_dir is not None:
+                        base_dir = (base_dir / raw).resolve(strict=False)
+                continue
+
+            if os.path.basename(tokens[0]) != "rm":
+                continue
+
+            targets: list[str] = []
+            end_of_options = False
+            for token in tokens[1:]:
+                if not end_of_options and token == "--":
+                    end_of_options = True
+                elif not end_of_options and token.startswith("-") and token != "-":
+                    if token == "--no-preserve-root":
+                        return False, "rm --no-preserve-root is not allowed"
+                else:
+                    targets.append(token)
+
+            if not targets:
+                continue
+
+            if base_dir is None:
+                return False, "rm after cd to an unverifiable directory is not allowed"
+
+            for target in targets:
+                allowed, reason = _check_rm_target(target, base_dir, project_root)
+                if not allowed:
+                    return False, reason
 
     return True, ""
 
@@ -990,6 +1120,12 @@ async def bash_security_hook(input_data, tool_use_id=None, context=None):
                     return {"decision": "block", "reason": reason}
             elif cmd == "playwright-cli":
                 allowed, reason = validate_playwright_command(cmd_segment)
+                if not allowed:
+                    return {"decision": "block", "reason": reason}
+            elif cmd == "rm":
+                # Validate the full command so every rm segment is checked and
+                # preceding `cd` commands are taken into account
+                allowed, reason = validate_rm_command(command, project_dir)
                 if not allowed:
                     return {"decision": "block", "reason": reason}
 
