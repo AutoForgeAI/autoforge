@@ -177,6 +177,9 @@ export function useAssistantChat({
               toolDescription = `Creating ${count} feature${count !== 1 ? "s" : ""}`;
             } else if (data.tool === "mcp__features__feature_skip") {
               toolDescription = `Skipping feature (moving to end of queue)`;
+            } else if (data.tool === "mcp__features__feature_report_bug") {
+              const input = data.input as { feature_id?: number };
+              toolDescription = `Reporting bug on feature #${input.feature_id ?? "?"} (back to pending)`;
             } else if (data.tool === "mcp__features__feature_get_stats") {
               toolDescription = `Checking project progress`;
             } else if (data.tool === "mcp__features__feature_get_next") {

@@ -17,6 +17,7 @@ Tools:
 - feature_clear_in_progress: Clear in-progress status
 - feature_create_bulk: Create multiple features at once
 - feature_create: Create a single feature
+- feature_report_bug: Report a bug on an existing feature (back to pending)
 - feature_add_dependency: Add a dependency between features
 - feature_remove_dependency: Remove a dependency
 - feature_get_ready: Get features ready to implement
@@ -687,6 +688,70 @@ def feature_create(
         })
     except Exception as e:
         return json.dumps({"error": str(e)})
+
+
+@mcp.tool()
+def feature_report_bug(
+    feature_id: Annotated[int, Field(description="The ID of the existing feature the bug belongs to", ge=1)],
+    bug_description: Annotated[str, Field(min_length=1, description="What is broken: observed vs expected behavior")],
+    verification_steps: Annotated[
+        list[str] | None,
+        Field(description="Optional steps to reproduce the bug / verify the fix"),
+    ] = None,
+) -> str:
+    """Report a bug against an existing feature and send it back to pending.
+
+    Use this when the user reports that something which was supposedly
+    implemented does not actually work. Instead of creating a new feature,
+    the bug report is appended to the existing feature's description, any
+    verification steps are appended to its steps, the feature is marked as
+    not passing, and it is moved to the front of the queue so a coding agent
+    picks it up next.
+
+    Refuses features that an agent is currently working on.
+
+    Args:
+        feature_id: The ID of the feature that has the bug
+        bug_description: Description of the bug (observed vs expected behavior)
+        verification_steps: Optional steps to reproduce the bug / verify the fix
+
+    Returns:
+        JSON with the updated feature details, or error if not found.
+    """
+    try:
+        with atomic_transaction(_session_maker) as session:
+            feature = session.query(Feature).filter(Feature.id == feature_id).first()
+            if feature is None:
+                return json.dumps({"error": f"Feature with ID {feature_id} not found"})
+            if feature.in_progress:
+                return json.dumps({
+                    "error": (
+                        f"Feature #{feature_id} is currently being worked on by an agent. "
+                        "Wait until it finishes, or create a separate bug-fix feature instead."
+                    )
+                })
+
+            was_passing = bool(feature.passes)
+            min_priority = session.execute(text("SELECT COALESCE(MIN(priority), 1) FROM features")).scalar()
+
+            feature.description = f"{feature.description}\n\nBUG REPORT: {bug_description.strip()}"
+            if verification_steps:
+                feature.steps = [*(feature.steps or []), *verification_steps]
+            feature.passes = False
+            feature.in_progress = False
+            feature.priority = int(min_priority) - 1
+            session.flush()
+
+            feature_dict = feature.to_dict()
+
+        return json.dumps({
+            "success": True,
+            "was_passing": was_passing,
+            "message": f"Bug reported on feature #{feature_id}; it is back in pending at the front of the queue",
+            "feature": feature_dict,
+        })
+    except Exception as e:
+        return json.dumps({"error": f"Failed to report bug: {str(e)}"})
 
 
 @mcp.tool()

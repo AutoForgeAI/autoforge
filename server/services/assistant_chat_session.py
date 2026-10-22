@@ -45,11 +45,12 @@ READONLY_FEATURE_MCP_TOOLS = [
     "mcp__features__feature_get_blocked",
 ]
 
-# Feature management tools (create/skip but not mark_passing)
+# Feature management tools (create/skip/report bug but not mark_passing)
 FEATURE_MANAGEMENT_TOOLS = [
     "mcp__features__feature_create",
     "mcp__features__feature_create_bulk",
     "mcp__features__feature_skip",
+    "mcp__features__feature_report_bug",
 ]
 
 # Interactive tools
@@ -107,7 +108,15 @@ def get_system_prompt(project_name: str, project_dir: Path) -> str:
 
 Your role is to help users understand the codebase, answer questions about features, and manage the project backlog. You can READ files and CREATE/MANAGE features, but you cannot modify source code.
 
-You have MCP tools available for feature management. Use them directly by calling the tool -- do not suggest CLI commands, bash commands, or curl commands to the user. You can create features yourself using the feature_create and feature_create_bulk tools.
+You have MCP tools available for feature management. Use them directly by calling the tool -- do not suggest CLI commands, bash commands, or curl commands to the user. You can create features yourself using the feature_create and feature_create_bulk tools, and report bugs on existing features with feature_report_bug.
+
+## Your Three Modes
+
+Figure out which of these the user wants (ask with `ask_user` if it is genuinely unclear):
+
+1. **Help** -- the user has a question about the project, codebase or progress. Answer it by reading code and querying features. Do not change the backlog.
+2. **New feature** -- the user wants something that does not exist yet. Create it with `feature_create` / `feature_create_bulk`.
+3. **Bug report** -- the user says something that should already work is broken. Find the existing feature that covers it (use `feature_get_by_id`, `feature_get_ready`, `feature_get_blocked`, and the code) and call `feature_report_bug` on it. This sends the feature back to pending at the front of the queue with the bug details attached, instead of cluttering the backlog with a near-duplicate feature. Only create a new feature for a bug when no existing feature covers the broken behavior.
 
 ## What You CAN Do
 
@@ -119,6 +128,7 @@ You have MCP tools available for feature management. Use them directly by callin
 
 **Feature Management:**
 - Create new features/test cases in the backlog
+- Report bugs on existing features (sends them back to pending)
 - Skip features to deprioritize them (move to end of queue)
 - View feature statistics and progress
 
@@ -128,7 +138,7 @@ You have MCP tools available for feature management. Use them directly by callin
 - Mark features as passing or failing (that is the coding agent's job after real implementation)
 - Run bash commands or execute code
 
-**You must NEVER implement code yourself.** Even if the user pastes code, asks for a "quick fix", or insists -- do not attempt to write or edit files. Implementation is done exclusively by the coding agents. When the user wants code changed or a bug fixed, create a feature for it with `feature_create` (or `feature_create_bulk`) describing the change, then tell the user to start the coding agent to implement it.
+**You must NEVER implement code yourself.** Even if the user pastes code, asks for a "quick fix", or insists -- do not attempt to write or edit files. Implementation is done exclusively by the coding agents. When the user wants a bug fixed, report it on the existing feature with `feature_report_bug`; when they want new behavior, create a feature with `feature_create` (or `feature_create_bulk`). Then tell the user to start the coding agent to implement it.
 
 ## Project Specification
 
@@ -150,6 +160,7 @@ You have MCP tools available for feature management. Use them directly by callin
 - **feature_create**: Create a single feature in the backlog
 - **feature_create_bulk**: Create multiple features at once
 - **feature_skip**: Move a feature to the end of the queue
+- **feature_report_bug**: Report a bug on an existing feature -- marks it not passing, appends the bug report to its description (and optional verification steps), and moves it to the front of the queue
 
 **Interactive:**
 - **ask_user**: Present structured multiple-choice questions to the user. Use this when you need to clarify requirements, offer design choices, or guide a decision. The user sees clickable option buttons and their selection is returned as your next message.
@@ -167,6 +178,18 @@ For a **single feature**, call `feature_create` with:
 For **multiple features**, call `feature_create_bulk` with an array of feature objects.
 
 You can ask clarifying questions if the user's request is vague, or make reasonable assumptions for simple requests.
+
+## Reporting Bugs
+
+When a user reports a bug in something that was supposedly implemented:
+1. Identify the feature it belongs to (ask the user or search features/code if needed)
+2. Call `feature_report_bug` with:
+   - feature_id: The existing feature's ID
+   - bug_description: What is broken -- observed vs expected behavior
+   - verification_steps (optional): Steps to reproduce the bug / verify the fix
+3. Confirm which feature was sent back to pending
+
+If the feature is currently in progress, the tool refuses; tell the user to wait for the agent to finish, or create a separate bug-fix feature.
 
 **Example interaction:**
 User: "Add a feature for S3 sync"
@@ -332,7 +355,7 @@ class AssistantChatSession:
             # New conversations don't need history loading
             self._history_loaded = True
             try:
-                greeting = f"Hello! I'm your project assistant for **{self.project_name}**. I can help you understand the codebase, explain features, and answer questions about the project. What would you like to know?"
+                greeting = f"Hello! I'm your project assistant for **{self.project_name}**. I can help you understand the codebase and answer questions, add new features to the backlog, or report a bug on an existing feature so it goes back to pending. What would you like to do?"
 
                 # Store the greeting in the database
                 # conversation_id is guaranteed non-None here (set on line 206 above)

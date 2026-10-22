@@ -7,7 +7,7 @@
  */
 
 import { useState, useRef, useEffect, useCallback, useMemo } from 'react'
-import { Send, Loader2, Wifi, WifiOff, Plus, History } from 'lucide-react'
+import { Send, Loader2, Wifi, WifiOff, Plus, History, HelpCircle, Sparkles, Bug } from 'lucide-react'
 import { useAssistantChat } from '../hooks/useAssistantChat'
 import { ChatMessage as ChatMessageComponent } from './ChatMessage'
 import { ConversationHistory } from './ConversationHistory'
@@ -16,6 +16,13 @@ import type { ChatMessage } from '../lib/types'
 import { isSubmitEnter } from '../lib/keyboard'
 import { Button } from '@/components/ui/button'
 import { Textarea } from '@/components/ui/textarea'
+
+// Quick-start modes: each pre-fills the input so the assistant knows what the user wants
+const ASSISTANT_MODES = [
+  { label: 'Get help', icon: HelpCircle, prefix: 'Help: ' },
+  { label: 'New feature', icon: Sparkles, prefix: 'New feature request: ' },
+  { label: 'Report a bug', icon: Bug, prefix: 'Bug report (something that should already work is broken): ' },
+] as const
 
 interface AssistantChatProps {
   projectName: string
@@ -137,6 +144,11 @@ export function AssistantChat({
     setInputValue('')
   }
 
+  const handleSelectMode = (prefix: string) => {
+    setInputValue(prefix)
+    inputRef.current?.focus()
+  }
+
   const handleKeyDown = (e: React.KeyboardEvent<HTMLTextAreaElement>) => {
     if (isSubmitEnter(e)) {
       e.preventDefault()
@@ -169,6 +181,9 @@ export function AssistantChat({
     }
     return Array.from(messageMap.values())
   }, [initialMessages, messages, conversationId, isLoadingConversation])
+
+  const hasUserMessages = displayMessages.some((m) => m.role === 'user')
+  const inputDisabled = isLoading || isLoadingConversation || connectionStatus !== 'connected' || !!currentQuestions
 
   return (
     <div className="flex flex-col h-full">
@@ -283,20 +298,36 @@ export function AssistantChat({
 
       {/* Input area */}
       <div className="border-t border-border p-4 bg-card">
+        {!hasUserMessages && !inputValue && (
+          <div className="flex flex-wrap gap-2 mb-3">
+            {ASSISTANT_MODES.map(({ label, icon: Icon, prefix }) => (
+              <Button
+                key={label}
+                variant="outline"
+                size="sm"
+                onClick={() => handleSelectMode(prefix)}
+                disabled={inputDisabled}
+              >
+                <Icon size={14} />
+                {label}
+              </Button>
+            ))}
+          </div>
+        )}
         <div className="flex gap-2">
           <Textarea
             ref={inputRef}
             value={inputValue}
             onChange={(e) => setInputValue(e.target.value)}
             onKeyDown={handleKeyDown}
-            placeholder="Ask about the codebase..."
-            disabled={isLoading || isLoadingConversation || connectionStatus !== 'connected' || !!currentQuestions}
+            placeholder="Ask a question, request a feature, or report a bug..."
+            disabled={inputDisabled}
             className="flex-1 resize-none min-h-[44px] max-h-[120px]"
             rows={1}
           />
           <Button
             onClick={handleSend}
-            disabled={!inputValue.trim() || isLoading || isLoadingConversation || connectionStatus !== 'connected' || !!currentQuestions}
+            disabled={!inputValue.trim() || inputDisabled}
             title="Send message"
           >
             {isLoading ? (
