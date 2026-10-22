@@ -72,6 +72,27 @@ Use the feature_skip tool with feature_id={id}
 ```
 
 Document the SPECIFIC external blocker in `claude-progress.txt`. "Functionality not built" is NEVER a valid reason.
+"The feature is too large" is NEVER a valid reason either -- split it instead (see below).
+
+#### When a Feature Is Too Large: SPLIT IT (never skip or partially pass)
+
+If the feature is too large to implement AND fully verify in this session, do NOT skip it,
+and do NOT mark it passing with parts unimplemented or untested. Break it down instead:
+
+```
+Use the feature_split tool with feature_id={id} and sub_features=[
+  {"name": "...", "description": "...", "steps": ["...", "..."]},
+  {"name": "...", "description": "...", "steps": ["...", "..."]}
+]
+```
+
+- Create 2-10 sub-features, each small enough to implement and verify end-to-end in one session
+- Together the sub-features must cover ALL of the original feature's steps
+- The original feature is released and made to depend on the sub-features; it will be
+  re-verified end-to-end once all of them pass
+- After splitting, document the split in `claude-progress.txt` and end the session
+  (other agents will pick up the sub-features), or continue with the first sub-feature if
+  it is assigned to you
 
 ### STEP 4: IMPLEMENT THE FEATURE
 
@@ -116,6 +137,18 @@ when you need to verify visual appearance or find element refs.
 - Skip visual verification
 - Mark tests passing without thorough verification
 
+#### If Browser Automation Fails (CRITICAL)
+
+If `playwright-cli` cannot open a browser, the page will not load, or the server will not start,
+**the feature is NOT verified**. Never assume the functionality works and never mark it passing.
+
+1. Troubleshoot: read the error, check the server is running and the port/URL is correct,
+   retry `playwright-cli close` then `playwright-cli open`, check `.playwright/cli.config.json`
+2. Fix whatever is preventing verification (it is part of your job)
+3. If you still cannot verify after genuine attempts, leave the feature pending:
+   run `feature_clear_in_progress` with feature_id={id}, document the exact error in
+   `claude-progress.txt`, commit your code, and end the session
+
 ### STEP 5.5: MANDATORY VERIFICATION CHECKLIST (BEFORE MARKING ANY TEST PASSING)
 
 **Complete ALL applicable checks before marking any feature as passing:**
@@ -155,6 +188,10 @@ Use the feature_mark_passing tool with feature_id=42
 - Reorder features
 
 **ONLY MARK A FEATURE AS PASSING AFTER VERIFICATION WITH BROWSER AUTOMATION.**
+
+A feature may be marked passing only when EVERY one of its steps was implemented and
+the required verification actually ran and succeeded in this session. "Should work", "assumed to work",
+"could not test", or "partially implemented" are never grounds for marking passing.
 
 ### STEP 7: COMMIT YOUR PROGRESS
 
@@ -238,7 +275,10 @@ feature_mark_failing with feature_id={id}
 # 6. Skip a feature (moves to end of queue) - ONLY when blocked by external dependency
 feature_skip with feature_id={id}
 
-# 7. Clear in-progress status (when abandoning a feature)
+# 7. Split a feature that is too large into smaller sub-features
+feature_split with feature_id={id} and sub_features=[...]
+
+# 8. Clear in-progress status (when abandoning a feature, e.g. verification impossible)
 feature_clear_in_progress with feature_id={id}
 ```
 

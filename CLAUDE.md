@@ -120,6 +120,7 @@ python test_security_integration.py   # Integration tests (9 tests)
 python -m pytest test_client.py       # Client tests (20 tests)
 python -m pytest test_dependency_resolver.py  # Dependency resolver tests (12 tests)
 python -m pytest test_rate_limit_utils.py     # Rate limit tests (22 tests)
+python -m pytest test_feature_split.py        # Feature split MCP tool tests (6 tests)
 ```
 
 ### React UI
@@ -238,6 +239,7 @@ MCP tools available to the agent:
 - `feature_mark_passing` - Mark feature complete
 - `feature_mark_failing` - Mark feature as failing
 - `feature_skip` - Move feature to end of queue
+- `feature_split` - Break a too-large feature into smaller sub-features (parent depends on them)
 - `feature_clear_in_progress` - Clear in-progress status
 - `feature_create_bulk` - Initialize all features (used by initializer)
 - `feature_create` - Create a single feature

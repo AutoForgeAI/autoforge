@@ -58,6 +58,12 @@ For the feature returned:
 
 **Note:** Screenshots and snapshots save to files. Read the file to see the content.
 
+**If the browser cannot be opened or the app will not load:** troubleshoot and fix it
+(server not running, wrong port, stale browser session -- try `playwright-cli close`
+then `open` again). A feature you could not actually exercise is NOT verified: never
+assume it works, and never call `feature_mark_passing` for it. Document the exact error
+in `claude-progress.txt` before ending the session.
+
 ### STEP 3: HANDLE RESULTS
 
 #### If the feature PASSES:

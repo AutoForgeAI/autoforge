@@ -236,7 +236,9 @@ def get_single_feature_prompt(feature_id: int, project_dir: Path | None = None, 
 
 Work ONLY on this feature. Other agents are handling other features.
 Use `feature_claim_and_get` with ID {feature_id} to claim it and get details.
-If blocked, use `feature_skip` and document the blocker.
+If blocked by an external dependency, use `feature_skip` and document the blocker.
+If the feature is too large to implement and verify in one session, use `feature_split`.
+Never mark it passing unless every step was implemented and actually verified.
 
 ---
 
@@ -281,7 +283,9 @@ Process them IN ORDER: {ids_str}
 ### Important:
 - Complete each feature fully before starting the next
 - Mark each feature passing individually as you go
-- If blocked on a feature, use `feature_skip` and move to the next one
+- If blocked on a feature by an external dependency, use `feature_skip` and move to the next one
+- If a feature is too large, use `feature_split` to break it down -- never skip it or pass it partially
+- Never mark a feature passing if you could not actually verify it (e.g. the browser failed to open)
 - Other agents are handling other features - focus only on yours
 
 ---
@@ -555,6 +559,18 @@ when you need to verify visual appearance or find element refs.
 - Skip visual verification
 - Mark tests passing without thorough verification
 
+#### If Browser Automation Fails (CRITICAL)
+
+If `playwright-cli` cannot open a browser, the page will not load, or the server will not start,
+**the feature is NOT verified**. Never assume the functionality works and never mark it passing.
+
+1. Troubleshoot: read the error, check the server is running and the port/URL is correct,
+   retry `playwright-cli close` then `playwright-cli open`, check `.playwright/cli.config.json`
+2. Fix whatever is preventing verification (it is part of your job)
+3. If you still cannot verify after genuine attempts, leave the feature pending:
+   run `feature_clear_in_progress` with feature_id={id}, document the exact error in
+   `claude-progress.txt`, commit your code, and end the session
+
 """
 
 # Replacement content: coding_prompt.md BROWSER AUTOMATION reference section
@@ -609,6 +625,12 @@ For the feature returned:
 - `playwright-cli close` - Close browser when done (ALWAYS do this)
 
 **Note:** Screenshots and snapshots save to files. Read the file to see the content.
+
+**If the browser cannot be opened or the app will not load:** troubleshoot and fix it
+(server not running, wrong port, stale browser session -- try `playwright-cli close`
+then `open` again). A feature you could not actually exercise is NOT verified: never
+assume it works, and never call `feature_mark_passing` for it. Document the exact error
+in `claude-progress.txt` before ending the session.
 
 """
 
