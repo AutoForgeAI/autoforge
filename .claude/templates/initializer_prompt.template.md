@@ -5,7 +5,7 @@ Your job is to set up the foundation for all future coding agents.
 
 ### FIRST: Read the Project Specification
 
-Start by reading `app_spec.txt` in your working directory. This file contains
+Start by reading `.autoforge/prompts/app_spec.txt` (relative to your working directory). This file contains
 the complete specification for what you need to build. Read it carefully
 before proceeding.
 
@@ -21,7 +21,7 @@ This number was determined during spec creation and must be followed precisely. 
 
 ### CRITICAL FIRST TASK: Create Features
 
-Based on `app_spec.txt`, create features using the feature_create_bulk tool. The features are stored in a SQLite database,
+Based on `.autoforge/prompts/app_spec.txt`, create features using the feature_create_bulk tool. The features are stored in a SQLite database,
 which is the single source of truth for what needs to be built.
 
 **Creating Features:**
@@ -34,7 +34,7 @@ Use the feature_create_bulk tool to add all features at once. You can create fea
 
 **Requirements for features:**
 
-- Feature count must match the `feature_count` specified in app_spec.txt
+- Feature count must match the `feature_count` specified in `.autoforge/prompts/app_spec.txt`
 - Reference tiers for other projects:
   - **Simple apps**: ~165 tests (includes 5 infrastructure)
   - **Medium apps**: ~265 tests (includes 5 infrastructure)
@@ -146,7 +146,7 @@ Steps:
 Steps:
 1. Connect to database directly (sqlite3, psql, etc.)
 2. List all tables in the database
-3. Verify tables match what's defined in app_spec.txt
+3. Verify tables match what's defined in `.autoforge/prompts/app_spec.txt`
 4. Verify key columns exist on each table
 ```
 
@@ -319,7 +319,7 @@ set up and run the development environment. The script should:
 2. Start any necessary servers or services
 3. Print helpful information about how to access the running application
 
-Base the script on the technology stack specified in `app_spec.txt`.
+Base the script on the technology stack specified in `.autoforge/prompts/app_spec.txt`.
 
 ### THIRD TASK: Initialize Git
 
@@ -335,7 +335,7 @@ Commit message: "Initial setup: init.sh, project structure, and features created
 
 ### FOURTH TASK: Create Project Structure
 
-Set up the basic project structure based on what's specified in `app_spec.txt`.
+Set up the basic project structure based on what's specified in `.autoforge/prompts/app_spec.txt`.
 This typically includes directories for frontend, backend, and any other
 components mentioned in the spec.
 

@@ -17,7 +17,15 @@ from pathlib import Path
 TEMPLATES_DIR = Path(__file__).parent / ".claude" / "templates"
 
 # Migration version — bump when adding new migration steps
-CURRENT_MIGRATION_VERSION = 1
+CURRENT_MIGRATION_VERSION = 2
+
+# Agent-facing files that used to live in the project root and now live under
+# .autoforge/ so the project root only contains the application being built.
+PROGRESS_NOTES_FILENAME = "claude-progress.txt"
+
+# Matches a bare reference to a root-level file (e.g. ``cat app_spec.txt``)
+# but not one that is already part of a path (``.autoforge/prompts/app_spec.txt``).
+_BARE_REF_PREFIX = r"(?<![\w./\\-])"
 
 
 def get_project_prompts_dir(project_dir: Path) -> Path:
@@ -482,18 +490,47 @@ def has_project_prompts(project_dir: Path) -> bool:
         return False
 
 
+def _references_root_file(content: str, filename: str) -> bool:
+    """Return True if prompt text refers to ``filename`` as a bare, root-level path."""
+    return re.search(_BARE_REF_PREFIX + re.escape(filename), content) is not None
+
+
+def _rewrite_root_file_refs(content: str, filename: str, new_path: str) -> str:
+    """Rewrite bare root-level references to ``filename`` so they point at ``new_path``."""
+    return re.sub(_BARE_REF_PREFIX + re.escape(filename), new_path, content)
+
+
+def _project_prompts_reference_root_spec(project_dir: Path) -> bool:
+    """Check whether any project-specific prompt still reads app_spec.txt from the root."""
+    prompts_dir = get_project_prompts_dir(project_dir)
+    for name in ("initializer_prompt.md", "coding_prompt.md", "testing_prompt.md"):
+        prompt_path = prompts_dir / name
+        if not prompt_path.exists():
+            continue
+        try:
+            if _references_root_file(prompt_path.read_text(encoding="utf-8"), "app_spec.txt"):
+                return True
+        except (OSError, PermissionError):
+            continue
+    return False
+
+
 def copy_spec_to_project(project_dir: Path) -> None:
     """
-    Copy the app spec file into the project root directory for the agent to read.
+    Copy the app spec into the project root, but only for legacy prompts.
 
-    This maintains backwards compatibility - the agent expects app_spec.txt
-    in the project root directory.
-
-    The spec is sourced from: {project_dir}/prompts/app_spec.txt
+    Current prompt templates read the spec directly from
+    ``.autoforge/prompts/app_spec.txt`` so the project root stays free of
+    AutoForge files. A root-level copy is only made when a project-specific
+    prompt still tells the agent to read ``app_spec.txt`` from the root
+    (e.g. a customised prompt that the migration could not rewrite).
 
     Args:
         project_dir: The project directory
     """
+    if not _project_prompts_reference_root_spec(project_dir):
+        return
+
     spec_dest = project_dir / "app_spec.txt"
 
     # Don't overwrite if already exists
@@ -506,7 +543,7 @@ def copy_spec_to_project(project_dir: Path) -> None:
     if project_spec.exists():
         try:
             shutil.copy(project_spec, spec_dest)
-            print("Copied app_spec.txt to project directory")
+            print("Copied app_spec.txt to project directory (legacy prompt layout)")
             return
         except (OSError, PermissionError) as e:
             print(f"Warning: Could not copy app_spec.txt: {e}")
@@ -821,6 +858,82 @@ def _migrate_v0_to_v1(project_dir: Path) -> list[str]:
     return migrated
 
 
+def _migrate_v1_to_v2(project_dir: Path) -> list[str]:
+    """Migrate from v1 to v2: keep AutoForge's own files out of the project root.
+
+    Idempotent sub-steps:
+    A. Make sure the canonical spec exists in the prompts directory
+    B. Move root-level claude-progress.txt into .autoforge/
+    C. Point project prompts at the .autoforge/ locations
+    D. Remove the root-level app_spec.txt copy if it is identical to the canonical one
+    """
+    from autoforge_paths import get_autoforge_dir
+
+    migrated: list[str] = []
+    prompts_dir = get_project_prompts_dir(project_dir)
+    autoforge_dir = get_autoforge_dir(project_dir)
+    canonical_spec = prompts_dir / "app_spec.txt"
+    root_spec = project_dir / "app_spec.txt"
+
+    # A. Legacy projects may only have the spec at the root
+    if root_spec.exists() and not canonical_spec.exists():
+        try:
+            prompts_dir.mkdir(parents=True, exist_ok=True)
+            shutil.copy2(root_spec, canonical_spec)
+            migrated.append(f"Copied app_spec.txt into {prompts_dir.relative_to(project_dir).as_posix()}/")
+        except (OSError, PermissionError, ValueError) as e:
+            print(f"  Warning: Could not copy app_spec.txt into prompts directory: {e}")
+
+    # B. Move progress notes
+    root_progress = project_dir / PROGRESS_NOTES_FILENAME
+    new_progress = autoforge_dir / PROGRESS_NOTES_FILENAME
+    if root_progress.exists() and not new_progress.exists():
+        try:
+            autoforge_dir.mkdir(parents=True, exist_ok=True)
+            shutil.move(str(root_progress), str(new_progress))
+            migrated.append(f"Moved {PROGRESS_NOTES_FILENAME} into .autoforge/")
+        except (OSError, PermissionError) as e:
+            print(f"  Warning: Could not move {PROGRESS_NOTES_FILENAME}: {e}")
+
+    # C. Rewrite prompt references
+    try:
+        spec_ref = canonical_spec.relative_to(project_dir).as_posix()
+        progress_ref = new_progress.relative_to(project_dir).as_posix()
+    except ValueError:
+        spec_ref, progress_ref = ".autoforge/prompts/app_spec.txt", f".autoforge/{PROGRESS_NOTES_FILENAME}"
+
+    for name in ("initializer_prompt.md", "coding_prompt.md", "testing_prompt.md"):
+        prompt_path = prompts_dir / name
+        if not prompt_path.exists():
+            continue
+        try:
+            content = prompt_path.read_text(encoding="utf-8")
+            updated = _rewrite_root_file_refs(content, "app_spec.txt", spec_ref)
+            if new_progress.exists() or not root_progress.exists():
+                updated = _rewrite_root_file_refs(updated, PROGRESS_NOTES_FILENAME, progress_ref)
+            if updated != content:
+                prompt_path.write_text(updated, encoding="utf-8")
+                migrated.append(f"Updated {name} to read AutoForge files from .autoforge/")
+        except (OSError, PermissionError) as e:
+            print(f"  Warning: Could not update {name}: {e}")
+
+    # D. Drop the redundant root copy of the spec (only if nothing was edited in it)
+    if root_spec.exists() and canonical_spec.exists() and not _project_prompts_reference_root_spec(project_dir):
+        try:
+            if root_spec.read_bytes() == canonical_spec.read_bytes():
+                root_spec.unlink()
+                migrated.append("Removed duplicate app_spec.txt from project root")
+            else:
+                print(
+                    f"  Note: {root_spec} differs from {canonical_spec}; leaving it in place. "
+                    f"The agent now reads {spec_ref}."
+                )
+        except (OSError, PermissionError) as e:
+            print(f"  Warning: Could not remove root app_spec.txt: {e}")
+
+    return migrated
+
+
 def migrate_project_to_current(project_dir: Path) -> list[str]:
     """Migrate an existing project to the current AutoForge version.
 
@@ -836,7 +949,8 @@ def migrate_project_to_current(project_dir: Path) -> list[str]:
     if current < 1:
         migrated.extend(_migrate_v0_to_v1(project_dir))
 
-    # Future: if current < 2: migrated.extend(_migrate_v1_to_v2(project_dir))
+    if current < 2:
+        migrated.extend(_migrate_v1_to_v2(project_dir))
 
     _set_migration_version(project_dir, CURRENT_MIGRATION_VERSION)
     return migrated

@@ -228,7 +228,7 @@ async def run_autonomous_agent(
         print("  This may appear to hang - it's working. Watch for [Tool: ...] output.")
         print("=" * 70)
         print()
-        # Copy the app spec into the project directory for the agent to read
+        # Legacy prompts only: copy the app spec into the project root for the agent to read
         copy_spec_to_project(project_dir)
     elif agent_type == "testing":
         print("Running as TESTING agent (regression testing)")

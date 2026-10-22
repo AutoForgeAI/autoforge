@@ -12,13 +12,13 @@ Start by orienting yourself:
 # Understand the project
 pwd
 ls -la
-cat app_spec.txt 2>/dev/null || cat .autoforge/prompts/app_spec.txt 2>/dev/null
+cat .autoforge/prompts/app_spec.txt 2>/dev/null || cat app_spec.txt 2>/dev/null
 
 # See what's been done recently (previous auto-improvements, other commits)
 git log --oneline -20
 
 # See recent progress notes if they exist
-tail -200 claude-progress.txt 2>/dev/null || true
+tail -200 .autoforge/claude-progress.txt 2>/dev/null || tail -200 claude-progress.txt 2>/dev/null || true
 ```
 
 Then use MCP tools to check feature status:
@@ -73,7 +73,7 @@ Implement the change fully. Keep scope tight:
 - Don't add speculative abstractions or "while I'm here" refactors.
 - Don't add comments/docstrings to code you didn't touch.
 - Don't rename things that don't need renaming.
-- If you discover a bug that is NOT your chosen improvement, leave it alone (or note it in `claude-progress.txt` for a future session).
+- If you discover a bug that is NOT your chosen improvement, leave it alone (or note it in `.autoforge/claude-progress.txt` for a future session).
 
 If your improvement is a UI change, actually look at the result — take a screenshot with `playwright-cli` if the dev server is running, or at minimum open the relevant component and verify your edit makes sense.
 

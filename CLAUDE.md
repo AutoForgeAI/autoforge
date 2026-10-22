@@ -120,6 +120,7 @@ python test_security_integration.py   # Integration tests (9 tests)
 python -m pytest test_client.py       # Client tests (20 tests)
 python -m pytest test_dependency_resolver.py  # Dependency resolver tests (12 tests)
 python -m pytest test_rate_limit_utils.py     # Rate limit tests (22 tests)
+python -m pytest test_project_layout.py       # Project layout / migration tests
 ```
 
 ### React UI
@@ -292,9 +293,9 @@ Projects can be stored in any directory (registered in `~/.autoforge/registry.db
 - `.playwright/cli.config.json` - Browser configuration (headless, viewport, etc.)
 - `.playwright-cli/` - Playwright CLI daemon artifacts (screenshots, snapshots) - gitignored
 - `CLAUDE.md` - Stays at project root (SDK convention)
-- `app_spec.txt` - Root copy for agent template compatibility
+- `.autoforge/claude-progress.txt` - Agent session progress notes
 
-Legacy projects with files at root level (e.g., `features.db`, `prompts/`) are auto-migrated to `.autoforge/` on next agent start. Dual-path resolution ensures old and new layouts work transparently.
+Legacy projects with files at root level (e.g., `features.db`, `prompts/`, `app_spec.txt`, `claude-progress.txt`) are auto-migrated to `.autoforge/` on next agent start (`migrate_project_layout` in `autoforge_paths.py`, then `migrate_project_to_current` in `prompts.py`). Prompt templates reference `.autoforge/prompts/app_spec.txt` directly; a root `app_spec.txt` copy is only made for customised prompts that still read it from the root. Dual-path resolution ensures old and new layouts work transparently.
 
 ### Security Model
 

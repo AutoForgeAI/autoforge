@@ -209,19 +209,32 @@ autoforge/
 
 ## Generated Project Structure
 
-After the agent runs, your project directory will contain:
+After the agent runs, your project directory will contain your application code at the root,
+with everything AutoForge uses to drive the agents kept in a separate `.autoforge/` folder:
 
 ```
-generations/my_project/
-├── features.db               # SQLite database (feature test cases)
-├── prompts/
-│   ├── app_spec.txt          # Your app specification
-│   ├── initializer_prompt.md # First session prompt
-│   └── coding_prompt.md      # Continuation session prompt
-├── init.sh                   # Environment setup script
-├── claude-progress.txt       # Session progress notes
-└── [application files]       # Generated application code
+my_project/
+├── .autoforge/                   # AutoForge's own files (not part of your app)
+│   ├── prompts/
+│   │   ├── app_spec.txt          # Your app specification
+│   │   ├── initializer_prompt.md # First session prompt
+│   │   ├── coding_prompt.md      # Continuation session prompt
+│   │   └── testing_prompt.md     # Regression testing prompt
+│   ├── features.db               # SQLite database (feature test cases)
+│   ├── claude-progress.txt       # Agent session progress notes
+│   ├── allowed_commands.yaml     # Optional per-project bash allowlist
+│   └── .gitignore                # Ignores runtime files (locks, databases)
+├── .claude/skills/               # Claude Code skills used by the agent (e.g. playwright-cli)
+├── .playwright/                  # Browser automation config (gitignored)
+├── CLAUDE.md                     # Project notes for the agent (Claude Code convention)
+├── init.sh                       # Environment setup script for your app
+└── [application files]           # Generated application code
 ```
+
+`CLAUDE.md` and `.claude/` stay at the project root because Claude Code only looks for them there.
+Projects created by older versions (with `prompts/`, `features.db`, `app_spec.txt` or
+`claude-progress.txt` in the root) are migrated into `.autoforge/` automatically the next time
+an agent starts.
 
 ---
 
@@ -361,7 +374,7 @@ Requires `gcloud auth application-default login` first. Note the `@` separator (
 
 ### Changing the Application
 
-Use the `/create-spec` command when creating a new project, or manually edit the files in your project's `prompts/` directory:
+Use the `/create-spec` command when creating a new project, or manually edit the files in your project's `.autoforge/prompts/` directory:
 - `app_spec.txt` - Your application specification
 - `initializer_prompt.md` - Controls feature generation
 

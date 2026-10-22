@@ -15,10 +15,10 @@ pwd
 ls -la
 
 # 3. Read the project specification to understand what you're building
-cat app_spec.txt
+cat .autoforge/prompts/app_spec.txt
 
 # 4. Read progress notes from previous sessions (last 500 lines to avoid context overflow)
-tail -500 claude-progress.txt
+tail -500 .autoforge/claude-progress.txt
 
 # 5. Check recent git history
 git log --oneline -20
@@ -31,7 +31,7 @@ Then use MCP tools to check feature status:
 Use the feature_get_stats tool
 ```
 
-Understanding the `app_spec.txt` is critical - it contains the full requirements
+Understanding the `.autoforge/prompts/app_spec.txt` is critical - it contains the full requirements
 for the application you're building.
 
 ### STEP 2: START SERVERS (IF NOT RUNNING)
@@ -71,7 +71,7 @@ If you must skip (truly external blocker only):
 Use the feature_skip tool with feature_id={id}
 ```
 
-Document the SPECIFIC external blocker in `claude-progress.txt`. "Functionality not built" is NEVER a valid reason.
+Document the SPECIFIC external blocker in `.autoforge/claude-progress.txt`. "Functionality not built" is NEVER a valid reason.
 
 ### STEP 4: IMPLEMENT THE FEATURE
 
@@ -179,7 +179,7 @@ git commit -m "feat: implement [feature name] with browser verification"
 
 ### STEP 8: UPDATE PROGRESS NOTES
 
-Update `claude-progress.txt` with:
+Update `.autoforge/claude-progress.txt` with:
 
 - What you accomplished this session
 - Which test(s) you completed
@@ -192,7 +192,7 @@ Update `claude-progress.txt` with:
 Before context fills up:
 
 1. Commit all working code
-2. Update claude-progress.txt
+2. Update .autoforge/claude-progress.txt
 3. Mark features as passing if tests verified
 4. Ensure no uncommitted changes
 5. Leave app in working state (no broken features)
