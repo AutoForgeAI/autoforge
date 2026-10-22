@@ -471,12 +471,15 @@ class AgentProcessManager:
             # stdin=DEVNULL prevents blocking if Claude CLI or child process tries to read stdin
             # CREATE_NO_WINDOW on Windows prevents console window pop-ups
             # PYTHONUNBUFFERED ensures output isn't delayed
+            # PYTHONIOENCODING=utf-8 keeps child output UTF-8 on Windows (default is CP1252),
+            # matching the utf-8 decoding of the output stream below
             # Build subprocess environment with API provider settings
             from registry import get_effective_sdk_env
             api_env = get_effective_sdk_env()
             subprocess_env = {
                 **os.environ,
                 "PYTHONUNBUFFERED": "1",
+                "PYTHONIOENCODING": "utf-8",
                 "PLAYWRIGHT_CLI_SESSION": f"agent-{self.project_name}-{os.getpid()}",
                 "NODE_COMPILE_CACHE": "",  # Disable V8 compile caching to prevent .node file accumulation in %TEMP%
                 **api_env,
