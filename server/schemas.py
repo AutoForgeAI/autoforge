@@ -485,6 +485,7 @@ class SettingsResponse(BaseModel):
     batch_size: int = 3  # Features per coding agent batch (1-15)
     testing_batch_size: int = 3  # Features per testing agent batch (1-15)
     effort: Literal["low", "medium", "high", "xhigh", "max"] = "xhigh"
+    git_auto_push: bool = False  # Push current branch to its Git remote after each agent session
     api_provider: str = "claude"
     api_base_url: str | None = None
     api_has_auth_token: bool = False  # Never expose actual token
@@ -506,6 +507,7 @@ class SettingsUpdate(BaseModel):
     batch_size: int | None = None  # Features per agent batch (1-15)
     testing_batch_size: int | None = None  # Features per testing agent batch (1-15)
     effort: Literal["low", "medium", "high", "xhigh", "max"] | None = None
+    git_auto_push: bool | None = None
     api_provider: str | None = None
     api_base_url: str | None = Field(None, max_length=500)
     api_auth_token: str | None = Field(None, max_length=500)  # Write-only, never returned

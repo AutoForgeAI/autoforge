@@ -23,6 +23,7 @@ if sys.platform == "win32":
     sys.stderr = io.TextIOWrapper(sys.stderr.buffer, encoding="utf-8", errors="replace", line_buffering=True)
 
 from client import create_client
+from git_sync import maybe_push_to_remote
 from progress import (
     count_passing_tests,
     has_features,
@@ -298,6 +299,10 @@ async def run_autonomous_agent(
             print(f"Client/MCP server error: {e}")
             # Don't crash - return error status so the loop can retry
             status, response = "error", str(e)
+
+        # Optionally push the session's commits to the Git remote (opt-in setting)
+        if status == "continue":
+            await asyncio.to_thread(maybe_push_to_remote, project_dir)
 
         # Check for project completion - EXIT when all features pass
         if "all features are passing" in response.lower() or "no more work to do" in response.lower():

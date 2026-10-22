@@ -46,6 +46,12 @@ export function SettingsModal({ isOpen, onClose }: SettingsModalProps) {
     }
   }
 
+  const handleGitAutoPushToggle = () => {
+    if (settings && !updateSettings.isPending) {
+      updateSettings.mutate({ git_auto_push: !settings.git_auto_push })
+    }
+  }
+
   const handleModelChange = (modelId: string) => {
     if (!updateSettings.isPending) {
       updateSettings.mutate({ api_model: modelId })
@@ -432,6 +438,24 @@ export function SettingsModal({ isOpen, onClose }: SettingsModalProps) {
                 id="yolo-mode"
                 checked={settings.yolo_mode}
                 onCheckedChange={handleYoloToggle}
+                disabled={isSaving}
+              />
+            </div>
+
+            {/* Git Auto-Push Toggle */}
+            <div className="flex items-center justify-between">
+              <div className="space-y-0.5">
+                <Label htmlFor="git-auto-push" className="font-medium">
+                  Auto-push to Git Remote
+                </Label>
+                <p className="text-sm text-muted-foreground">
+                  Push the project's current branch to its remote after each agent session
+                </p>
+              </div>
+              <Switch
+                id="git-auto-push"
+                checked={settings.git_auto_push ?? false}
+                onCheckedChange={handleGitAutoPushToggle}
                 disabled={isSaving}
               />
             </div>

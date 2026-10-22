@@ -304,6 +304,7 @@ const DEFAULT_SETTINGS: Settings = {
   batch_size: 3,
   testing_batch_size: 3,
   effort: 'xhigh',
+  git_auto_push: false,
   api_provider: 'claude',
   api_base_url: null,
   api_has_auth_token: false,

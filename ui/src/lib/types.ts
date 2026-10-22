@@ -654,6 +654,7 @@ export interface Settings {
   batch_size: number  // Features per coding agent batch (1-15)
   testing_batch_size: number  // Features per testing agent batch (1-15)
   effort: EffortLevel  // Reasoning effort passed to Claude Code (--effort)
+  git_auto_push: boolean  // Push current branch to its Git remote after each agent session
   api_provider: string
   api_base_url: string | null
   api_has_auth_token: boolean
@@ -667,6 +668,7 @@ export interface SettingsUpdate {
   batch_size?: number
   testing_batch_size?: number
   effort?: EffortLevel
+  git_auto_push?: boolean
   api_provider?: string
   api_base_url?: string
   api_auth_token?: string

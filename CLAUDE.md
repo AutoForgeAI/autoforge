@@ -172,6 +172,7 @@ Publishing: `npm publish` (triggers `prepublishOnly` which builds UI, then publi
 - `auth.py` - Authentication error detection for Claude CLI
 - `env_constants.py` - Shared environment variable constants (API_ENV_VARS) used by client.py and chat sessions
 - `rate_limit_utils.py` - Rate limit detection, retry parsing, exponential backoff with jitter
+- `git_sync.py` - Opt-in auto-push of the project's current branch to its Git remote after each agent session (`git_auto_push` setting)
 - `api/database.py` - SQLAlchemy models (Feature, Schedule, ScheduleOverride)
 - `api/dependency_resolver.py` - Cycle detection (Kahn's algorithm + DFS) and dependency validation
 - `api/migration.py` - JSON-to-SQLite migration utility
@@ -201,7 +202,7 @@ The FastAPI server provides REST and WebSocket endpoints for the UI:
 - `terminal.py` - Interactive terminal I/O with PTY support (WebSocket bidirectional)
 - `devserver.py` - Dev server control (start/stop) and config
 - `schedules.py` - CRUD for time-based agent scheduling
-- `settings.py` - Global settings management (model selection, YOLO, batch size, headless browser)
+- `settings.py` - Global settings management (model selection, YOLO, batch size, headless browser, Git auto-push)
 
 **Services** (`server/services/`):
 - `process_manager.py` - Agent process lifecycle management
