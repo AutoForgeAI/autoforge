@@ -5,6 +5,8 @@ Database Models and Connection
 SQLite database schema for feature storage using SQLAlchemy.
 """
 
+import os
+import sqlite3
 import sys
 from datetime import datetime, timezone
 from pathlib import Path
@@ -260,18 +262,59 @@ def _migrate_add_testing_columns(engine) -> None:
     pass
 
 
+# Filesystems where WAL's shared-memory index (mmap of the -shm file) is known to
+# be broken or unsafe. Includes network filesystems and host-shared mounts used by
+# WSL (/mnt/c is 9p or drvfs) and container runtimes (virtiofs, grpcfuse, ...).
+_WAL_UNSAFE_FS_TYPES = frozenset({
+    "nfs", "nfs4", "cifs", "smb3", "smbfs", "afs", "ceph", "glusterfs", "lustre",
+    "9p", "drvfs", "virtiofs", "vboxsf", "vmhgfs", "prl_fs", "ecryptfs",
+})
+
+# Env var to force a journal mode (e.g. DELETE) and skip auto-detection
+JOURNAL_MODE_ENV_VAR = "AUTOFORGE_SQLITE_JOURNAL_MODE"
+_VALID_JOURNAL_MODES = ("WAL", "DELETE", "TRUNCATE", "PERSIST")
+
+# Cache of WAL probe results, keyed by database directory
+_wal_support_cache: dict[str, bool] = {}
+
+
+def _get_mount_fs_type(path_str: str) -> Optional[str]:
+    """Return the filesystem type of the most specific mount containing path_str."""
+    try:
+        with open("/proc/mounts", "r") as f:
+            mounts = f.read()
+    except OSError:
+        return None
+
+    best_mount = ""
+    best_type: Optional[str] = None
+    for line in mounts.splitlines():
+        parts = line.split()
+        if len(parts) < 3:
+            continue
+        # /proc/mounts escapes spaces and other special characters as octal
+        mount_point = parts[1].replace("\\040", " ").replace("\\011", "\t").replace("\\134", "\\")
+        prefix = mount_point.rstrip("/") + "/"
+        if path_str == mount_point or path_str.startswith(prefix):
+            if len(mount_point) >= len(best_mount):
+                best_mount = mount_point
+                best_type = parts[2]
+    return best_type
+
+
 def _is_network_path(path: Path) -> bool:
-    """Detect if path is on a network filesystem.
+    """Detect if path is on a filesystem where WAL mode is unsafe.
 
     WAL mode doesn't work reliably on network filesystems (NFS, SMB, CIFS)
-    and can cause database corruption. This function detects common network
-    path patterns so we can fall back to DELETE mode.
+    or host-shared mounts (WSL /mnt/c, Docker/VM shared folders, FUSE) and
+    can cause "disk I/O error" failures or database corruption. This function
+    detects common patterns so we can fall back to DELETE mode.
 
     Args:
         path: The path to check
 
     Returns:
-        True if the path appears to be on a network filesystem
+        True if the path appears to be on such a filesystem
     """
     path_str = str(path.resolve())
 
@@ -291,24 +334,112 @@ def _is_network_path(path: Path) -> bool:
         except (AttributeError, OSError):
             pass
     else:
-        # Unix: Check mount type via /proc/mounts or mount command
-        try:
-            with open("/proc/mounts", "r") as f:
-                mounts = f.read()
-                # Check each mount point to find which one contains our path
-                for line in mounts.splitlines():
-                    parts = line.split()
-                    if len(parts) >= 3:
-                        mount_point = parts[1]
-                        fs_type = parts[2]
-                        # Check if path is under this mount point and if it's a network FS
-                        if path_str.startswith(mount_point):
-                            if fs_type in ("nfs", "nfs4", "cifs", "smbfs", "fuse.sshfs"):
-                                return True
-        except (FileNotFoundError, PermissionError):
-            pass
+        # Unix: check the type of the mount that contains the path
+        fs_type = _get_mount_fs_type(path_str)
+        if fs_type is not None:
+            # fuse.* covers sshfs, rclone, gcsfuse, Docker Desktop's grpcfuse, etc.
+            # (fuseblk, used by local ntfs-3g, is deliberately not matched)
+            if fs_type in _WAL_UNSAFE_FS_TYPES or fs_type.startswith("fuse."):
+                return True
 
     return False
+
+
+def _probe_wal_support(db_dir: Path) -> bool:
+    """Check whether WAL mode actually works in db_dir.
+
+    Some filesystems accept ``PRAGMA journal_mode=WAL`` but then fail on the
+    first read with ``disk I/O error`` because the -shm file cannot be
+    memory-mapped. Exercise WAL on a throwaway database to find out before
+    touching the real one.
+    """
+    cache_key = db_dir.as_posix()
+    if cache_key in _wal_support_cache:
+        return _wal_support_cache[cache_key]
+
+    probe = db_dir / f".wal_probe_{os.getpid()}.db"
+    supported = False
+    conns: list[sqlite3.Connection] = []
+    try:
+        writer = sqlite3.connect(str(probe), timeout=5, isolation_level=None)
+        conns.append(writer)
+        mode = writer.execute("PRAGMA journal_mode=WAL").fetchone()
+        if mode and str(mode[0]).lower() == "wal":
+            writer.execute("CREATE TABLE IF NOT EXISTS probe (x INTEGER)")
+            writer.execute("INSERT INTO probe VALUES (1)")
+            # A second connection forces use of the shared-memory index
+            reader = sqlite3.connect(str(probe), timeout=5, isolation_level=None)
+            conns.append(reader)
+            supported = reader.execute("SELECT COUNT(*) FROM probe").fetchone()[0] == 1
+    except sqlite3.Error:
+        supported = False
+    finally:
+        for c in conns:
+            try:
+                c.close()
+            except sqlite3.Error:
+                pass
+        for suffix in ("", "-wal", "-shm", "-journal"):
+            try:
+                Path(str(probe) + suffix).unlink(missing_ok=True)
+            except OSError:
+                pass
+
+    _wal_support_cache[cache_key] = supported
+    return supported
+
+
+def _is_wal_database(db_path: Path) -> bool:
+    """Return True if the database file header says it is in WAL mode."""
+    try:
+        with open(db_path, "rb") as f:
+            header = f.read(20)
+    except OSError:
+        return False
+    # Bytes 18/19 are the file format write/read versions: 2 means WAL
+    return len(header) == 20 and header.startswith(b"SQLite format 3\x00") and header[18] == 2
+
+
+def _convert_wal_to_rollback(db_path: Path, journal_mode: str) -> None:
+    """Switch an existing WAL database to a rollback journal mode.
+
+    A database left in WAL mode on a filesystem that can't mmap the -shm file
+    can't even be opened normally. With EXCLUSIVE locking SQLite keeps the WAL
+    index in heap memory instead, so it can checkpoint and leave WAL mode.
+    """
+    try:
+        conn = sqlite3.connect(str(db_path), timeout=30, isolation_level=None)
+        try:
+            conn.execute("PRAGMA locking_mode=EXCLUSIVE")
+            conn.execute(f"PRAGMA journal_mode={journal_mode}")
+        finally:
+            conn.close()
+    except sqlite3.Error as e:
+        print(f"[database] Could not switch {db_path} out of WAL mode: {e}", file=sys.stderr)
+
+
+def _choose_journal_mode(project_dir: Path, db_path: Path) -> str:
+    """Decide which SQLite journal mode to use for a project database."""
+    override = os.environ.get(JOURNAL_MODE_ENV_VAR, "").strip().upper()
+    if override:
+        if override in _VALID_JOURNAL_MODES:
+            return override
+        print(
+            f"[database] Ignoring invalid {JOURNAL_MODE_ENV_VAR}={override!r} "
+            f"(expected one of {', '.join(_VALID_JOURNAL_MODES)})",
+            file=sys.stderr,
+        )
+
+    if _is_network_path(project_dir):
+        return "DELETE"
+    if not _probe_wal_support(db_path.parent):
+        print(
+            f"[database] WAL mode is not supported on the filesystem at {db_path.parent}; "
+            "using DELETE journal mode instead",
+            file=sys.stderr,
+        )
+        return "DELETE"
+    return "WAL"
 
 
 def _migrate_add_human_input_columns(engine) -> None:
@@ -414,9 +545,12 @@ def create_database(project_dir: Path) -> tuple:
     db_path.parent.mkdir(parents=True, exist_ok=True)
 
     # Choose journal mode based on filesystem type
-    # WAL mode doesn't work reliably on network filesystems and can cause corruption
-    is_network = _is_network_path(project_dir)
-    journal_mode = "DELETE" if is_network else "WAL"
+    # WAL mode doesn't work reliably on network/shared filesystems and can fail with
+    # "disk I/O error" or cause corruption, so verify it works before using it
+    journal_mode = _choose_journal_mode(project_dir, db_path)
+    if journal_mode != "WAL" and _is_wal_database(db_path):
+        # A previous run may have left the database in WAL mode
+        _convert_wal_to_rollback(db_path, journal_mode)
 
     engine = create_engine(db_url, connect_args={
         "check_same_thread": False,
