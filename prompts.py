@@ -131,6 +131,78 @@ def _strip_browser_testing_sections(prompt: str) -> str:
     return prompt
 
 
+# Where per-feature regression scripts live inside a generated project.
+# Coding agents write one script per feature here after verifying it; testing
+# agents run the script first and only fall back to (expensive) manual browser
+# testing when the script is missing or failing.
+REGRESSION_TESTS_DIR = "tests/regression"
+
+REGRESSION_SCRIPT_CODING_SECTION = f"""### STEP 5.8: SAVE A REGRESSION TEST SCRIPT (MANDATORY)
+
+Testing agents re-verify passing features later. Re-testing by hand in the browser costs a full
+agent session every time, so capture your verification as a script they can simply run:
+
+1. Write `{REGRESSION_TESTS_DIR}/feature-<ID>.spec.ts` (or `.spec.js` if the project does not use
+   TypeScript) -- one file per feature, named with the feature's numeric ID.
+2. Use `@playwright/test` (install once: `npm install -D @playwright/test` then
+   `npx playwright install chromium`). Encode the feature's verification steps as assertions.
+   Use the `page` fixture for UI flows and the `request` fixture for API-only features.
+3. Read the app URL from `process.env.BASE_URL`, defaulting to your dev server URL. Run headless.
+4. Make it deterministic and self-contained: create unique test data (e.g. `REG_<ID>_${{Date.now()}}`),
+   prefer role/label/text locators over brittle CSS selectors, rely on Playwright's auto-waiting
+   assertions instead of fixed sleeps, and clean up any data the script creates.
+5. Run it and confirm it passes:
+   `npx playwright test {REGRESSION_TESTS_DIR}/feature-<ID>.spec.ts --reporter=line`
+6. Commit the script together with the feature.
+
+The script supplements your browser verification above; it does not replace it.
+
+"""
+
+
+def _regression_script_testing_header() -> str:
+    """Header prepended to testing prompts: run saved scripts before manual testing."""
+    return f"""## SCRIPTED REGRESSION TESTS (RUN THESE FIRST)
+
+Each feature should have a regression script at `{REGRESSION_TESTS_DIR}/feature-<ID>.spec.ts`
+(or `.spec.js`), written by the agent that built it. Running a script is far cheaper than
+re-testing by hand, so for EACH assigned feature:
+
+1. Make sure the app is running (run `./init.sh` if it exists and the server is down).
+2. Look for the script: `ls {REGRESSION_TESTS_DIR}/feature-<ID>.spec.*`
+3. **Script exists:** run it:
+   `npx playwright test {REGRESSION_TESTS_DIR}/feature-<ID>.spec.ts --reporter=line`
+   - **Passes:** the feature still works. Move on to the next feature and skip the manual
+     browser steps below (no snapshots, no screenshots).
+   - **Fails:** read the failure output. If the app is broken, it is a regression: follow the
+     "If the feature FAILS" steps below, then re-run the script until it passes. If the script
+     itself is wrong (e.g. a stale selector after an intentional UI change), verify the feature
+     manually in the browser, fix the script, and commit it.
+4. **No script:** verify the feature manually with the browser steps below, then write the
+   missing script (Playwright test, headless, `BASE_URL` env var with the dev server URL as
+   default, unique self-cleaning test data, auto-waiting assertions). Confirm it passes and
+   commit it so the next regression run is cheap.
+
+The manual browser workflow below applies only when a script is missing or failing.
+
+---
+
+"""
+
+
+def _add_regression_script_section(prompt: str) -> str:
+    """Insert the regression-script step into a coding prompt.
+
+    Placed right before STEP 6 (marking the feature passing) so the script is
+    written while the verification steps are fresh. Falls back to appending
+    when a customized project prompt has no STEP 6 heading.
+    """
+    marker = "### STEP 6:"
+    if marker in prompt:
+        return prompt.replace(marker, REGRESSION_SCRIPT_CODING_SECTION + marker, 1)
+    return prompt.rstrip() + "\n\n---\n\n" + REGRESSION_SCRIPT_CODING_SECTION
+
+
 def get_coding_prompt(project_dir: Path | None = None, yolo_mode: bool = False) -> str:
     """Load the coding agent prompt (project-specific if available).
 
@@ -147,6 +219,8 @@ def get_coding_prompt(project_dir: Path | None = None, yolo_mode: bool = False) 
 
     if yolo_mode:
         prompt = _strip_browser_testing_sections(prompt)
+    else:
+        prompt = _add_regression_script_section(prompt)
 
     return prompt
 
@@ -196,7 +270,7 @@ def get_testing_prompt(
     Returns:
         The testing prompt, with feature assignment instructions populated.
     """
-    base_prompt = load_prompt("testing_prompt", project_dir)
+    base_prompt = _regression_script_testing_header() + load_prompt("testing_prompt", project_dir)
 
     # Batch mode: replace the {{TESTING_FEATURE_IDS}} placeholder in the template
     if testing_feature_ids is not None and len(testing_feature_ids) > 0:
