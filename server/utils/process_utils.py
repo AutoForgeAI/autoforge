@@ -5,8 +5,10 @@ Process Utilities
 Shared utilities for process management across the codebase.
 """
 
+import errno
 import logging
 import subprocess
+import time
 from dataclasses import dataclass
 from typing import Literal
 
@@ -35,6 +37,49 @@ class KillResult:
     children_terminated: int = 0
     children_killed: int = 0
     parent_forcekilled: bool = False
+
+
+def _poll_procs(
+    procs: list[psutil.Process], timeout: float, poll_interval: float = 0.1
+) -> tuple[list[psutil.Process], list[psutil.Process]]:
+    """Wait for processes to exit by polling, without psutil's pidfd-based wait.
+
+    Used as a fallback when psutil.wait_procs() fails. Zombies count as gone.
+    """
+    def _alive(p: psutil.Process) -> bool:
+        try:
+            return p.is_running() and p.status() != psutil.STATUS_ZOMBIE
+        except (psutil.NoSuchProcess, psutil.AccessDenied, OSError):
+            return False
+
+    deadline = time.monotonic() + timeout
+    alive = list(procs)
+    while True:
+        alive = [p for p in alive if _alive(p)]
+        if not alive or time.monotonic() >= deadline:
+            break
+        time.sleep(poll_interval)
+    gone = [p for p in procs if p not in alive]
+    return gone, alive
+
+
+def wait_procs_safe(
+    procs: list[psutil.Process], timeout: float
+) -> tuple[list[psutil.Process], list[psutil.Process]]:
+    """psutil.wait_procs() that tolerates the pidfd_open() EINVAL race.
+
+    On Linux 6.x, psutil (>= 7.x) waits via os.pidfd_open(), which can raise
+    OSError(EINVAL) when the target process exits concurrently
+    (https://github.com/giampaolo/psutil/issues/2715). Unhandled, that error
+    used to propagate up and crash the server. Fall back to polling instead.
+    """
+    try:
+        return psutil.wait_procs(procs, timeout=timeout)
+    except OSError as e:
+        if e.errno != errno.EINVAL:
+            raise
+        logger.debug("psutil.wait_procs() hit pidfd_open EINVAL race (%s); falling back to polling", e)
+        return _poll_procs(procs, timeout)
 
 
 def kill_process_tree(proc: subprocess.Popen, timeout: float = 5.0) -> KillResult:
@@ -75,7 +120,7 @@ def kill_process_tree(proc: subprocess.Popen, timeout: float = 5.0) -> KillResul
                 logger.debug("Child PID %d already gone or inaccessible: %s", child.pid, e)
 
         # Wait for children to terminate
-        gone, still_alive = psutil.wait_procs(children, timeout=timeout)
+        gone, still_alive = wait_procs_safe(children, timeout=timeout)
         result.children_terminated = len(gone)
 
         logger.debug(
