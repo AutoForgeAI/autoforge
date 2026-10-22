@@ -1,5 +1,5 @@
 import { FeatureCard } from './FeatureCard'
-import { Plus, Sparkles, Wand2 } from 'lucide-react'
+import { Github, Plus, Sparkles, Wand2 } from 'lucide-react'
 import type { Feature, ActiveAgent } from '../lib/types'
 import { Card, CardContent, CardHeader, CardTitle } from '@/components/ui/card'
 import { Button } from '@/components/ui/button'
@@ -15,6 +15,7 @@ interface KanbanColumnProps {
   onFeatureClick: (feature: Feature) => void
   onAddFeature?: () => void
   onExpandProject?: () => void
+  onImportGitHub?: () => void
   showExpandButton?: boolean
   onCreateSpec?: () => void
   showCreateSpec?: boolean
@@ -37,6 +38,7 @@ export function KanbanColumn({
   onFeatureClick,
   onAddFeature,
   onExpandProject,
+  onImportGitHub,
   showExpandButton,
   onCreateSpec,
   showCreateSpec,
@@ -59,7 +61,7 @@ export function KanbanColumn({
           {title}
           <Badge variant="secondary">{count}</Badge>
         </CardTitle>
-        {(onAddFeature || onExpandProject) && (
+        {(onAddFeature || onExpandProject || onImportGitHub) && (
           <div className="flex items-center gap-2">
             {onAddFeature && (
               <Button
@@ -78,6 +80,16 @@ export function KanbanColumn({
                 title="Expand project with AI (E)"
               >
                 <Sparkles size={16} />
+              </Button>
+            )}
+            {onImportGitHub && (
+              <Button
+                onClick={onImportGitHub}
+                size="icon-sm"
+                variant="secondary"
+                title="Import GitHub issues as features"
+              >
+                <Github size={16} />
               </Button>
             )}
           </div>

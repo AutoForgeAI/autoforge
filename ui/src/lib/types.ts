@@ -614,6 +614,38 @@ export interface FeatureBulkCreateResponse {
   features: Feature[]
 }
 
+// GitHub issue import
+export interface GitHubIssue {
+  number: number
+  title: string
+  body: string
+  state: string
+  url: string
+  labels: string[]
+  author: string
+  comments: number
+  created_at: string | null
+  updated_at: string | null
+  imported_feature_id: number | null
+}
+
+export interface GitHubIssueListResponse {
+  repo: string
+  authenticated: boolean
+  issues: GitHubIssue[]
+}
+
+export interface GitHubRepoResponse {
+  repo: string | null
+  authenticated: boolean
+}
+
+export interface GitHubImportResponse {
+  created: number
+  skipped: number[]
+  features: Feature[]
+}
+
 // ============================================================================
 // Settings Types
 // ============================================================================

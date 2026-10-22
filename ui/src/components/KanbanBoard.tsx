@@ -7,12 +7,13 @@ interface KanbanBoardProps {
   onFeatureClick: (feature: Feature) => void
   onAddFeature?: () => void
   onExpandProject?: () => void
+  onImportGitHub?: () => void
   activeAgents?: ActiveAgent[]
   onCreateSpec?: () => void
   hasSpec?: boolean
 }
 
-export function KanbanBoard({ features, onFeatureClick, onAddFeature, onExpandProject, activeAgents = [], onCreateSpec, hasSpec = true }: KanbanBoardProps) {
+export function KanbanBoard({ features, onFeatureClick, onAddFeature, onExpandProject, onImportGitHub, activeAgents = [], onCreateSpec, hasSpec = true }: KanbanBoardProps) {
   const hasFeatures = features && (features.pending.length + features.in_progress.length + features.done.length + (features.needs_human_input?.length || 0)) > 0
 
   // Combine all features for dependency status calculation
@@ -54,6 +55,7 @@ export function KanbanBoard({ features, onFeatureClick, onAddFeature, onExpandPr
         onFeatureClick={onFeatureClick}
         onAddFeature={onAddFeature}
         onExpandProject={onExpandProject}
+        onImportGitHub={onImportGitHub}
         showExpandButton={hasFeatures && hasSpec}
         onCreateSpec={onCreateSpec}
         showCreateSpec={!hasSpec && !hasFeatures}

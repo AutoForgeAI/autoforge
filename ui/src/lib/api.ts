@@ -13,6 +13,9 @@ import type {
   FeatureUpdate,
   FeatureBulkCreate,
   FeatureBulkCreateResponse,
+  GitHubImportResponse,
+  GitHubIssueListResponse,
+  GitHubRepoResponse,
   DependencyGraph,
   AgentStatusResponse,
   AgentActionResponse,
@@ -178,6 +181,35 @@ export async function createFeaturesBulk(
   return fetchJSON(`/projects/${encodeURIComponent(projectName)}/features/bulk`, {
     method: 'POST',
     body: JSON.stringify(bulk),
+  })
+}
+
+// ============================================================================
+// GitHub Issue Import API
+// ============================================================================
+
+export async function getGitHubRepo(projectName: string): Promise<GitHubRepoResponse> {
+  return fetchJSON(`/projects/${encodeURIComponent(projectName)}/github/repo`)
+}
+
+export async function listGitHubIssues(
+  projectName: string,
+  repo: string,
+  state: 'open' | 'closed' | 'all' = 'open'
+): Promise<GitHubIssueListResponse> {
+  const params = new URLSearchParams({ repo, state })
+  return fetchJSON(`/projects/${encodeURIComponent(projectName)}/github/issues?${params}`)
+}
+
+export async function importGitHubIssues(
+  projectName: string,
+  repo: string,
+  issueNumbers: number[],
+  includeComments = true
+): Promise<GitHubImportResponse> {
+  return fetchJSON(`/projects/${encodeURIComponent(projectName)}/github/import`, {
+    method: 'POST',
+    body: JSON.stringify({ repo, issue_numbers: issueNumbers, include_comments: includeComments }),
   })
 }
 

@@ -202,6 +202,7 @@ The FastAPI server provides REST and WebSocket endpoints for the UI:
 - `devserver.py` - Dev server control (start/stop) and config
 - `schedules.py` - CRUD for time-based agent scheduling
 - `settings.py` - Global settings management (model selection, YOLO, batch size, headless browser)
+- `github.py` - Import GitHub issues as features (repo auto-detected from git remote; token from `GITHUB_TOKEN`/`GH_TOKEN` or `gh auth token`)
 
 **Services** (`server/services/`):
 - `process_manager.py` - Agent process lifecycle management
