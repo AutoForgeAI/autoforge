@@ -44,6 +44,33 @@ from ..utils.document_extraction import (
 
 logger = logging.getLogger(__name__)
 
+# -------------------------------------------------------------------
+# Web-UI chat sessions (spec creation, project expansion) run without a
+# terminal, so there is no way for the user to approve a tool call.
+# Shell execution is therefore removed from these sessions entirely, and
+# this note is appended to their system prompt so the model knows it and
+# doesn't ask the user for an approval they have no way of giving.
+# -------------------------------------------------------------------
+NO_SHELL_TOOLS = ["Bash"]
+
+NO_SHELL_PROMPT_NOTE = """
+
+---
+
+## Environment Constraints (AutoForge Web UI)
+
+You are running inside the AutoForge web UI, not an interactive terminal.
+
+- You have NO Bash/shell tool: you cannot run commands, scripts, or Python code.
+- There is NO permission/approval prompt in this UI. NEVER ask the user to approve a
+  command or tool call -- they have no way of granting it.
+- To inspect files, use only the file tools you have (such as Read and Glob). If a file is
+  binary or cannot be read with them (e.g. .parquet, .xlsx, .sqlite, archives), do not
+  try to work around it. Instead, tell the user you cannot open that format here and ask
+  them to describe its structure (columns, types, sample rows) or paste an excerpt into
+  the chat (text documents can also be attached to a message).
+"""
+
 
 def check_rate_limit_error(exc: Exception) -> tuple[bool, int | None]:
     """Inspect an exception and determine if it represents a rate-limit.

@@ -21,6 +21,8 @@ from dotenv import load_dotenv
 from ..schemas import FileAttachment
 from ..utils.document_extraction import DocumentExtractionError
 from .chat_constants import (
+    NO_SHELL_PROMPT_NOTE,
+    NO_SHELL_TOOLS,
     ROOT_DIR,
     build_attachment_content_blocks,
     check_rate_limit_error,
@@ -122,6 +124,9 @@ class SpecChatSession:
                     "Edit(./**)",
                     "Glob(./**)",
                 ],
+                # No terminal in the web UI means nobody can approve a shell
+                # command, so remove shell access outright (see issue #14)
+                "deny": NO_SHELL_TOOLS,
             },
         }
         from autoforge_paths import get_claude_settings_path
@@ -133,7 +138,7 @@ class SpecChatSession:
         # Replace $ARGUMENTS with absolute project path (like CLI does in start.py:184)
         # Using absolute path avoids confusion when project folder name differs from app name
         project_path = str(self.project_dir.resolve())
-        system_prompt = skill_content.replace("$ARGUMENTS", project_path)
+        system_prompt = skill_content.replace("$ARGUMENTS", project_path) + NO_SHELL_PROMPT_NOTE
 
         # Write system prompt to CLAUDE.md file to avoid Windows command line length limit
         # The SDK will read this via setting_sources=["project"]
@@ -172,6 +177,7 @@ class SpecChatSession:
                         "WebFetch",
                         "WebSearch",
                     ],
+                    disallowed_tools=NO_SHELL_TOOLS,
                     permission_mode="acceptEdits",  # Auto-approve file writes for spec creation
                     max_turns=100,
                     cwd=str(self.project_dir.resolve()),
