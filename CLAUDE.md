@@ -120,6 +120,7 @@ python test_security_integration.py   # Integration tests (9 tests)
 python -m pytest test_client.py       # Client tests (20 tests)
 python -m pytest test_dependency_resolver.py  # Dependency resolver tests (12 tests)
 python -m pytest test_rate_limit_utils.py     # Rate limit tests (22 tests)
+python -m pytest test_testing_prompt.py       # Testing agent prompt tests (16 tests)
 ```
 
 ### React UI
@@ -467,6 +468,14 @@ Alternative providers are configured via the **Settings UI** (gear icon > API Pr
 2. Create ClaudeSDKClient with security settings
 3. Send prompt and stream response
 4. Auto-continue with 3-second delay between sessions
+
+### Testing Agent Verification Strategies
+
+The testing prompt (`.claude/templates/testing_prompt.template.md`) offers two strategies:
+- **Strategy A: Browser verification** - Playwright CLI for web UI features
+- **Strategy B: Command-line verification** - for CLI tools, scripts, libraries and other non-web programs: plan success criteria, make results observable (exit codes, stderr), prepare simulated user input (fixtures, stdin), run from bash capturing stdout/stderr/exit code, compare against the criteria, and keep the cases as automated tests
+
+`prompts.project_has_web_ui()` reads the app spec's `<frontend>` block. When a project has no web frontend (no `<frontend>`, or an empty/"none"/"CLI" one), `get_testing_prompt()` removes the browser instructions and makes Strategy B the only strategy (older project prompts get Strategy B injected from the base template).
 
 ### Real-time UI Updates
 

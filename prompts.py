@@ -175,6 +175,106 @@ def get_auto_improve_prompt(project_dir: Path | None = None, yolo_mode: bool = F
     return prompt
 
 
+# Values in the app spec's <frontend> block meaning "this project has no web UI"
+_NO_FRONTEND_PATTERN = re.compile(
+    r"^(none|n/?a|no(ne)?\b.*|not applicable|cli\b.*|command[- ]line.*|terminal.*|headless.*)$",
+    re.IGNORECASE,
+)
+
+_NON_WEB_TESTING_HEADER = """\
+## PROJECT TYPE: NO WEB UI
+
+This project has no web frontend according to its app spec. Browser automation is
+NOT applicable: verify every feature with **command-line verification** -- plan the
+success criteria, prepare simulated user input, run the program from bash, capture
+stdout/stderr/exit codes, and compare the results against the expected outcome.
+
+---
+
+"""
+
+
+def project_has_web_ui(project_dir: Path) -> bool | None:
+    """Detect from the app spec whether the project has a web frontend.
+
+    Returns:
+        True if the spec declares a frontend, False if it declares a technology
+        stack without one (or with an empty/"none"/"CLI" frontend), and None if
+        it can't be determined (no spec, or no technology stack section).
+    """
+    try:
+        spec = get_app_spec(project_dir)
+    except FileNotFoundError:
+        return None
+
+    # Ignore commented-out template examples
+    spec = re.sub(r"<!--.*?-->", "", spec, flags=re.DOTALL)
+
+    match = re.search(r"<frontend>(.*?)</frontend>", spec, flags=re.DOTALL | re.IGNORECASE)
+    if match is None:
+        if re.search(r"<technology_stack>", spec, flags=re.IGNORECASE):
+            return False
+        return None
+
+    # Strip nested tags to get the frontend's plain-text description
+    frontend_text = re.sub(r"<[^>]+>", " ", match.group(1))
+    frontend_text = " ".join(frontend_text.split())
+    if not frontend_text or _NO_FRONTEND_PATTERN.match(frontend_text):
+        return False
+    return True
+
+
+def _adapt_testing_prompt_for_cli(prompt: str) -> str:
+    """Rewrite a testing prompt for a project without a web UI.
+
+    Removes browser automation instructions and makes command-line verification
+    the only strategy. Works on both the current template (which has a
+    "Strategy B: Command-line verification" section) and older project prompts
+    (browser-only STEP 2), whose STEP 2 is replaced with the template's
+    command-line strategy.
+    """
+    if "#### Strategy B:" in prompt:
+        prompt = re.sub(
+            r"(First, pick the strategy:|#### Strategy A: Browser verification).*?(?=#### Strategy B:)",
+            "",
+            prompt,
+            count=1,
+            flags=re.DOTALL,
+        )
+    else:
+        cli_strategy = _load_template_cli_strategy()
+        if cli_strategy:
+            prompt = re.sub(
+                r"### STEP 2: VERIFY THE FEATURE.*?(?=### STEP 3:)",
+                lambda _m: "### STEP 2: VERIFY THE FEATURE\n\n" + cli_strategy,
+                prompt,
+                count=1,
+                flags=re.DOTALL,
+            )
+
+    # Drop the browser tool reference from AVAILABLE TOOLS
+    prompt = re.sub(
+        r"### Browser Automation \(Playwright[^)]*\)\n.*?(?=### |---)",
+        "",
+        prompt,
+        count=1,
+        flags=re.DOTALL,
+    )
+
+    return _NON_WEB_TESTING_HEADER + prompt
+
+
+def _load_template_cli_strategy() -> str | None:
+    """Extract the command-line verification section from the base testing template."""
+    template_path = TEMPLATES_DIR / "testing_prompt.template.md"
+    try:
+        template = template_path.read_text(encoding="utf-8")
+    except OSError:
+        return None
+    match = re.search(r"#### Strategy B:.*?(?=### STEP 3:)", template, flags=re.DOTALL)
+    return match.group(0) if match else None
+
+
 def get_testing_prompt(
     project_dir: Path | None = None,
     testing_feature_id: int | None = None,
@@ -197,6 +297,11 @@ def get_testing_prompt(
         The testing prompt, with feature assignment instructions populated.
     """
     base_prompt = load_prompt("testing_prompt", project_dir)
+
+    # Projects without a web frontend (CLI tools, scripts, libraries) can't be
+    # verified in a browser -- steer the agent to command-line verification.
+    if project_dir is not None and project_has_web_ui(project_dir) is False:
+        base_prompt = _adapt_testing_prompt_for_cli(base_prompt)
 
     # Batch mode: replace the {{TESTING_FEATURE_IDS}} placeholder in the template
     if testing_feature_ids is not None and len(testing_feature_ids) > 0:
