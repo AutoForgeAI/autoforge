@@ -15,6 +15,7 @@ from concurrent.futures import TimeoutError as FuturesTimeoutError
 from api.dependency_resolver import (
     are_dependencies_satisfied,
     compute_scheduling_scores,
+    explain_stalled_features,
     get_blocked_features,
     get_blocking_dependencies,
     get_ready_features,
@@ -380,6 +381,77 @@ def test_get_blocked_features():
         return False
 
 
+def test_explain_stalled_features():
+    """Test explaining why unfinished features cannot be started."""
+    print("\nTesting explain_stalled_features:")
+
+    features = [
+        {"id": 1, "priority": 1, "dependencies": [], "passes": True},
+        {"id": 2, "priority": 2, "dependencies": [99], "passes": False},
+        {"id": 3, "priority": 3, "dependencies": [4], "passes": False},
+        {"id": 4, "priority": 4, "dependencies": [3], "passes": False},
+        {"id": 5, "priority": 5, "dependencies": [], "passes": False},
+        {"id": 6, "priority": 6, "dependencies": [5], "passes": False},
+        {"id": 7, "priority": 7, "dependencies": [], "passes": False, "needs_human_input": True},
+        {"id": 8, "priority": 8, "dependencies": [7], "passes": False},
+        {"id": 9, "priority": 9, "dependencies": [2], "passes": False},
+    ]
+
+    reasons = explain_stalled_features(features, failed_ids={5})
+
+    assert 1 not in reasons, "passing features are not stalled"
+    assert 5 not in reasons, "permanently failed features are reported separately"
+    assert "#99" in reasons[2] and "non-existent" in reasons[2], reasons[2]
+    assert "circular" in reasons[3] and "circular" in reasons[4], (reasons[3], reasons[4])
+    assert "failed too many times #5" in reasons[6], reasons[6]
+    assert reasons[7] == "waiting for human input", reasons[7]
+    assert "human input #7" in reasons[8], reasons[8]
+    assert "unfinished feature(s) #2" in reasons[9], reasons[9]
+
+    print("  PASS: Each stalled feature has the right reason")
+    return True
+
+
+def test_explain_stalled_features_dependent_of_cycle():
+    """A feature depending on a cycle member is waiting, not part of the cycle."""
+    print("\nTesting explain_stalled_features with a dependent of a cycle:")
+
+    # ID order, as the database returns them
+    features = [
+        {"id": 3, "priority": 1, "dependencies": [4], "passes": False},
+        {"id": 4, "priority": 2, "dependencies": [3], "passes": False},
+        {"id": 9, "priority": 3, "dependencies": [3], "passes": False},
+    ]
+    reasons = explain_stalled_features(features)
+    assert "circular" not in reasons[9], reasons[9]
+    assert "unfinished feature(s) #3" in reasons[9], reasons[9]
+    assert reasons[3] == "circular dependency #3 -> #4 -> #3", reasons[3]
+    assert reasons[4] == "circular dependency #3 -> #4 -> #3", reasons[4]
+
+    # Two independent cycles, a self-loop, and a chain hanging off a cycle
+    features = [
+        {"id": 1, "priority": 1, "dependencies": [2], "passes": False},
+        {"id": 2, "priority": 1, "dependencies": [3], "passes": False},
+        {"id": 3, "priority": 1, "dependencies": [1], "passes": False},
+        {"id": 5, "priority": 1, "dependencies": [6], "passes": False},
+        {"id": 6, "priority": 1, "dependencies": [5], "passes": False},
+        {"id": 7, "priority": 1, "dependencies": [7], "passes": False},
+        {"id": 8, "priority": 1, "dependencies": [9], "passes": False},
+        {"id": 9, "priority": 1, "dependencies": [2, 5], "passes": False},
+    ]
+    reasons = explain_stalled_features(features)
+    for fid in (1, 2, 3):
+        assert reasons[fid] == "circular dependency #1 -> #2 -> #3 -> #1", reasons[fid]
+    for fid in (5, 6):
+        assert reasons[fid] == "circular dependency #5 -> #6 -> #5", reasons[fid]
+    assert reasons[7] == "circular dependency #7 -> #7", reasons[7]
+    assert reasons[8] == "waiting on unfinished feature(s) #9", reasons[8]
+    assert reasons[9] == "waiting on unfinished feature(s) #2, #5", reasons[9]
+
+    print("  PASS: Only real cycle members are reported as circular")
+    return True
+
+
 def run_all_tests():
     """Run all tests and report results."""
     print("=" * 60)
@@ -399,6 +471,8 @@ def run_all_tests():
         test_get_blocking_dependencies,
         test_get_ready_features,
         test_get_blocked_features,
+        test_explain_stalled_features,
+        test_explain_stalled_features_dependent_of_cycle,
     ]
 
     passed = 0

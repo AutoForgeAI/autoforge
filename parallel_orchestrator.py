@@ -34,7 +34,11 @@ from typing import Any, Callable, Literal
 from sqlalchemy import text
 
 from api.database import Feature, create_database
-from api.dependency_resolver import are_dependencies_satisfied, compute_scheduling_scores
+from api.dependency_resolver import (
+    are_dependencies_satisfied,
+    compute_scheduling_scores,
+    explain_stalled_features,
+)
 from progress import has_features
 from server.utils.process_utils import kill_process_tree
 
@@ -199,6 +203,11 @@ class ParallelOrchestrator:
 
         # Track feature failures to prevent infinite retry loops
         self._failure_counts: dict[int, int] = {}
+
+        # Last "queue is stalled" report printed, so it is only repeated when it changes
+        self._last_stall_report: str | None = None
+        # Last agent spawn failure printed, to avoid repeating it every loop iteration
+        self._last_spawn_error: str | None = None
 
         # Track recently tested feature IDs to avoid redundant re-testing.
         # Cleared when all passing features have been covered at least once.
@@ -1379,6 +1388,45 @@ class ParallelOrchestrator:
         with self._lock:
             self.running_testing_agents.clear()
 
+    def _report_stalled_queue(self, feature_dicts: list[dict]) -> None:
+        """Print why no feature can be started while nothing is running.
+
+        Without this the orchestrator idles indefinitely with the agent shown as
+        "running" and every feature stuck in Pending, giving the user no clue
+        what to fix. The report is only re-printed when its content changes.
+        """
+        failed_ids = {
+            fid for fid, count in self._failure_counts.items() if count >= MAX_FEATURE_RETRIES
+        }
+        reasons = explain_stalled_features(feature_dicts, failed_ids)
+
+        lines = [
+            f"No features can be started: {len(reasons)} unfinished feature(s) are blocked "
+            "and no agent is running.",
+        ]
+        max_listed = 10
+        for fid, reason in sorted(reasons.items())[:max_listed]:
+            lines.append(f"  - Feature #{fid}: {reason}")
+        if len(reasons) > max_listed:
+            lines.append(f"  ... and {len(reasons) - max_listed} more")
+        if failed_ids:
+            lines.append(
+                f"Feature(s) {', '.join(f'#{i}' for i in sorted(failed_ids))} failed "
+                f"{MAX_FEATURE_RETRIES} times and will not be retried until the agent is restarted."
+            )
+        lines.append(
+            "To unblock: fix or remove the listed dependencies, answer pending human-input "
+            "requests, or restart the agent to retry failed features."
+        )
+        report = "\n".join(lines)
+
+        if report != self._last_stall_report:
+            print(report, flush=True)
+            self._last_stall_report = report
+        debug_log.log("STALL", "No ready features and nothing running",
+            reasons={fid: r for fid, r in sorted(reasons.items())[:max_listed]},
+            failed_ids=sorted(failed_ids))
+
     async def run_loop(self):
         """Main orchestration loop."""
         self.is_running = True
@@ -1575,7 +1623,11 @@ class ParallelOrchestrator:
                     slots = self.max_concurrency - current
                     for feature in resumable[:slots]:
                         print(f"Resuming feature #{feature['id']}: {feature['name']}", flush=True)
-                        self.start_feature(feature["id"], resume=True)
+                        success, msg = self.start_feature(feature["id"], resume=True)
+                        if success:
+                            self._last_stall_report = None
+                        else:
+                            print(f"Failed to resume feature #{feature['id']}: {msg}", flush=True)
                     await asyncio.sleep(0.5)  # Brief delay for subprocess to claim feature before re-querying
                     continue
 
@@ -1602,8 +1654,8 @@ class ParallelOrchestrator:
                             print("\nAll features complete!", flush=True)
                             break
 
-                        # Still have pending features but all are blocked by dependencies
-                        print("No ready features available. All remaining features may be blocked by dependencies.", flush=True)
+                        # Still have pending features but none can be started - explain why
+                        self._report_stalled_queue(fresh_dicts)
                         await self._wait_for_agent_completion(timeout=POLL_INTERVAL * 2)
                         continue
 
@@ -1626,11 +1678,17 @@ class ParallelOrchestrator:
                     logger.debug("Starting batch: %s", batch_ids)
                     success, msg = self.start_feature_batch(batch_ids)
                     if not success:
+                        error = f"Failed to start agent for feature(s) {batch_ids}: {msg}"
+                        if error != self._last_spawn_error:
+                            print(error, flush=True)
+                            self._last_spawn_error = error
                         logger.debug("Failed to start batch %s: %s", batch_ids, msg)
                         debug_log.log("SPAWN", f"FAILED to start batch {batch_ids}",
                             batch_names=batch_names,
                             error=msg)
                     else:
+                        self._last_stall_report = None
+                        self._last_spawn_error = None
                         logger.debug("Successfully started batch %s", batch_ids)
                         with self._lock:
                             running_count = len(self.running_coding_agents)

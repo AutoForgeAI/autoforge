@@ -407,6 +407,154 @@ def get_blocked_features(features: list[dict]) -> list[dict]:
     return blocked
 
 
+def _format_ids(ids: list[int]) -> str:
+    return ", ".join(f"#{i}" for i in ids)
+
+
+def _find_cycle_members(graph: dict[int, list[int]]) -> dict[int, list[int]]:
+    """Map every feature that lies on a dependency cycle to one such cycle.
+
+    Uses Tarjan's strongly connected components (iteratively, so deep chains
+    don't hit the recursion limit). A feature is on a cycle only if its SCC
+    has more than one member or it depends on itself; features that merely
+    depend on a cycle are not included.
+
+    Args:
+        graph: Map of feature_id -> dependency IDs (all keys of the graph)
+
+    Returns:
+        Map of feature_id -> shortest cycle through that feature, rotated to
+        start at its lowest ID (e.g. [3, 4] for 3 -> 4 -> 3)
+    """
+    index: dict[int, int] = {}
+    low: dict[int, int] = {}
+    on_stack: set[int] = set()
+    stack: list[int] = []
+    sccs: list[list[int]] = []
+    counter = 0
+
+    for root in graph:
+        if root in index:
+            continue
+        work: list[tuple[int, int]] = [(root, 0)]
+        while work:
+            node, i = work.pop()
+            if i == 0:
+                index[node] = low[node] = counter
+                counter += 1
+                stack.append(node)
+                on_stack.add(node)
+            deps = graph[node]
+            if i < len(deps):
+                work.append((node, i + 1))
+                dep = deps[i]
+                if dep not in index:
+                    work.append((dep, 0))
+                elif dep in on_stack:
+                    low[node] = min(low[node], index[dep])
+                continue
+            if low[node] == index[node]:
+                scc: list[int] = []
+                while True:
+                    member = stack.pop()
+                    on_stack.discard(member)
+                    scc.append(member)
+                    if member == node:
+                        break
+                sccs.append(scc)
+            if work:
+                parent = work[-1][0]
+                low[parent] = min(low[parent], low[node])
+
+    cycle_of: dict[int, list[int]] = {}
+    for scc in sccs:
+        if len(scc) == 1:
+            if scc[0] in graph[scc[0]]:
+                cycle_of[scc[0]] = [scc[0]]
+            continue
+        members = set(scc)
+        for start in scc:
+            # Shortest path back to `start` using only edges inside the SCC
+            prev: dict[int, int] = {}
+            queue: deque[int] = deque([start])
+            end = start
+            while queue:
+                node = queue.popleft()
+                if start in graph[node]:
+                    end = node
+                    break
+                for dep in graph[node]:
+                    if dep in members and dep not in prev:
+                        prev[dep] = node
+                        queue.append(dep)
+            path = [end]
+            while path[-1] != start:
+                path.append(prev[path[-1]])
+            cycle = path[::-1]
+            pivot = cycle.index(min(cycle))
+            cycle_of[start] = cycle[pivot:] + cycle[:pivot]
+
+    return cycle_of
+
+
+def explain_stalled_features(
+    features: list[dict],
+    failed_ids: set[int] | None = None,
+) -> dict[int, str]:
+    """Explain why each unfinished feature cannot be started.
+
+    Used when nothing is running and no feature is ready, so the user can see
+    *why* the queue is stuck instead of the agent silently idling.
+
+    Args:
+        features: List of all feature dicts
+        failed_ids: IDs of features that exhausted their retries this session
+
+    Returns:
+        Map of feature_id -> human-readable reason, for every feature that is
+        neither passing nor permanently failed.
+    """
+    failed_ids = failed_ids or set()
+    feature_map = {f["id"]: f for f in features}
+    pending = [f for f in features if not f.get("passes") and f["id"] not in failed_ids]
+    pending_map = {f["id"]: f for f in pending}
+    human_ids = {f["id"] for f in pending if f.get("needs_human_input")}
+
+    cycle_of = _find_cycle_members({
+        f["id"]: [d for d in (f.get("dependencies") or []) if d in pending_map]
+        for f in pending
+    })
+
+    reasons: dict[int, str] = {}
+    for f in pending:
+        fid = f["id"]
+        deps = f.get("dependencies") or []
+        missing = [d for d in deps if d not in feature_map]
+        failed = [d for d in deps if d in failed_ids]
+        human = [d for d in deps if d in human_ids]
+        waiting = [d for d in deps if d in pending_map and d not in human_ids]
+
+        if fid in human_ids:
+            reasons[fid] = "waiting for human input"
+        elif missing:
+            reasons[fid] = f"depends on non-existent feature(s) {_format_ids(missing)}"
+        elif fid in cycle_of:
+            cycle = cycle_of[fid]
+            reasons[fid] = f"circular dependency {' -> '.join(f'#{i}' for i in cycle + cycle[:1])}"
+        elif failed:
+            reasons[fid] = f"depends on feature(s) that failed too many times {_format_ids(failed)}"
+        elif human:
+            reasons[fid] = f"depends on feature(s) waiting for human input {_format_ids(human)}"
+        elif waiting:
+            reasons[fid] = f"waiting on unfinished feature(s) {_format_ids(waiting)}"
+        elif f.get("in_progress"):
+            reasons[fid] = "marked in progress but no agent is working on it"
+        else:
+            reasons[fid] = "ready but not started"
+
+    return reasons
+
+
 def build_graph_data(features: list[dict]) -> dict:
     """Build graph data structure for visualization.
 
