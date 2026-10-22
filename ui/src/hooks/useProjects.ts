@@ -158,6 +158,26 @@ export function useAgentStatus(projectName: string | null) {
   })
 }
 
+export function useProjectUsage(projectName: string | null) {
+  return useQuery({
+    queryKey: ['usage', projectName],
+    queryFn: () => api.getProjectUsage(projectName!),
+    enabled: !!projectName,
+    refetchInterval: 15000, // Usage is recorded once per agent session
+  })
+}
+
+export function useResetProjectUsage(projectName: string) {
+  const queryClient = useQueryClient()
+
+  return useMutation({
+    mutationFn: () => api.resetProjectUsage(projectName),
+    onSuccess: () => {
+      queryClient.invalidateQueries({ queryKey: ['usage', projectName] })
+    },
+  })
+}
+
 export function useStartAgent(projectName: string) {
   const queryClient = useQueryClient()
 
@@ -170,6 +190,7 @@ export function useStartAgent(projectName: string) {
     } = {}) => api.startAgent(projectName, options),
     onSuccess: () => {
       queryClient.invalidateQueries({ queryKey: ['agent-status', projectName] })
+      queryClient.invalidateQueries({ queryKey: ['usage', projectName] })
     },
   })
 }
@@ -308,6 +329,7 @@ const DEFAULT_SETTINGS: Settings = {
   api_base_url: null,
   api_has_auth_token: false,
   api_model: null,
+  max_cost_usd: 0,
 }
 
 const DEFAULT_PROVIDERS: ProvidersResponse = {
@@ -376,6 +398,7 @@ export function useUpdateSettings() {
     },
     onSettled: () => {
       queryClient.invalidateQueries({ queryKey: ['settings'] })
+      queryClient.invalidateQueries({ queryKey: ['usage'] }) // cost limit affects limit_reached
       queryClient.invalidateQueries({ queryKey: ['available-models'] })
       queryClient.invalidateQueries({ queryKey: ['available-providers'] })
     },

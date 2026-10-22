@@ -658,6 +658,7 @@ export interface Settings {
   api_base_url: string | null
   api_has_auth_token: boolean
   api_model: string | null
+  max_cost_usd: number  // Per-project spending limit in USD (0 = unlimited)
 }
 
 export interface SettingsUpdate {
@@ -671,6 +672,39 @@ export interface SettingsUpdate {
   api_base_url?: string
   api_auth_token?: string
   api_model?: string
+  max_cost_usd?: number
+}
+
+// Token/cost usage tracking
+export interface UsageTotals {
+  sessions: number
+  input_tokens: number
+  output_tokens: number
+  cache_creation_tokens: number
+  cache_read_tokens: number
+  cost_usd: number
+}
+
+export interface UsageSession {
+  id: number
+  created_at: string | null
+  agent_type: string | null
+  feature_ids: number[]
+  model: string | null
+  input_tokens: number
+  output_tokens: number
+  cache_creation_tokens: number
+  cache_read_tokens: number
+  cost_usd: number
+  duration_ms: number
+  num_turns: number
+}
+
+export interface ProjectUsage {
+  totals: UsageTotals
+  cost_limit_usd: number | null  // null = unlimited
+  limit_reached: boolean
+  recent_sessions: UsageSession[]
 }
 
 export interface ProjectSettingsUpdate {

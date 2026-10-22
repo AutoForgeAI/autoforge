@@ -22,6 +22,9 @@ from ..schemas import (
     ProjectSettingsUpdate,
     ProjectStats,
     ProjectSummary,
+    ProjectUsageResponse,
+    UsageSession,
+    UsageTotals,
 )
 
 # Lazy imports to avoid circular dependencies
@@ -392,6 +395,45 @@ async def get_project_stats_endpoint(name: str):
         raise HTTPException(status_code=404, detail="Project directory not found")
 
     return get_project_stats(project_dir)
+
+
+def _resolve_existing_project_dir(name: str) -> Path:
+    (_, _, get_project_path, _, _, _, _, _, _) = _get_registry_functions()
+    name = validate_project_name(name)
+    project_dir = get_project_path(name)
+    if not project_dir:
+        raise HTTPException(status_code=404, detail=f"Project '{name}' not found")
+    if not project_dir.exists():
+        raise HTTPException(status_code=404, detail="Project directory not found")
+    return Path(project_dir)
+
+
+@router.get("/{name}/usage", response_model=ProjectUsageResponse)
+async def get_project_usage(name: str):
+    """Get cumulative token usage and cost for a project, plus the active cost limit."""
+    project_dir = _resolve_existing_project_dir(name)
+
+    from usage_tracker import get_cost_limit, get_recent_sessions, get_usage_totals
+
+    totals = get_usage_totals(project_dir)
+    limit = get_cost_limit()
+    return ProjectUsageResponse(
+        totals=UsageTotals(**totals),
+        cost_limit_usd=limit,
+        limit_reached=limit is not None and totals["cost_usd"] >= limit,
+        recent_sessions=[UsageSession(**r) for r in get_recent_sessions(project_dir)],
+    )
+
+
+@router.delete("/{name}/usage")
+async def reset_project_usage(name: str):
+    """Clear recorded usage for a project (resets its spend against the cost limit)."""
+    project_dir = _resolve_existing_project_dir(name)
+
+    from usage_tracker import reset_usage
+
+    deleted = reset_usage(project_dir)
+    return {"success": True, "deleted": deleted}
 
 
 @router.post("/{name}/reset")

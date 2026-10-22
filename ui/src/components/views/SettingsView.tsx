@@ -37,6 +37,7 @@ export function SettingsView() {
   const [authTokenInput, setAuthTokenInput] = useState('')
   const [customModelInput, setCustomModelInput] = useState('')
   const [customBaseUrlInput, setCustomBaseUrlInput] = useState('')
+  const [costLimitInput, setCostLimitInput] = useState('')
 
   const handleYoloToggle = () => {
     if (settings && !updateSettings.isPending) {
@@ -65,6 +66,23 @@ export function SettingsView() {
   const handleTestingBatchSizeChange = (size: number) => {
     if (!updateSettings.isPending) {
       updateSettings.mutate({ testing_batch_size: size })
+    }
+  }
+
+  const parsedCostLimit = costLimitInput.trim() === '' ? NaN : Number(costLimitInput)
+  const isCostLimitValid = Number.isFinite(parsedCostLimit) && parsedCostLimit >= 0
+
+  const handleSaveCostLimit = () => {
+    if (isCostLimitValid && !updateSettings.isPending) {
+      updateSettings.mutate({ max_cost_usd: parsedCostLimit })
+      setCostLimitInput('')
+    }
+  }
+
+  const handleClearCostLimit = () => {
+    if (!updateSettings.isPending) {
+      updateSettings.mutate({ max_cost_usd: 0 })
+      setCostLimitInput('')
     }
   }
 
@@ -503,6 +521,48 @@ export function SettingsView() {
                     onChange={handleTestingBatchSizeChange}
                     disabled={isSaving}
                   />
+                </div>
+
+                {/* Cost Limit */}
+                <div className="space-y-2">
+                  <Label htmlFor="cost-limit" className="font-medium">Cost Limit per Project</Label>
+                  <p className="text-sm text-muted-foreground">
+                    Stop starting new agent sessions once a project's tracked spend reaches this amount.
+                    {' '}
+                    {(settings.max_cost_usd ?? 0) > 0
+                      ? <>Current limit: <span className="font-semibold text-foreground">${settings.max_cost_usd.toFixed(2)}</span></>
+                      : 'Currently unlimited.'}
+                  </p>
+                  <div className="flex gap-2">
+                    <div className="relative flex-1">
+                      <span className="absolute left-3 top-1/2 -translate-y-1/2 text-sm text-muted-foreground">$</span>
+                      <input
+                        id="cost-limit"
+                        type="number"
+                        min={0}
+                        step="0.01"
+                        inputMode="decimal"
+                        value={costLimitInput}
+                        onChange={(e) => setCostLimitInput(e.target.value)}
+                        placeholder={(settings.max_cost_usd ?? 0) > 0 ? settings.max_cost_usd.toFixed(2) : 'No limit'}
+                        className="w-full py-1.5 pl-6 pr-3 text-sm border rounded-md bg-background"
+                        onKeyDown={(e) => e.key === 'Enter' && handleSaveCostLimit()}
+                      />
+                    </div>
+                    <Button size="sm" onClick={handleSaveCostLimit} disabled={!isCostLimitValid || isSaving}>
+                      Set
+                    </Button>
+                    {(settings.max_cost_usd ?? 0) > 0 && (
+                      <Button size="sm" variant="outline" onClick={handleClearCostLimit} disabled={isSaving}>
+                        Clear
+                      </Button>
+                    )}
+                  </div>
+                  {isAlternativeProvider && (
+                    <p className="text-xs text-muted-foreground">
+                      Costs are estimated with Anthropic pricing and may not match {currentProviderInfo?.name ?? 'this provider'}'s billing.
+                    </p>
+                  )}
                 </div>
               </CardContent>
             </Card>

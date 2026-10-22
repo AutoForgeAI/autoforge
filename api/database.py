@@ -20,6 +20,7 @@ from sqlalchemy import (
     CheckConstraint,
     Column,
     DateTime,
+    Float,
     ForeignKey,
     Index,
     Integer,
@@ -93,6 +94,47 @@ class Feature(Base):
         if isinstance(self.dependencies, list):
             return [d for d in self.dependencies if isinstance(d, int)]
         return []
+
+
+class AgentUsage(Base):
+    """Token and cost usage reported by a single agent session.
+
+    One row is written per Claude Agent SDK session (from its ResultMessage).
+    Summing rows gives the project's cumulative spend, which is compared
+    against the global ``max_cost_usd`` setting to enforce cost limits.
+    """
+
+    __tablename__ = "agent_usage"
+
+    id = Column(Integer, primary_key=True, index=True)
+    created_at = Column(DateTime, nullable=False, default=_utc_now, index=True)
+    agent_type = Column(String(20), nullable=True)  # initializer / coding / testing
+    feature_ids = Column(JSON, nullable=True, default=None)  # Feature IDs the session worked on
+    model = Column(String(100), nullable=True)
+    input_tokens = Column(Integer, nullable=False, default=0)
+    output_tokens = Column(Integer, nullable=False, default=0)
+    cache_creation_tokens = Column(Integer, nullable=False, default=0)
+    cache_read_tokens = Column(Integer, nullable=False, default=0)
+    cost_usd = Column(Float, nullable=False, default=0.0)
+    duration_ms = Column(Integer, nullable=False, default=0)
+    num_turns = Column(Integer, nullable=False, default=0)
+
+    def to_dict(self) -> dict:
+        """Convert usage record to dictionary for JSON serialization."""
+        return {
+            "id": self.id,
+            "created_at": self.created_at.isoformat() if self.created_at else None,
+            "agent_type": self.agent_type,
+            "feature_ids": self.feature_ids or [],
+            "model": self.model,
+            "input_tokens": self.input_tokens or 0,
+            "output_tokens": self.output_tokens or 0,
+            "cache_creation_tokens": self.cache_creation_tokens or 0,
+            "cache_read_tokens": self.cache_read_tokens or 0,
+            "cost_usd": self.cost_usd or 0.0,
+            "duration_ms": self.duration_ms or 0,
+            "num_turns": self.num_turns or 0,
+        }
 
 
 class Schedule(Base):

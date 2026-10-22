@@ -8,11 +8,13 @@
 import { useAppContext } from '@/contexts/AppContext'
 import { ProgressDashboard } from '../ProgressDashboard'
 import { AgentMissionControl } from '../AgentMissionControl'
+import { UsageCard } from '../UsageCard'
 import { Loader2 } from 'lucide-react'
 import { Card, CardContent } from '@/components/ui/card'
 
 export function DashboardView() {
   const {
+    selectedProject,
     progress,
     wsState,
     features,
@@ -39,6 +41,9 @@ export function DashboardView() {
         logs={wsState.activeAgents.length === 0 ? wsState.logs : undefined}
         agentStatus={wsState.activeAgents.length === 0 ? wsState.agentStatus : undefined}
       />
+
+      {/* Token/cost usage and cost limit */}
+      {selectedProject && <UsageCard projectName={selectedProject} />}
 
       {/* Agent Mission Control - orchestrator status and active agents */}
       <AgentMissionControl

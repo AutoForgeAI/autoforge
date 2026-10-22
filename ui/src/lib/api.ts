@@ -7,6 +7,7 @@ import type {
   ProjectDetail,
   ProjectPrompts,
   ProjectSettingsUpdate,
+  ProjectUsage,
   FeatureListResponse,
   Feature,
   FeatureCreate,
@@ -117,6 +118,16 @@ export interface ResetProjectResponse {
   reset_type: 'quick' | 'full'
   deleted_files: string[]
   message: string
+}
+
+export async function getProjectUsage(name: string): Promise<ProjectUsage> {
+  return fetchJSON(`/projects/${encodeURIComponent(name)}/usage`)
+}
+
+export async function resetProjectUsage(name: string): Promise<{ success: boolean; deleted: number }> {
+  return fetchJSON(`/projects/${encodeURIComponent(name)}/usage`, {
+    method: 'DELETE',
+  })
 }
 
 export async function resetProject(

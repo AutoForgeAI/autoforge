@@ -89,6 +89,16 @@ def _parse_int(value: str | None, default: int) -> int:
         return default
 
 
+def _parse_float(value: str | None, default: float) -> float:
+    """Parse float setting with default fallback."""
+    if value is None:
+        return default
+    try:
+        return float(value)
+    except (ValueError, TypeError):
+        return default
+
+
 def _parse_bool(value: str | None, default: bool = False) -> bool:
     """Parse boolean setting with default fallback."""
     if value is None:
@@ -122,6 +132,7 @@ async def get_settings():
         api_base_url=all_settings.get("api_base_url"),
         api_has_auth_token=bool(all_settings.get("api_auth_token")),
         api_model=all_settings.get("api_model"),
+        max_cost_usd=_parse_float(all_settings.get("max_cost_usd"), 0.0),
     )
 
 
@@ -174,6 +185,9 @@ async def update_settings(update: SettingsUpdate):
     if update.api_model is not None:
         set_setting("api_model", update.api_model)
 
+    if update.max_cost_usd is not None:
+        set_setting("max_cost_usd", str(update.max_cost_usd))
+
     # Return updated settings
     all_settings = get_all_settings()
     api_provider = all_settings.get("api_provider", "claude")
@@ -194,4 +208,5 @@ async def update_settings(update: SettingsUpdate):
         api_base_url=all_settings.get("api_base_url"),
         api_has_auth_token=bool(all_settings.get("api_auth_token")),
         api_model=all_settings.get("api_model"),
+        max_cost_usd=_parse_float(all_settings.get("max_cost_usd"), 0.0),
     )

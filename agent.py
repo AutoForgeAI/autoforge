@@ -11,7 +11,7 @@ import re
 import sys
 from datetime import datetime, timedelta
 from pathlib import Path
-from typing import Optional
+from typing import Any, Optional
 from zoneinfo import ZoneInfo
 
 from claude_agent_sdk import ClaudeSDKClient
@@ -45,6 +45,12 @@ from rate_limit_utils import (
     is_rate_limit_error,
     parse_retry_after,
 )
+from usage_tracker import (
+    check_cost_limit,
+    extract_usage,
+    format_cost_limit_message,
+    record_usage,
+)
 
 # Configuration
 AUTO_CONTINUE_DELAY_SECONDS = 3
@@ -54,6 +60,7 @@ async def run_agent_session(
     client: ClaudeSDKClient,
     message: str,
     project_dir: Path,
+    usage_context: Optional[dict[str, Any]] = None,
 ) -> tuple[str, str]:
     """
     Run a single agent session using Claude Agent SDK.
@@ -62,6 +69,8 @@ async def run_agent_session(
         client: Claude SDK client
         message: The prompt to send
         project_dir: Project directory path
+        usage_context: Extra fields (agent_type, feature_ids, model) stored with
+            the session's token/cost usage record
 
     Returns:
         (status, response_text) where status is:
@@ -80,6 +89,7 @@ async def run_agent_session(
         # generator.  The subprocess is still alive so we restart to read remaining
         # messages from the buffered channel.
         response_text = ""
+        result_msg: Any = None
         max_parse_retries = 50
         parse_retries = 0
         while True:
@@ -124,6 +134,10 @@ async def run_agent_session(
                                     # Tool succeeded - just show brief confirmation
                                     print("   [Done]", flush=True)
 
+                    # Handle ResultMessage (final token usage and cost for the session)
+                    elif msg_type == "ResultMessage":
+                        result_msg = msg
+
                 break  # Normal completion
             except Exception as inner_exc:
                 if type(inner_exc).__name__ == "MessageParseError":
@@ -134,6 +148,16 @@ async def run_agent_session(
                     print(f"Ignoring unrecognized message from Claude CLI: {inner_exc}")
                     continue
                 raise  # Re-raise to outer except
+
+        if result_msg is not None:
+            usage = extract_usage(result_msg)
+            record_usage(project_dir, usage, **(usage_context or {}))
+            print(
+                f"\n[Usage] {usage['input_tokens']:,} in / {usage['output_tokens']:,} out tokens "
+                f"(cache: {usage['cache_read_tokens']:,} read, {usage['cache_creation_tokens']:,} written), "
+                f"cost ${usage['cost_usd']:.4f}",
+                flush=True,
+            )
 
         print("\n" + "-" * 70 + "\n")
         return "continue", response_text
@@ -257,6 +281,15 @@ async def run_autonomous_agent(
                 print(f"\nAll {total} features are passing. Nothing left to do.")
                 break
 
+        # Check cost limit (global max_cost_usd setting vs. project's cumulative spend)
+        limit_reached, total_cost, cost_limit = check_cost_limit(project_dir)
+        if limit_reached and cost_limit is not None:
+            print("\n" + "=" * 70)
+            print("  COST LIMIT REACHED")
+            print("=" * 70)
+            print(f"\n{format_cost_limit_message(total_cost, cost_limit)}")
+            break
+
         # Check max iterations
         if max_iterations and iteration > max_iterations:
             print(f"\nReached max iterations ({max_iterations})")
@@ -293,7 +326,16 @@ async def run_autonomous_agent(
         # Wrap in try/except to handle MCP server startup failures gracefully
         try:
             async with client:
-                status, response = await run_agent_session(client, prompt, project_dir)
+                session_feature_ids = feature_ids or (
+                    [feature_id] if feature_id is not None
+                    else testing_feature_ids or ([testing_feature_id] if testing_feature_id is not None else None)
+                )
+                status, response = await run_agent_session(
+                    client,
+                    prompt,
+                    project_dir,
+                    usage_context={"agent_type": agent_type, "feature_ids": session_feature_ids, "model": model},
+                )
         except Exception as e:
             print(f"Client/MCP server error: {e}")
             # Don't crash - return error status so the loop can retry

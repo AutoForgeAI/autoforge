@@ -489,6 +489,7 @@ class SettingsResponse(BaseModel):
     api_base_url: str | None = None
     api_has_auth_token: bool = False  # Never expose actual token
     api_model: str | None = None
+    max_cost_usd: float = 0.0  # Per-project spending limit in USD (0 = unlimited)
 
 
 class ModelsResponse(BaseModel):
@@ -510,6 +511,7 @@ class SettingsUpdate(BaseModel):
     api_base_url: str | None = Field(None, max_length=500)
     api_auth_token: str | None = Field(None, max_length=500)  # Write-only, never returned
     api_model: str | None = Field(None, max_length=200)
+    max_cost_usd: float | None = Field(None, ge=0, le=1_000_000)  # 0 = unlimited
 
     @field_validator('api_base_url')
     @classmethod
@@ -556,6 +558,45 @@ class SettingsUpdate(BaseModel):
         if v is not None and (v < 1 or v > 15):
             raise ValueError("testing_batch_size must be between 1 and 15")
         return v
+
+
+# ============================================================================
+# Usage / Cost Tracking Schemas
+# ============================================================================
+
+
+class UsageTotals(BaseModel):
+    """Cumulative token usage and cost for a project."""
+    sessions: int = 0
+    input_tokens: int = 0
+    output_tokens: int = 0
+    cache_creation_tokens: int = 0
+    cache_read_tokens: int = 0
+    cost_usd: float = 0.0
+
+
+class UsageSession(BaseModel):
+    """Usage reported by a single agent session."""
+    id: int
+    created_at: str | None = None
+    agent_type: str | None = None
+    feature_ids: list[int] = []
+    model: str | None = None
+    input_tokens: int = 0
+    output_tokens: int = 0
+    cache_creation_tokens: int = 0
+    cache_read_tokens: int = 0
+    cost_usd: float = 0.0
+    duration_ms: int = 0
+    num_turns: int = 0
+
+
+class ProjectUsageResponse(BaseModel):
+    """Token/cost usage summary for a project, with the active cost limit."""
+    totals: UsageTotals
+    cost_limit_usd: float | None = None  # None = unlimited
+    limit_reached: bool = False
+    recent_sessions: list[UsageSession] = []
 
 
 # ============================================================================

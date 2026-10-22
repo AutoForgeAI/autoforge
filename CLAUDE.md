@@ -120,6 +120,7 @@ python test_security_integration.py   # Integration tests (9 tests)
 python -m pytest test_client.py       # Client tests (20 tests)
 python -m pytest test_dependency_resolver.py  # Dependency resolver tests (12 tests)
 python -m pytest test_rate_limit_utils.py     # Rate limit tests (22 tests)
+python -m pytest test_usage_tracker.py        # Token/cost tracking tests
 ```
 
 ### React UI
@@ -172,6 +173,7 @@ Publishing: `npm publish` (triggers `prepublishOnly` which builds UI, then publi
 - `auth.py` - Authentication error detection for Claude CLI
 - `env_constants.py` - Shared environment variable constants (API_ENV_VARS) used by client.py and chat sessions
 - `rate_limit_utils.py` - Rate limit detection, retry parsing, exponential backoff with jitter
+- `usage_tracker.py` - Per-session token/cost recording (from SDK `ResultMessage`) and per-project cost limit enforcement
 - `api/database.py` - SQLAlchemy models (Feature, Schedule, ScheduleOverride)
 - `api/dependency_resolver.py` - Cycle detection (Kahn's algorithm + DFS) and dependency validation
 - `api/migration.py` - JSON-to-SQLite migration utility
@@ -485,6 +487,14 @@ When running with `--parallel`, the orchestrator:
 3. Features blocked by unmet dependencies are skipped
 4. Browser sessions are isolated per agent via `PLAYWRIGHT_CLI_SESSION` environment variable
 5. AgentTracker parses output and emits `agent_update` messages for UI
+
+### Token/Cost Tracking and Limits
+
+- Every agent session records the SDK `ResultMessage` usage (input/output/cache tokens, `total_cost_usd`) into the `agent_usage` table of the project's `features.db`
+- Global setting `max_cost_usd` (Settings UI, "Cost Limit per Project"; 0 = unlimited) caps each project's cumulative spend
+- When the limit is reached: the orchestrator stops spawning agents (running ones finish), the single-agent loop exits, and `/agent/start` refuses to start
+- API: `GET /api/projects/{name}/usage` (totals, limit, recent sessions), `DELETE /api/projects/{name}/usage` (reset spend)
+- Dashboard shows a Usage card; costs for non-Claude providers are estimates (CLI uses Anthropic pricing)
 
 ### Process Limits (Parallel Mode)
 

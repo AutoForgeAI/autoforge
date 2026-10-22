@@ -24,6 +24,7 @@ sys.path.insert(0, str(Path(__file__).parent.parent.parent))
 from auth import AUTH_ERROR_HELP_SERVER as AUTH_ERROR_HELP  # noqa: E402
 from auth import is_auth_error
 from server.utils.process_utils import kill_process_tree
+from usage_tracker import check_cost_limit, format_cost_limit_message
 
 logger = logging.getLogger(__name__)
 
@@ -401,6 +402,10 @@ class AgentProcessManager:
 
         if not self._check_lock():
             return False, "Another agent instance is already running for this project"
+
+        limit_reached, total_cost, cost_limit = check_cost_limit(self.project_dir)
+        if limit_reached and cost_limit is not None:
+            return False, format_cost_limit_message(total_cost, cost_limit)
 
         # Clean up stale browser daemons from previous runs
         try:

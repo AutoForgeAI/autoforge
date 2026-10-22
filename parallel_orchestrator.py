@@ -37,6 +37,7 @@ from api.database import Feature, create_database
 from api.dependency_resolver import are_dependencies_satisfied, compute_scheduling_scores
 from progress import has_features
 from server.utils.process_utils import kill_process_tree
+from usage_tracker import check_cost_limit, format_cost_limit_message
 
 logger = logging.getLogger(__name__)
 
@@ -1518,6 +1519,15 @@ class ParallelOrchestrator:
                 # Check if all complete
                 if self.get_all_complete(feature_dicts):
                     print("\nAll features complete!", flush=True)
+                    break
+
+                # Stop spawning agents once the project's spend reaches the cost limit.
+                # Running agents finish their current session (see wait loop below).
+                limit_reached, total_cost, cost_limit = check_cost_limit(self.project_dir)
+                if limit_reached and cost_limit is not None:
+                    print(f"\n{format_cost_limit_message(total_cost, cost_limit)}", flush=True)
+                    debug_log.log("COST", "Cost limit reached, stopping orchestrator",
+                        total_cost_usd=round(total_cost, 4), limit_usd=cost_limit)
                     break
 
                 # --- Graceful pause (drain mode) ---
