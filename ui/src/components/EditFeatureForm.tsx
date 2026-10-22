@@ -13,6 +13,7 @@ import { Button } from '@/components/ui/button'
 import { Input } from '@/components/ui/input'
 import { Textarea } from '@/components/ui/textarea'
 import { Label } from '@/components/ui/label'
+import { Switch } from '@/components/ui/switch'
 import { Alert, AlertDescription } from '@/components/ui/alert'
 
 interface Step {
@@ -38,6 +39,7 @@ export function EditFeatureForm({ feature, projectName, onClose, onSaved }: Edit
       ? feature.steps.map((step, i) => ({ id: `${formId}-step-${i}`, value: step }))
       : [{ id: `${formId}-step-0`, value: '' }]
   )
+  const [reopen, setReopen] = useState(false)
   const [error, setError] = useState<string | null>(null)
   const [stepCounter, setStepCounter] = useState(feature.steps.length || 1)
 
@@ -75,6 +77,7 @@ export function EditFeatureForm({ feature, projectName, onClose, onSaved }: Edit
           description: description.trim(),
           steps: filteredSteps,
           priority: parseInt(priority, 10),
+          ...(feature.passes && reopen ? { reopen: true } : {}),
         },
       })
       onSaved()
@@ -92,7 +95,8 @@ export function EditFeatureForm({ feature, projectName, onClose, onSaved }: Edit
     name.trim() !== feature.name ||
     description.trim() !== feature.description ||
     parseInt(priority, 10) !== feature.priority ||
-    JSON.stringify(currentSteps) !== JSON.stringify(feature.steps)
+    JSON.stringify(currentSteps) !== JSON.stringify(feature.steps) ||
+    (feature.passes && reopen)
 
   return (
     <Dialog open={true} onOpenChange={(open) => !open && onClose()}>
@@ -211,6 +215,25 @@ export function EditFeatureForm({ feature, projectName, onClose, onSaved }: Edit
               Add Step
             </Button>
           </div>
+
+          {/* Re-open toggle (completed features only) */}
+          {feature.passes && (
+            <div className="flex items-start gap-3 p-3 border rounded-md bg-muted/50">
+              <Switch
+                id="reopen-feature"
+                checked={reopen}
+                onCheckedChange={setReopen}
+                className="mt-0.5"
+              />
+              <div className="space-y-1">
+                <Label htmlFor="reopen-feature">Move back to pending</Label>
+                <p className="text-xs text-muted-foreground">
+                  This feature is already done. Turn this on if your changes need the agent
+                  to implement and verify it again; leave it off for small wording fixes.
+                </p>
+              </div>
+            </div>
+          )}
 
           {/* Actions */}
           <DialogFooter className="pt-4 border-t">
