@@ -34,6 +34,64 @@ load_dotenv()
 
 logger = logging.getLogger(__name__)
 
+# Human-readable transcript of the spec creation conversation, written next to
+# app_spec.txt so users can refer back to how the spec was produced.
+SPEC_CONVERSATION_FILENAME = "spec_input_summary.md"
+
+
+def render_spec_conversation_markdown(
+    project_name: str,
+    messages: list[dict],
+    started_at: datetime,
+    complete: bool,
+) -> str:
+    """
+    Render the spec creation conversation as Markdown.
+
+    Consecutive assistant text chunks (streamed as separate blocks) are merged
+    into a single turn so each question/answer exchange reads naturally.
+    """
+    turns: list[dict] = []
+    for msg in messages:
+        role = msg.get("role")
+        content = str(msg.get("content", ""))
+        if role == "assistant" and turns and turns[-1]["role"] == "assistant":
+            turns[-1]["content"] += content
+            continue
+        turns.append({**msg, "content": content})
+
+    status = "Complete" if complete else "In progress"
+    lines = [
+        f"# Spec Creation Conversation: {project_name}",
+        "",
+        "This file records the interactive conversation used to create this project's",
+        "specification (`app_spec.txt`): the initial prompt, the questions and suggested",
+        "options from Claude, and your answers. It is generated automatically by AutoForge.",
+        "",
+        f"- **Started:** {started_at.isoformat(timespec='seconds')}",
+        f"- **Status:** {status}",
+        "",
+    ]
+
+    user_turns = [t for t in turns if t.get("role") == "user"]
+    if user_turns:
+        lines += ["## Initial Prompt", "", user_turns[0]["content"].strip() or "_(empty)_", ""]
+
+    lines += ["## Conversation", ""]
+    for turn in turns:
+        heading = "Claude" if turn.get("role") == "assistant" else "You"
+        timestamp = turn.get("timestamp")
+        lines.append(f"### {heading}" + (f" ({timestamp})" if timestamp else ""))
+        lines.append("")
+        attachments = turn.get("attachments") or []
+        if attachments:
+            lines.append("_Attachments: " + ", ".join(f"`{name}`" for name in attachments) + "_")
+            lines.append("")
+        lines.append(turn["content"].strip() or "_(no text)_")
+        lines.append("")
+
+    return "\n".join(lines).rstrip() + "\n"
+
 
 class SpecChatSession:
     """
@@ -64,6 +122,7 @@ class SpecChatSession:
         self.created_at = datetime.now()
         self._conversation_id: Optional[str] = None
         self._client_entered: bool = False  # Track if context manager is active
+        self._summary_path: Optional[Path] = None  # Set in start() once prompts dir is known
 
     async def close(self) -> None:
         """Clean up resources and close the Claude client."""
@@ -109,6 +168,7 @@ class SpecChatSession:
         if app_spec_path.exists():
             app_spec_path.unlink()
             logger.info("Deleted scaffolded app_spec.txt for fresh spec creation")
+        self._summary_path = prompts_dir / SPEC_CONVERSATION_FILENAME
 
         # Create security settings file (like client.py does)
         # This grants permissions for file operations in the project directory
@@ -202,6 +262,8 @@ class SpecChatSession:
                 "type": "error",
                 "content": f"Failed to start conversation: {str(e)}"
             }
+        finally:
+            self._save_conversation_summary()
 
     async def send_message(
         self,
@@ -234,6 +296,7 @@ class SpecChatSession:
             "role": "user",
             "content": user_message,
             "has_attachments": bool(attachments),
+            "attachments": [a.filename for a in attachments] if attachments else [],
             "timestamp": datetime.now().isoformat()
         })
 
@@ -248,6 +311,9 @@ class SpecChatSession:
                 "type": "error",
                 "content": f"Error: {str(e)}"
             }
+        finally:
+            # Persist after every exchange so partial conversations survive too
+            self._save_conversation_summary()
 
     async def _query_claude(
         self,
@@ -429,6 +495,21 @@ class SpecChatSession:
                 yield {"type": "error", "content": "Rate limited. Please try again later."}
                 return
             raise
+
+    def _save_conversation_summary(self) -> None:
+        """Persist the conversation so far to spec_input_summary.md (best effort)."""
+        if self._summary_path is None:
+            return
+        try:
+            self._summary_path.parent.mkdir(parents=True, exist_ok=True)
+            self._summary_path.write_text(
+                render_spec_conversation_markdown(
+                    self.project_name, self.messages, self.created_at, self.complete
+                ),
+                encoding="utf-8",
+            )
+        except OSError as e:
+            logger.warning(f"Failed to write spec conversation summary: {e}")
 
     def is_complete(self) -> bool:
         """Check if spec creation is complete."""

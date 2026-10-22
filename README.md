@@ -216,6 +216,7 @@ generations/my_project/
 ├── features.db               # SQLite database (feature test cases)
 ├── prompts/
 │   ├── app_spec.txt          # Your app specification
+│   ├── spec_input_summary.md # Transcript of the spec creation conversation (Web UI)
 │   ├── initializer_prompt.md # First session prompt
 │   └── coding_prompt.md      # Continuation session prompt
 ├── init.sh                   # Environment setup script
