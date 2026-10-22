@@ -1,4 +1,4 @@
-import { Sparkles, FileEdit, FolderOpen } from 'lucide-react'
+import { Sparkles, FileEdit, FolderOpen, FolderSearch } from 'lucide-react'
 import { Button } from '@/components/ui/button'
 import { Card, CardContent, CardDescription, CardHeader, CardTitle } from '@/components/ui/card'
 
@@ -6,6 +6,7 @@ interface ProjectSetupRequiredProps {
   projectName: string
   projectPath?: string
   onCreateWithClaude: () => void
+  onImportExisting: () => void
   onEditManually: () => void
 }
 
@@ -13,10 +14,11 @@ export function ProjectSetupRequired({
   projectName,
   projectPath,
   onCreateWithClaude,
+  onImportExisting,
   onEditManually,
 }: ProjectSetupRequiredProps) {
   return (
-    <div className="max-w-2xl mx-auto mt-8">
+    <div className="max-w-4xl mx-auto mt-8">
       <Card className="border-2">
         <CardHeader className="text-center">
           <CardTitle className="text-2xl font-display">
@@ -37,7 +39,7 @@ export function ProjectSetupRequired({
             Choose how you want to create your app specification:
           </p>
 
-          <div className="grid gap-4 md:grid-cols-2">
+          <div className="grid gap-4 md:grid-cols-3">
             {/* Create with Claude Option */}
             <Card
               className="cursor-pointer border-2 transition-all hover:border-primary hover:shadow-md"
@@ -54,6 +56,26 @@ export function ProjectSetupRequired({
                 <Button className="w-full">
                   <Sparkles size={16} className="mr-2" />
                   Start Chat
+                </Button>
+              </CardContent>
+            </Card>
+
+            {/* Import Existing Codebase Option */}
+            <Card
+              className="cursor-pointer border-2 transition-all hover:border-primary hover:shadow-md"
+              onClick={onImportExisting}
+            >
+              <CardContent className="pt-6 text-center space-y-3">
+                <div className="w-12 h-12 mx-auto bg-primary/10 rounded-full flex items-center justify-center">
+                  <FolderSearch className="text-primary" size={24} />
+                </div>
+                <h3 className="font-semibold text-lg">Import Existing Code</h3>
+                <p className="text-sm text-muted-foreground">
+                  Claude analyzes the code already in this folder, records what it does, then plans what's next
+                </p>
+                <Button variant="outline" className="w-full">
+                  <FolderSearch size={16} className="mr-2" />
+                  Analyze Codebase
                 </Button>
               </CardContent>
             </Card>

@@ -13,8 +13,12 @@ interface CreatedFeature {
   category: string
 }
 
+export type ExpandChatMode = 'expand' | 'onboard'
+
 interface UseExpandChatOptions {
   projectName: string
+  /** 'onboard' analyzes an existing codebase that has no spec yet */
+  mode?: ExpandChatMode
   onComplete?: (totalAdded: number) => void
   onError?: (error: string) => void
 }
@@ -37,6 +41,7 @@ function generateId(): string {
 
 export function useExpandChat({
   projectName,
+  mode = 'expand',
   onComplete,
   onError,
 }: UseExpandChatOptions): UseExpandChatReturn {
@@ -89,7 +94,7 @@ export function useExpandChat({
 
     const protocol = window.location.protocol === 'https:' ? 'wss:' : 'ws:'
     const host = window.location.host
-    const wsUrl = `${protocol}//${host}/api/expand/ws/${encodeURIComponent(projectName)}`
+    const wsUrl = `${protocol}//${host}/api/expand/ws/${encodeURIComponent(projectName)}?mode=${mode}`
 
     const ws = new WebSocket(wsUrl)
     wsRef.current = ws
@@ -182,7 +187,7 @@ export function useExpandChat({
               {
                 id: generateId(),
                 role: 'system',
-                content: `Created ${data.count} new feature${data.count !== 1 ? 's' : ''}!`,
+                content: `Added ${data.count} feature${data.count !== 1 ? 's' : ''} to the project!`,
                 timestamp: new Date(),
               },
             ])
@@ -253,7 +258,7 @@ export function useExpandChat({
         console.error('Failed to parse WebSocket message:', e)
       }
     }
-  }, [projectName, onComplete, onError])
+  }, [projectName, mode, onComplete, onError])
 
   const start = useCallback(() => {
     connect()

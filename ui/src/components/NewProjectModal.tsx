@@ -5,16 +5,18 @@
  * 1. Enter project name
  * 2. Select project folder
  * 3. Choose project template (blank or agentic starter)
- * 4. Choose spec method (Claude or manual)
+ * 4. Choose spec method (Claude, import existing code, or manual)
  * 5a. If Claude: Show SpecCreationChat
- * 5b. If manual: Create project and close
+ * 5b. If import: Show onboarding chat that analyzes the existing codebase
+ * 5c. If manual: Create project and close
  */
 
 import { useRef, useState } from 'react'
 import { createPortal } from 'react-dom'
-import { Bot, FileEdit, ArrowRight, ArrowLeft, Loader2, CheckCircle2, Folder, Zap, FileCode2, AlertCircle, RotateCcw } from 'lucide-react'
+import { Bot, FileEdit, ArrowRight, ArrowLeft, Loader2, CheckCircle2, Folder, FolderSearch, Zap, FileCode2, AlertCircle, RotateCcw } from 'lucide-react'
 import { useCreateProject } from '../hooks/useProjects'
 import { SpecCreationChat } from './SpecCreationChat'
+import { ExpandProjectChat } from './ExpandProjectChat'
 import { FolderBrowser } from './FolderBrowser'
 import { startAgent } from '../lib/api'
 import {
@@ -35,8 +37,8 @@ import { Card, CardContent } from '@/components/ui/card'
 type InitializerStatus = 'idle' | 'starting' | 'error'
 type ScaffoldStatus = 'idle' | 'running' | 'success' | 'error'
 
-type Step = 'name' | 'folder' | 'template' | 'method' | 'chat' | 'complete'
-type SpecMethod = 'claude' | 'manual'
+type Step = 'name' | 'folder' | 'template' | 'method' | 'chat' | 'onboard' | 'complete'
+type SpecMethod = 'claude' | 'import' | 'manual'
 
 interface NewProjectModalProps {
   isOpen: boolean
@@ -200,6 +202,18 @@ export function NewProjectModal({
       } catch (err: unknown) {
         setError(err instanceof Error ? err.message : 'Failed to create project')
       }
+    } else if (method === 'import') {
+      // Register the existing folder, then let Claude analyze the codebase
+      try {
+        await createProject.mutateAsync({
+          name: projectName.trim(),
+          path: projectPath,
+          specMethod: 'manual',
+        })
+        changeStep('onboard')
+      } catch (err: unknown) {
+        setError(err instanceof Error ? err.message : 'Failed to create project')
+      }
     } else {
       // Create project then show chat
       try {
@@ -298,6 +312,21 @@ export function NewProjectModal({
           initializerStatus={initializerStatus}
           initializerError={initializerError}
           onRetryInitializer={handleRetryInitializer}
+        />
+      </div>,
+      document.body
+    )
+  }
+
+  // Full-screen onboarding chat for existing codebases
+  if (step === 'onboard') {
+    return createPortal(
+      <div className="fixed inset-0 z-50 bg-background flex flex-col">
+        <ExpandProjectChat
+          projectName={projectName.trim()}
+          mode="onboard"
+          onComplete={handleExitToProject}
+          onCancel={handleExitToProject}
         />
       </div>,
       document.body
@@ -525,6 +554,26 @@ export function NewProjectModal({
                       </div>
                       <p className="text-sm text-muted-foreground mt-1">
                         Interactive conversation to define features and generate your app specification automatically.
+                      </p>
+                    </div>
+                  </div>
+                </CardContent>
+              </Card>
+
+              {/* Import existing codebase option */}
+              <Card
+                className="cursor-pointer hover:border-primary transition-colors"
+                onClick={() => !createProject.isPending && handleMethodSelect('import')}
+              >
+                <CardContent className="p-4">
+                  <div className="flex items-start gap-4">
+                    <div className="p-2 bg-primary/10 rounded-lg">
+                      <FolderSearch size={24} className="text-primary" />
+                    </div>
+                    <div className="flex-1">
+                      <span className="font-semibold">Import Existing Codebase</span>
+                      <p className="text-sm text-muted-foreground mt-1">
+                        The folder already has code. Claude analyzes it, records what it already does, then plans new features with you.
                       </p>
                     </div>
                   </div>

@@ -196,7 +196,7 @@ The FastAPI server provides REST and WebSocket endpoints for the UI:
 - `agent.py` - Agent control (start/stop/pause/resume)
 - `filesystem.py` - Filesystem browser API with security controls
 - `spec_creation.py` - WebSocket for interactive spec creation
-- `expand_project.py` - Interactive project expansion via natural language
+- `expand_project.py` - Interactive project expansion via natural language (`?mode=onboard` analyzes an existing codebase that has no spec yet)
 - `assistant_chat.py` - Read-only project assistant chat (WebSocket/REST)
 - `terminal.py` - Interactive terminal I/O with PTY support (WebSocket bidirectional)
 - `devserver.py` - Dev server control (start/stop) and config
@@ -435,6 +435,7 @@ Alternative providers are configured via the **Settings UI** (gear icon > API Pr
 **Slash commands** (`.claude/commands/`):
 - `/create-spec` - Interactive spec creation for new projects
 - `/expand-project` - Expand existing project with new features
+- `/onboard-project` - Onboard an existing codebase: analyze it, write the spec, record existing features as passing, plan new ones
 - `/gsd-to-autoforge-spec` - Convert GSD codebase mapping to app_spec.txt
 - `/check-code` - Run lint and type-check for code quality
 - `/checkpoint` - Create comprehensive checkpoint commit

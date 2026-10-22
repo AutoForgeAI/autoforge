@@ -3,11 +3,14 @@
  *
  * Full chat interface for interactive project expansion with Claude.
  * Allows users to describe new features in natural language.
+ *
+ * In 'onboard' mode Claude first analyzes an existing codebase, writes the
+ * app spec, and records existing functionality before planning new features.
  */
 
 import { useCallback, useEffect, useRef, useState } from 'react'
 import { Send, X, CheckCircle2, AlertCircle, Wifi, WifiOff, RotateCcw, Paperclip, Plus, FileText } from 'lucide-react'
-import { useExpandChat } from '../hooks/useExpandChat'
+import { useExpandChat, type ExpandChatMode } from '../hooks/useExpandChat'
 import { ChatMessage } from './ChatMessage'
 import { TypingIndicator } from './TypingIndicator'
 import type { FileAttachment } from '../lib/types'
@@ -25,12 +28,14 @@ const ALLOWED_EXTENSIONS = ['md', 'txt', 'csv', 'docx', 'xlsx', 'pdf', 'pptx', '
 
 interface ExpandProjectChatProps {
   projectName: string
+  mode?: ExpandChatMode
   onComplete: (featuresAdded: number) => void
   onCancel: () => void
 }
 
 export function ExpandProjectChat({
   projectName,
+  mode = 'expand',
   onComplete,
   onCancel,
 }: ExpandProjectChatProps) {
@@ -40,6 +45,8 @@ export function ExpandProjectChat({
   const messagesEndRef = useRef<HTMLDivElement>(null)
   const inputRef = useRef<HTMLInputElement>(null)
   const fileInputRef = useRef<HTMLInputElement>(null)
+
+  const isOnboard = mode === 'onboard'
 
   // Memoize error handler to keep hook dependencies stable
   const handleError = useCallback((err: string) => setError(err), [])
@@ -55,6 +62,7 @@ export function ExpandProjectChat({
     disconnect,
   } = useExpandChat({
     projectName,
+    mode,
     onComplete,
     onError: handleError,
   })
@@ -207,7 +215,7 @@ export function ExpandProjectChat({
       <div className="flex items-center justify-between p-4 border-b-2 border-border bg-card">
         <div className="flex items-center gap-3">
           <h2 className="font-display font-bold text-lg text-foreground">
-            Expand Project: {projectName}
+            {isOnboard ? 'Import Existing Project' : 'Expand Project'}: {projectName}
           </h2>
           <ConnectionIndicator />
           {featuresCreated > 0 && (
@@ -260,10 +268,12 @@ export function ExpandProjectChat({
             <Card className="p-6 max-w-md">
               <CardContent className="p-0">
                 <h3 className="font-display font-bold text-lg mb-2">
-                  Starting Project Expansion
+                  {isOnboard ? 'Starting Project Onboarding' : 'Starting Project Expansion'}
                 </h3>
                 <p className="text-sm text-muted-foreground">
-                  Connecting to Claude to help you add new features to your project...
+                  {isOnboard
+                    ? 'Connecting to Claude to analyze your existing codebase. Exploring the code can take a minute...'
+                    : 'Connecting to Claude to help you add new features to your project...'}
                 </p>
                 {connectionStatus === 'error' && (
                   <Button
@@ -365,7 +375,9 @@ export function ExpandProjectChat({
               placeholder={
                 pendingAttachments.length > 0
                   ? 'Add a message with your image(s)...'
-                  : 'Describe the features you want to add...'
+                  : isOnboard
+                    ? 'Correct my understanding, or describe what to build next...'
+                    : 'Describe the features you want to add...'
               }
               className="flex-1"
               disabled={isLoading || connectionStatus !== 'connected'}
@@ -397,7 +409,7 @@ export function ExpandProjectChat({
             <div className="flex items-center gap-2">
               <CheckCircle2 size={20} />
               <span className="font-bold">
-                Added {featuresCreated} new feature{featuresCreated !== 1 ? 's' : ''}!
+                Added {featuresCreated} {isOnboard ? '' : 'new '}feature{featuresCreated !== 1 ? 's' : ''}!
               </span>
             </div>
             <Button

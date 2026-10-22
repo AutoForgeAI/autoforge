@@ -17,6 +17,7 @@ export function KanbanView() {
     setShowAddFeature,
     setShowExpandProject,
     setShowSpecChat,
+    setShowOnboardChat,
   } = useAppContext()
 
   return (
@@ -29,6 +30,7 @@ export function KanbanView() {
         activeAgents={wsState.activeAgents}
         onCreateSpec={() => setShowSpecChat(true)}
         hasSpec={hasSpec}
+        onImportExisting={() => setShowOnboardChat(true)}
       />
     </div>
   )

@@ -10,9 +10,10 @@ interface KanbanBoardProps {
   activeAgents?: ActiveAgent[]
   onCreateSpec?: () => void
   hasSpec?: boolean
+  onImportExisting?: () => void
 }
 
-export function KanbanBoard({ features, onFeatureClick, onAddFeature, onExpandProject, activeAgents = [], onCreateSpec, hasSpec = true }: KanbanBoardProps) {
+export function KanbanBoard({ features, onFeatureClick, onAddFeature, onExpandProject, activeAgents = [], onCreateSpec, hasSpec = true, onImportExisting }: KanbanBoardProps) {
   const hasFeatures = features && (features.pending.length + features.in_progress.length + features.done.length + (features.needs_human_input?.length || 0)) > 0
 
   // Combine all features for dependency status calculation
@@ -57,6 +58,8 @@ export function KanbanBoard({ features, onFeatureClick, onAddFeature, onExpandPr
         showExpandButton={hasFeatures && hasSpec}
         onCreateSpec={onCreateSpec}
         showCreateSpec={!hasSpec && !hasFeatures}
+        onImportExisting={onImportExisting}
+        showImportExisting={!hasFeatures}
       />
       <KanbanColumn
         title="In Progress"

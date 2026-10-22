@@ -6,10 +6,12 @@
  */
 
 import { ExpandProjectChat } from './ExpandProjectChat'
+import type { ExpandChatMode } from '../hooks/useExpandChat'
 
 interface ExpandProjectModalProps {
   isOpen: boolean
   projectName: string
+  mode?: ExpandChatMode
   onClose: () => void
   onFeaturesAdded: () => void  // Called to refresh feature list
 }
@@ -17,6 +19,7 @@ interface ExpandProjectModalProps {
 export function ExpandProjectModal({
   isOpen,
   projectName,
+  mode = 'expand',
   onClose,
   onFeaturesAdded,
 }: ExpandProjectModalProps) {
@@ -33,6 +36,7 @@ export function ExpandProjectModal({
     <div className="fixed inset-0 z-50 bg-background">
       <ExpandProjectChat
         projectName={projectName}
+        mode={mode}
         onComplete={handleComplete}
         onCancel={onClose}
       />

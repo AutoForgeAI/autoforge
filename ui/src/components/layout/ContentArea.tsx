@@ -24,6 +24,7 @@ export function ContentArea() {
     setupComplete,
     setSetupComplete,
     setShowSpecChat,
+    setShowOnboardChat,
     activeView,
     selectedProjectData,
   } = useAppContext()
@@ -58,6 +59,7 @@ export function ContentArea() {
           projectName={selectedProject}
           projectPath={selectedProjectData?.path}
           onCreateWithClaude={() => setShowSpecChat(true)}
+          onImportExisting={() => setShowOnboardChat(true)}
           onEditManually={() => {
             /* Could navigate to terminal view */
           }}

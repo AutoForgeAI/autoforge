@@ -82,6 +82,8 @@ interface AppContextValue {
   setShowResetModal: (open: boolean) => void
   showSpecChat: boolean
   setShowSpecChat: (open: boolean) => void
+  showOnboardChat: boolean
+  setShowOnboardChat: (open: boolean) => void
   isSpecCreating: boolean
   setIsSpecCreating: (creating: boolean) => void
   assistantOpen: boolean
@@ -215,6 +217,7 @@ export function AppProvider({ children }: { children: ReactNode }) {
   const [showKeyboardHelp, setShowKeyboardHelp] = useState(false)
   const [showResetModal, setShowResetModal] = useState(false)
   const [showSpecChat, setShowSpecChat] = useState(false)
+  const [showOnboardChat, setShowOnboardChat] = useState(false)
   const [isSpecCreating, setIsSpecCreating] = useState(false)
   const [assistantOpen, setAssistantOpen] = useState(false)
 
@@ -474,6 +477,8 @@ export function AppProvider({ children }: { children: ReactNode }) {
       setShowResetModal,
       showSpecChat,
       setShowSpecChat,
+      showOnboardChat,
+      setShowOnboardChat,
       isSpecCreating,
       setIsSpecCreating,
       assistantOpen,
@@ -527,6 +532,7 @@ export function AppProvider({ children }: { children: ReactNode }) {
       showKeyboardHelp,
       showResetModal,
       showSpecChat,
+      showOnboardChat,
       isSpecCreating,
       assistantOpen,
       setupComplete,

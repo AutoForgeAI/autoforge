@@ -1,5 +1,5 @@
 import { FeatureCard } from './FeatureCard'
-import { Plus, Sparkles, Wand2 } from 'lucide-react'
+import { FolderSearch, Plus, Sparkles, Wand2 } from 'lucide-react'
 import type { Feature, ActiveAgent } from '../lib/types'
 import { Card, CardContent, CardHeader, CardTitle } from '@/components/ui/card'
 import { Button } from '@/components/ui/button'
@@ -18,6 +18,8 @@ interface KanbanColumnProps {
   showExpandButton?: boolean
   onCreateSpec?: () => void
   showCreateSpec?: boolean
+  onImportExisting?: () => void
+  showImportExisting?: boolean
 }
 
 const colorMap = {
@@ -40,6 +42,8 @@ export function KanbanColumn({
   showExpandButton,
   onCreateSpec,
   showCreateSpec,
+  onImportExisting,
+  showImportExisting,
 }: KanbanColumnProps) {
   // Create a map of feature ID to active agent for quick lookup
   // Maps ALL batch feature IDs to the same agent
@@ -97,6 +101,17 @@ export function KanbanColumn({
                       <Wand2 size={18} />
                       Create Spec with AI
                     </Button>
+                  </div>
+                ) : showImportExisting && onImportExisting ? (
+                  <div className="space-y-4">
+                    <p>No features yet</p>
+                    <Button variant="outline" onClick={onImportExisting}>
+                      <FolderSearch size={18} />
+                      Import Existing Code
+                    </Button>
+                    <p className="text-xs">
+                      Already have code in this folder? Claude can analyze it and record what it already does.
+                    </p>
                   </div>
                 ) : (
                   'No features'

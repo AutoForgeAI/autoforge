@@ -15,7 +15,9 @@ from pydantic import BaseModel, ValidationError
 
 from ..schemas import FileAttachment
 from ..services.expand_chat_session import (
+    EXPAND_MODES,
     ExpandChatSession,
+    ExpandMode,
     create_expand_session,
     get_expand_session,
     list_expand_sessions,
@@ -89,6 +91,11 @@ async def expand_project_websocket(websocket: WebSocket, project_name: str):
     """
     WebSocket endpoint for interactive project expansion chat.
 
+    Query parameters:
+    - mode: "expand" (default) adds features to a project that has a spec;
+      "onboard" analyzes an existing codebase that has no spec yet, writes
+      app_spec.txt, and records existing functionality as passing features.
+
     Message protocol:
 
     Client -> Server:
@@ -127,10 +134,17 @@ async def expand_project_websocket(websocket: WebSocket, project_name: str):
         await websocket.close(code=4004, reason="Project directory not found")
         return
 
-    # Verify project has app_spec.txt
+    raw_mode = websocket.query_params.get("mode", "expand")
+    if raw_mode not in EXPAND_MODES:
+        await websocket.send_json({"type": "error", "content": f"Invalid mode: {raw_mode}"})
+        await websocket.close(code=4000, reason="Invalid mode")
+        return
+    mode: ExpandMode = "onboard" if raw_mode == "onboard" else "expand"
+
+    # Verify project has app_spec.txt (onboarding is what creates it)
     from autoforge_paths import get_prompts_dir
     spec_path = get_prompts_dir(project_dir) / "app_spec.txt"
-    if not spec_path.exists():
+    if mode == "expand" and not spec_path.exists():
         await websocket.send_json({"type": "error", "content": "Project has no spec. Create a spec first before expanding."})
         await websocket.close(code=4004, reason="Project has no spec. Create spec first.")
         return
@@ -152,16 +166,20 @@ async def expand_project_websocket(websocket: WebSocket, project_name: str):
                 elif msg_type == "start":
                     # Check if session already exists (idempotent start)
                     existing_session = get_expand_session(project_name)
-                    if existing_session:
+                    if existing_session and existing_session.mode == mode:
                         session = existing_session
                         await websocket.send_json({
                             "type": "text",
-                            "content": "Resuming existing expansion session. What would you like to add?"
+                            "content": (
+                                "Resuming existing onboarding session. Where were we?"
+                                if mode == "onboard"
+                                else "Resuming existing expansion session. What would you like to add?"
+                            )
                         })
                         await websocket.send_json({"type": "response_done"})
                     else:
-                        # Create and start a new expansion session
-                        session = await create_expand_session(project_name, project_dir)
+                        # Create and start a new session (replaces one in a different mode)
+                        session = await create_expand_session(project_name, project_dir, mode)
 
                         # Stream the initial greeting
                         async for chunk in session.start():
