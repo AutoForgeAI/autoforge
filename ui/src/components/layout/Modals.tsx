@@ -33,6 +33,7 @@ export function Modals() {
     specInitializerError, setSpecInitializerError,
     wsState,
     queryClient,
+    setActiveView,
   } = useAppContext()
 
   return (
@@ -51,6 +52,16 @@ export function Modals() {
           feature={selectedFeature}
           projectName={selectedProject}
           onClose={() => setSelectedFeature(null)}
+          browserView={{
+            activeAgents: wsState.activeAgents,
+            screenshots: wsState.browserScreenshots,
+            onSubscribe: wsState.subscribeBrowserView,
+            onUnsubscribe: wsState.unsubscribeBrowserView,
+            onOpenBrowsersView: () => {
+              setSelectedFeature(null)
+              setActiveView('browsers')
+            },
+          }}
         />
       )}
 

@@ -3,7 +3,8 @@ import { X, CheckCircle2, Circle, SkipForward, Trash2, Loader2, AlertCircle, Pen
 import { useSkipFeature, useDeleteFeature, useFeatures, useResolveHumanInput } from '../hooks/useProjects'
 import { EditFeatureForm } from './EditFeatureForm'
 import { HumanInputForm } from './HumanInputForm'
-import type { Feature } from '../lib/types'
+import { FeatureBrowserPreview } from './FeatureBrowserPreview'
+import type { ActiveAgent, BrowserScreenshot, Feature } from '../lib/types'
 import {
   Dialog,
   DialogContent,
@@ -36,13 +37,22 @@ function getCategoryColor(category: string): string {
   return colors[Math.abs(hash) % colors.length]
 }
 
+interface FeatureBrowserViewProps {
+  activeAgents: ActiveAgent[]
+  screenshots: Map<string, BrowserScreenshot>
+  onSubscribe: () => void
+  onUnsubscribe: () => void
+  onOpenBrowsersView?: () => void
+}
+
 interface FeatureModalProps {
   feature: Feature
   projectName: string
   onClose: () => void
+  browserView?: FeatureBrowserViewProps
 }
 
-export function FeatureModal({ feature, projectName, onClose }: FeatureModalProps) {
+export function FeatureModal({ feature, projectName, onClose, browserView }: FeatureModalProps) {
   const [error, setError] = useState<string | null>(null)
   const [showDeleteConfirm, setShowDeleteConfirm] = useState(false)
   const [showEdit, setShowEdit] = useState(false)
@@ -65,6 +75,11 @@ export function FeatureModal({ feature, projectName, onClose }: FeatureModalProp
   const dependencies = (feature.dependencies || [])
     .map(id => featureMap.get(id))
     .filter((f): f is Feature => f !== undefined)
+
+  // Show the live browser while an agent is working on this feature
+  const isBeingWorkedOn = browserView !== undefined && browserView.activeAgents.some(
+    a => a.featureId === feature.id || (a.featureIds?.includes(feature.id) ?? false)
+  )
 
   // Get blocking dependencies (unmet dependencies)
   const blockingDeps = (feature.blocking_dependencies || [])
@@ -149,6 +164,11 @@ export function FeatureModal({ feature, projectName, onClose }: FeatureModalProp
                 <UserCircle size={24} className="text-amber-500" />
                 <span className="font-semibold text-amber-500">NEEDS YOUR INPUT</span>
               </>
+            ) : feature.in_progress ? (
+              <>
+                <Loader2 size={24} className="text-cyan-500 animate-spin" />
+                <span className="font-semibold text-cyan-500">IN PROGRESS</span>
+              </>
             ) : (
               <>
                 <Circle size={24} className="text-muted-foreground" />
@@ -190,6 +210,18 @@ export function FeatureModal({ feature, projectName, onClose }: FeatureModalProp
                 </p>
               </AlertDescription>
             </Alert>
+          )}
+
+          {/* Live Browser View */}
+          {isBeingWorkedOn && browserView && (
+            <FeatureBrowserPreview
+              featureId={feature.id}
+              activeAgents={browserView.activeAgents}
+              screenshots={browserView.screenshots}
+              onSubscribe={browserView.onSubscribe}
+              onUnsubscribe={browserView.onUnsubscribe}
+              onOpenBrowsersView={browserView.onOpenBrowsersView}
+            />
           )}
 
           {/* Description */}

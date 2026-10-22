@@ -88,6 +88,8 @@ export function useProjectWebSocket(projectName: string | null) {
   const reconnectTimeoutRef = useRef<number | null>(null)
   const reconnectAttempts = useRef(0)
   const lastMessageAtRef = useRef<number>(Date.now())
+  // Number of mounted consumers that want browser screenshots
+  const browserViewRefCount = useRef(0)
 
   const connect = useCallback(() => {
     if (!projectName) return
@@ -127,6 +129,10 @@ export function useProjectWebSocket(projectName: string | null) {
         lastMessageAtRef.current = Date.now()
         setState(prev => ({ ...prev, isConnected: true }))
         reconnectAttempts.current = 0
+        // Restore browser view subscription (server-side state is per connection)
+        if (browserViewRefCount.current > 0) {
+          ws.send(JSON.stringify({ type: 'browser_view_subscribe' }))
+        }
       }
 
       ws.onmessage = (event) => {
@@ -459,7 +465,7 @@ export function useProjectWebSocket(projectName: string | null) {
       celebration: null,
       orchestratorStatus: null,
       browserScreenshots: new Map(),
-      browserViewSubscribed: false,
+      browserViewSubscribed: browserViewRefCount.current > 0,
     })
 
     if (!projectName) {
@@ -565,18 +571,28 @@ export function useProjectWebSocket(projectName: string | null) {
     })
   }, [])
 
-  // Subscribe to browser view screenshots
+  // Subscribe to browser view screenshots. Reference-counted so several consumers
+  // (Browsers view, feature modal) can subscribe independently; the server is only
+  // told on the first subscribe and the last unsubscribe.
   const subscribeBrowserView = useCallback(() => {
-    if (wsRef.current?.readyState === WebSocket.OPEN) {
-      wsRef.current.send(JSON.stringify({ type: 'browser_view_subscribe' }))
+    browserViewRefCount.current += 1
+    if (browserViewRefCount.current === 1) {
+      if (wsRef.current?.readyState === WebSocket.OPEN) {
+        wsRef.current.send(JSON.stringify({ type: 'browser_view_subscribe' }))
+      }
+      // If the socket isn't open yet, onopen re-sends the subscription
       setState(prev => ({ ...prev, browserViewSubscribed: true }))
     }
   }, [])
 
   // Unsubscribe from browser view screenshots
   const unsubscribeBrowserView = useCallback(() => {
-    if (wsRef.current?.readyState === WebSocket.OPEN) {
-      wsRef.current.send(JSON.stringify({ type: 'browser_view_unsubscribe' }))
+    if (browserViewRefCount.current === 0) return
+    browserViewRefCount.current -= 1
+    if (browserViewRefCount.current === 0) {
+      if (wsRef.current?.readyState === WebSocket.OPEN) {
+        wsRef.current.send(JSON.stringify({ type: 'browser_view_unsubscribe' }))
+      }
       setState(prev => ({ ...prev, browserViewSubscribed: false }))
     }
   }, [])
