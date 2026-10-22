@@ -22,6 +22,7 @@ import asyncio
 import atexit
 import logging
 import os
+import random
 import re
 import signal
 import subprocess
@@ -31,7 +32,7 @@ from datetime import datetime, timezone
 from pathlib import Path
 from typing import Any, Callable, Literal
 
-from sqlalchemy import text
+from sqlalchemy import func, text
 
 from api.database import Feature, create_database
 from api.dependency_resolver import are_dependencies_satisfied, compute_scheduling_scores
@@ -200,9 +201,9 @@ class ParallelOrchestrator:
         # Track feature failures to prevent infinite retry loops
         self._failure_counts: dict[int, int] = {}
 
-        # Track recently tested feature IDs to avoid redundant re-testing.
-        # Cleared when all passing features have been covered at least once.
-        self._recently_tested: set[int] = set()
+        # Testing agent PID -> all feature IDs in its batch (used to avoid
+        # handing the same features to concurrent testing agents).
+        self._testing_batch_ids: dict[int, list[int]] = {}
 
         # Batch tracking: primary feature_id -> all feature IDs in batch
         self._batch_features: dict[int, list[int]] = {}
@@ -233,51 +234,79 @@ class ParallelOrchestrator:
         return self._session_maker()
 
     def _get_random_passing_feature(self) -> int | None:
-        """Get a random passing feature for regression testing (no claim needed).
+        """Get a passing feature for regression testing (no claim needed).
 
-        Testing agents can test the same feature concurrently - it doesn't matter.
-        This simplifies the architecture by removing unnecessary coordination.
+        Picks among the passing features with the lowest persisted
+        ``regression_count`` (random tie-break) and increments its counter, so
+        repeated calls cycle through every feature before repeating any.
 
         Returns the feature ID if available, None if no passing features exist.
 
         Note: Prefer _get_test_batch() for batch testing mode. This method is
         retained for backward compatibility.
         """
-        from sqlalchemy.sql.expression import func
-
         session = self.get_session()
         try:
-            # Find a passing feature that's not currently being coded
-            # Multiple testing agents can test the same feature - that's fine
+            # Find the least-tested passing feature that's not currently being coded
             feature = (
                 session.query(Feature)
                 .filter(Feature.passes == True)
                 .filter(Feature.in_progress == False)  # Don't test while coding
-                .order_by(func.random())
+                .order_by(Feature.regression_count.asc(), func.random())
                 .first()
             )
-            return feature.id if feature else None
+            if feature is None:
+                return None
+            feature_id = feature.id
+            self._increment_regression_counts(session, [feature_id])
+            return feature_id
         finally:
             session.close()
+
+    @staticmethod
+    def _increment_regression_counts(session, feature_ids: list[int]) -> None:
+        """Atomically bump regression_count for the given features and commit."""
+        if not feature_ids:
+            return
+        session.query(Feature).filter(Feature.id.in_(feature_ids)).update(
+            {Feature.regression_count: func.coalesce(Feature.regression_count, 0) + 1},
+            synchronize_session=False,
+        )
+        session.commit()
 
     def _get_test_batch(self, batch_size: int = 3) -> list[int]:
         """Select a prioritized batch of passing features for regression testing.
 
-        Uses weighted scoring to prioritize features that:
-        1. Haven't been tested recently in this orchestrator session
-        2. Are depended on by many other features (higher impact if broken)
-        3. Have more dependencies themselves (complex integration points)
+        Selection is driven by the persisted ``regression_count`` column so
+        coverage is spread evenly: features that have been regression tested
+        the fewest times are always picked first, and a feature is only
+        re-tested once every other passing feature has caught up. This avoids
+        the duplicate testing caused by purely random selection (see #20) and
+        survives orchestrator restarts.
 
-        When all passing features have been recently tested, the tracking set
-        is cleared so the cycle starts fresh.
+        Within the same regression_count, features are ordered by:
+        1. Number of features that depend on them (higher impact if broken)
+        2. Number of their own dependencies (complex integration points)
+        3. Random tie-break so equal features don't always run in ID order
+
+        The selected features' regression_count is incremented immediately so
+        concurrent testing agents spawned afterwards pick different features.
 
         Args:
-            batch_size: Maximum number of feature IDs to return (1-5).
+            batch_size: Maximum number of feature IDs to return.
 
         Returns:
             List of feature IDs to test, may be shorter than batch_size if
             fewer passing features are available. Empty list if none available.
         """
+        # Exclude features already being tested by running testing agents
+        # to avoid redundant concurrent testing of the same features.
+        with self._lock:
+            currently_testing_ids: set[int] = set()
+            for pid, (feat_id, _proc) in self.running_testing_agents.items():
+                currently_testing_ids.add(feat_id)
+                currently_testing_ids.update(self._testing_batch_ids.get(pid, ()))
+
         session = self.get_session()
         try:
             session.expire_all()
@@ -288,78 +317,50 @@ class ParallelOrchestrator:
                 .all()
             )
 
-            # Extract data from ORM objects before closing the session to avoid
-            # DetachedInstanceError when accessing attributes after session.close().
-            passing_data: list[dict] = []
-            for f in passing:
-                passing_data.append({
+            # Extract data from ORM objects up front to avoid
+            # DetachedInstanceError when accessing attributes later.
+            passing_data: list[dict] = [
+                {
                     'id': f.id,
-                    'dependencies': f.get_dependencies_safe() if hasattr(f, 'get_dependencies_safe') else [],
-                })
+                    'dependencies': f.get_dependencies_safe(),
+                    'regression_count': f.regression_count or 0,
+                }
+                for f in passing
+            ]
+
+            if not passing_data:
+                return []
+
+            # Build a reverse dependency map: feature_id -> count of features that depend on it.
+            # The Feature model stores dependencies (what I depend ON), so we invert to find
+            # dependents (what depends ON me).
+            dependent_counts: dict[int, int] = {}
+            for fd in passing_data:
+                for dep_id in fd['dependencies']:
+                    dependent_counts[dep_id] = dependent_counts.get(dep_id, 0) + 1
+
+            candidates = [fd for fd in passing_data if fd['id'] not in currently_testing_ids]
+
+            def sort_key(fd: dict) -> tuple[int, int, int, float]:
+                return (
+                    fd['regression_count'],                    # least-tested first
+                    -dependent_counts.get(fd['id'], 0),        # high-impact first
+                    -min(len(fd['dependencies']), 3),          # integration points first
+                    random.random(),                           # random tie-break
+                )
+
+            candidates.sort(key=sort_key)
+            selected = [fd['id'] for fd in candidates[:batch_size]]
+
+            # Persist the selection so subsequent batches (and future
+            # orchestrator runs) move on to features that haven't been tested.
+            self._increment_regression_counts(session, selected)
         finally:
             session.close()
 
-        if not passing_data:
-            return []
-
-        # Build a reverse dependency map: feature_id -> count of features that depend on it.
-        # The Feature model stores dependencies (what I depend ON), so we invert to find
-        # dependents (what depends ON me).
-        dependent_counts: dict[int, int] = {}
-        for fd in passing_data:
-            for dep_id in fd['dependencies']:
-                dependent_counts[dep_id] = dependent_counts.get(dep_id, 0) + 1
-
-        # Exclude features that are already being tested by running testing agents
-        # to avoid redundant concurrent testing of the same features.
-        # running_testing_agents is dict[pid, (primary_feature_id, process)]
-        with self._lock:
-            currently_testing_ids: set[int] = set()
-            for _pid, (feat_id, _proc) in self.running_testing_agents.items():
-                currently_testing_ids.add(feat_id)
-
-        # If all passing features have been recently tested, reset the tracker
-        # so we cycle through them again rather than returning empty batches.
-        passing_ids = {fd['id'] for fd in passing_data}
-        if passing_ids.issubset(self._recently_tested):
-            self._recently_tested.clear()
-
-        # Score each feature by testing priority
-        scored: list[tuple[int, int]] = []
-        for fd in passing_data:
-            f_id = fd['id']
-
-            # Skip features already being tested by a running testing agent
-            if f_id in currently_testing_ids:
-                continue
-
-            score = 0
-
-            # Weight 1: Features depended on by many others are higher impact
-            # if they regress, so test them more often
-            score += dependent_counts.get(f_id, 0) * 2
-
-            # Weight 2: Strongly prefer features not tested recently
-            if f_id not in self._recently_tested:
-                score += 5
-
-            # Weight 3: Features with more dependencies are integration points
-            # that are more likely to regress when other code changes
-            dep_count = len(fd['dependencies'])
-            score += min(dep_count, 3)  # Cap at 3 to avoid over-weighting
-
-            scored.append((f_id, score))
-
-        # Sort by score descending (highest priority first)
-        scored.sort(key=lambda x: x[1], reverse=True)
-        selected = [fid for fid, _ in scored[:batch_size]]
-
-        # Track what we've tested to avoid re-testing the same features next batch
-        self._recently_tested.update(selected)
-
         debug_log.log("TEST_BATCH", f"Selected {len(selected)} features for testing batch",
             selected_ids=selected,
-            recently_tested_count=len(self._recently_tested),
+            min_regression_count=min(fd['regression_count'] for fd in passing_data),
             total_passing=len(passing_data))
 
         return selected
@@ -1037,6 +1038,7 @@ class ParallelOrchestrator:
             # Register process by PID (not feature_id) to avoid overwrites
             # when multiple agents test the same feature
             self.running_testing_agents[proc.pid] = (primary_feature_id, proc)
+            self._testing_batch_ids[proc.pid] = batch
             testing_count = len(self.running_testing_agents)
 
         # Start output reader thread with primary feature ID for log attribution
@@ -1252,6 +1254,7 @@ class ParallelOrchestrator:
             with self._lock:
                 # Remove by PID
                 self.running_testing_agents.pop(proc.pid, None)
+                self._testing_batch_ids.pop(proc.pid, None)
 
             status = "completed" if return_code == 0 else "failed"
             print(f"Feature #{feature_id} testing {status}", flush=True)
@@ -1378,6 +1381,7 @@ class ParallelOrchestrator:
         # _on_agent_complete callbacks are still in flight.
         with self._lock:
             self.running_testing_agents.clear()
+            self._testing_batch_ids.clear()
 
     async def run_loop(self):
         """Main orchestration loop."""

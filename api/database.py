@@ -66,6 +66,11 @@ class Feature(Base):
     human_input_request = Column(JSON, nullable=True, default=None)   # Agent's structured request
     human_input_response = Column(JSON, nullable=True, default=None)  # Human's response
 
+    # Regression testing: number of times this feature has been selected for a
+    # regression test. Persisted so testing agents cover the least-tested features
+    # first (even across orchestrator restarts) instead of re-testing at random.
+    regression_count = Column(Integer, nullable=False, default=0, server_default="0", index=True)
+
     def to_dict(self) -> dict:
         """Convert feature to dictionary for JSON serialization."""
         return {
@@ -84,6 +89,7 @@ class Feature(Base):
             "needs_human_input": self.needs_human_input if self.needs_human_input is not None else False,
             "human_input_request": self.human_input_request,
             "human_input_response": self.human_input_response,
+            "regression_count": self.regression_count if self.regression_count is not None else 0,
         }
 
     def get_dependencies_safe(self) -> list[int]:
@@ -326,6 +332,20 @@ def _migrate_add_human_input_columns(engine) -> None:
         conn.commit()
 
 
+def _migrate_add_regression_count_column(engine) -> None:
+    """Add regression_count column to existing databases that don't have it."""
+    with engine.connect() as conn:
+        result = conn.execute(text("PRAGMA table_info(features)"))
+        columns = [row[1] for row in result.fetchall()]
+
+        if "regression_count" not in columns:
+            conn.execute(text("ALTER TABLE features ADD COLUMN regression_count INTEGER NOT NULL DEFAULT 0"))
+            conn.execute(text(
+                "CREATE INDEX IF NOT EXISTS ix_features_regression_count ON features (regression_count)"
+            ))
+            conn.commit()
+
+
 def _migrate_add_schedules_tables(engine) -> None:
     """Create schedules and schedule_overrides tables if they don't exist."""
     from sqlalchemy import inspect
@@ -450,6 +470,7 @@ def create_database(project_dir: Path) -> tuple:
     _migrate_add_dependencies_column(engine)
     _migrate_add_testing_columns(engine)
     _migrate_add_human_input_columns(engine)
+    _migrate_add_regression_count_column(engine)
 
     # Migrate to add schedules tables
     _migrate_add_schedules_tables(engine)
