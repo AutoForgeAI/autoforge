@@ -95,6 +95,22 @@ export interface Feature {
   needs_human_input?: boolean
   human_input_request?: HumanInputRequest | null
   human_input_response?: HumanInputResponseData | null
+  evidence_count?: number           // Number of recorded test evidence entries
+}
+
+// Test evidence recorded by agents when verifying a feature
+export interface TestEvidenceEntry {
+  recorded_at: string | null
+  agent_type: string | null
+  result: 'pass' | 'fail'
+  summary: string | null
+  log: string | null
+  screenshots: string[]
+}
+
+export interface FeatureEvidenceResponse {
+  feature_id: number
+  evidence: TestEvidenceEntry[]
 }
 
 // Status type for graph nodes

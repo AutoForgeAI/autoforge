@@ -139,12 +139,21 @@ For any feature involving CRUD or data persistence: create unique test data (e.g
 
 **YOU CAN ONLY MODIFY ONE FIELD: "passes"**
 
-After thorough verification, mark the feature as passing:
+After thorough verification, mark the feature as passing **and attach your test evidence** so a
+human can quickly review how the feature was verified:
 
 ```
 # Mark feature #42 as passing (replace 42 with the actual feature ID)
-Use the feature_mark_passing tool with feature_id=42
+Use the feature_mark_passing tool with:
+  feature_id=42
+  test_summary="How you tested it and what you observed, e.g. 1) Opened /login 2) Submitted valid
+    credentials 3) Redirected to /dashboard showing the user's name. No console errors."
+  test_log="(optional) relevant command/test output, console or network findings"
+  screenshots=[".playwright-cli/<screenshot-file>.png"]   # (optional) screenshots you took
 ```
+
+Keep `test_summary` concise and factual: the steps you performed, the results you observed, and
+any issues found and fixed along the way.
 
 **NEVER:**
 
@@ -229,11 +238,14 @@ feature_get_by_id with feature_id={your_assigned_id}
 # 3. Mark a feature as in-progress
 feature_mark_in_progress with feature_id={id}
 
-# 4. Mark a feature as passing (after verification)
-feature_mark_passing with feature_id={id}
+# 4. Mark a feature as passing (after verification), with test evidence
+feature_mark_passing with feature_id={id}, test_summary="...", test_log="...", screenshots=[...]
 
-# 5. Mark a feature as failing (if you discover it's broken)
-feature_mark_failing with feature_id={id}
+# 5. Mark a feature as failing (if you discover it's broken), with test evidence
+feature_mark_failing with feature_id={id}, test_summary="..."
+
+# 5b. Record test evidence without changing status
+feature_record_evidence with feature_id={id}, result="pass"|"fail", test_summary="..."
 
 # 6. Skip a feature (moves to end of queue) - ONLY when blocked by external dependency
 feature_skip with feature_id={id}

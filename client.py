@@ -157,6 +157,7 @@ CODING_AGENT_TOOLS = [
     "mcp__features__feature_mark_in_progress",
     "mcp__features__feature_mark_passing",
     "mcp__features__feature_mark_failing",
+    "mcp__features__feature_record_evidence",
     "mcp__features__feature_skip",
     "mcp__features__feature_clear_in_progress",
 ]
@@ -170,6 +171,7 @@ TESTING_AGENT_TOOLS = [
     "mcp__features__feature_get_graph",
     "mcp__features__feature_mark_passing",
     "mcp__features__feature_mark_failing",
+    "mcp__features__feature_record_evidence",
 ]
 
 INITIALIZER_AGENT_TOOLS = [
@@ -335,6 +337,8 @@ def create_client(
                 # (subprocess inherits parent environment automatically)
                 "PROJECT_DIR": str(project_dir.resolve()),
                 "PYTHONPATH": str(Path(__file__).parent.resolve()),
+                # Recorded alongside test evidence so reviewers know which agent captured it
+                "AGENT_TYPE": agent_type,
             },
         },
     }

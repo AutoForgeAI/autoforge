@@ -8,6 +8,7 @@ import type {
   ProjectPrompts,
   ProjectSettingsUpdate,
   FeatureListResponse,
+  FeatureEvidenceResponse,
   Feature,
   FeatureCreate,
   FeatureUpdate,
@@ -146,6 +147,21 @@ export async function createFeature(projectName: string, feature: FeatureCreate)
 
 export async function getFeature(projectName: string, featureId: number): Promise<Feature> {
   return fetchJSON(`/projects/${encodeURIComponent(projectName)}/features/${featureId}`)
+}
+
+export async function getFeatureEvidence(
+  projectName: string,
+  featureId: number
+): Promise<FeatureEvidenceResponse> {
+  return fetchJSON(`/projects/${encodeURIComponent(projectName)}/features/${featureId}/evidence`)
+}
+
+export function getFeatureEvidenceScreenshotUrl(
+  projectName: string,
+  featureId: number,
+  path: string
+): string {
+  return `${API_BASE}/projects/${encodeURIComponent(projectName)}/features/${featureId}/evidence/screenshot?path=${encodeURIComponent(path)}`
 }
 
 export async function deleteFeature(projectName: string, featureId: number): Promise<void> {

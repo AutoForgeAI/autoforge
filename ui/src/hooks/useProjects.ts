@@ -88,6 +88,15 @@ export function useFeatures(projectName: string | null) {
   })
 }
 
+export function useFeatureEvidence(projectName: string, featureId: number, evidenceCount: number) {
+  return useQuery({
+    // evidenceCount in the key refetches when agents record new evidence
+    queryKey: ['feature-evidence', projectName, featureId, evidenceCount],
+    queryFn: () => api.getFeatureEvidence(projectName, featureId),
+    enabled: evidenceCount > 0,
+  })
+}
+
 export function useCreateFeature(projectName: string) {
   const queryClient = useQueryClient()
 

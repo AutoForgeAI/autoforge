@@ -11,6 +11,7 @@ Tools:
 - feature_get_summary: Get minimal feature info (id, name, status, deps)
 - feature_mark_passing: Mark a feature as passing
 - feature_mark_failing: Mark a feature as failing (regression detected)
+- feature_record_evidence: Attach test evidence (summary, log, screenshots) to a feature
 - feature_skip: Skip a feature (move to end of queue)
 - feature_mark_in_progress: Mark a feature as in-progress
 - feature_claim_and_get: Atomically claim and get feature details
@@ -31,8 +32,9 @@ import json
 import os
 import sys
 from contextlib import asynccontextmanager
+from datetime import datetime, timezone
 from pathlib import Path
-from typing import Annotated
+from typing import Annotated, Literal
 
 from mcp.server.fastmcp import FastMCP
 from pydantic import BaseModel, Field
@@ -51,6 +53,14 @@ from api.migration import migrate_json_to_sqlite
 
 # Configuration from environment
 PROJECT_DIR = Path(os.environ.get("PROJECT_DIR", ".")).resolve()
+# Agent type that spawned this MCP server ("coding", "testing", ...), recorded with evidence
+AGENT_TYPE = os.environ.get("AGENT_TYPE", "") or None
+
+# Test evidence limits (keeps features.db and API payloads bounded)
+MAX_EVIDENCE_ENTRIES = 10
+MAX_EVIDENCE_SUMMARY_CHARS = 4000
+MAX_EVIDENCE_LOG_CHARS = 20000
+MAX_EVIDENCE_SCREENSHOTS = 10
 
 
 # Pydantic models for input validation
@@ -131,6 +141,88 @@ def get_session():
     if _session_maker is None:
         raise RuntimeError("Database not initialized")
     return _session_maker()
+
+
+def _truncate(value: str | None, limit: int) -> str | None:
+    """Strip and truncate free-form evidence text, returning None when empty."""
+    if value is None:
+        return None
+    value = value.strip()
+    if not value:
+        return None
+    if len(value) > limit:
+        omitted = len(value) - limit
+        value = value[:limit] + f"\n... [truncated {omitted} chars]"
+    return value
+
+
+def _normalize_screenshots(paths: list[str] | None) -> list[str]:
+    """Normalize screenshot paths to POSIX paths relative to the project directory.
+
+    Paths outside the project directory are dropped, since the UI can only
+    serve evidence files from inside the project.
+    """
+    normalized: list[str] = []
+    for raw in paths or []:
+        if not isinstance(raw, str) or not raw.strip():
+            continue
+        candidate = Path(raw.strip())
+        if not candidate.is_absolute():
+            candidate = PROJECT_DIR / candidate
+        try:
+            rel = candidate.resolve().relative_to(PROJECT_DIR)
+        except (ValueError, OSError):
+            continue
+        rel_posix = rel.as_posix()
+        if rel_posix not in normalized:
+            normalized.append(rel_posix)
+        if len(normalized) >= MAX_EVIDENCE_SCREENSHOTS:
+            break
+    return normalized
+
+
+def _build_evidence_entry(
+    result: str,
+    test_summary: str | None,
+    test_log: str | None,
+    screenshots: list[str] | None,
+) -> dict | None:
+    """Build a test evidence entry, or None if nothing was provided."""
+    summary = _truncate(test_summary, MAX_EVIDENCE_SUMMARY_CHARS)
+    log = _truncate(test_log, MAX_EVIDENCE_LOG_CHARS)
+    shots = _normalize_screenshots(screenshots)
+    if summary is None and log is None and not shots:
+        return None
+    return {
+        "recorded_at": datetime.now(timezone.utc).isoformat(),
+        "agent_type": AGENT_TYPE,
+        "result": result,
+        "summary": summary,
+        "log": log,
+        "screenshots": shots,
+    }
+
+
+def _append_evidence(feature: Feature, entry: dict) -> None:
+    """Append an evidence entry to a feature, keeping only the most recent entries."""
+    existing: list[dict] = feature.test_evidence if isinstance(feature.test_evidence, list) else []
+    # Assign a new list so SQLAlchemy detects the JSON column change
+    feature.test_evidence = (existing + [entry])[-MAX_EVIDENCE_ENTRIES:]  # type: ignore[assignment]
+
+
+# Shared parameter annotations for evidence-capturing tools
+TestSummaryParam = Annotated[str | None, Field(
+    description=(
+        "Test evidence: how you verified the feature and what you found "
+        "(steps performed, observed results, issues). Shown on the feature card for human review."
+    ),
+)]
+TestLogParam = Annotated[str | None, Field(
+    description="Optional raw test log (command output, browser console, test runner output).",
+)]
+ScreenshotsParam = Annotated[list[str] | None, Field(
+    description="Optional screenshot file paths (inside the project directory) captured while testing.",
+)]
 
 
 @mcp.tool()
@@ -233,15 +325,23 @@ def feature_get_summary(
 
 @mcp.tool()
 def feature_mark_passing(
-    feature_id: Annotated[int, Field(description="The ID of the feature to mark as passing", ge=1)]
+    feature_id: Annotated[int, Field(description="The ID of the feature to mark as passing", ge=1)],
+    test_summary: TestSummaryParam = None,
+    test_log: TestLogParam = None,
+    screenshots: ScreenshotsParam = None,
 ) -> str:
     """Mark a feature as passing after successful implementation.
 
     Updates the feature's passes field to true and clears the in_progress flag.
     Use this after you have implemented the feature and verified it works correctly.
+    Always include test evidence (test_summary, and test_log/screenshots when
+    available) so a human can quickly review how the feature was verified.
 
     Args:
         feature_id: The ID of the feature to mark as passing
+        test_summary: How the feature was tested and what was found
+        test_log: Optional raw test output
+        screenshots: Optional screenshot paths inside the project directory
 
     Returns:
         JSON with success confirmation: {success, feature_id, name}
@@ -254,9 +354,9 @@ def feature_mark_passing(
             SET passes = 1, in_progress = 0
             WHERE id = :id AND passes = 0
         """), {"id": feature_id})
-        session.commit()
 
         if result.rowcount == 0:
+            session.rollback()
             # Check why the update didn't match
             feature = session.query(Feature).filter(Feature.id == feature_id).first()
             if feature is None:
@@ -265,9 +365,18 @@ def feature_mark_passing(
                 return json.dumps({"error": f"Feature with ID {feature_id} is already passing"})
             return json.dumps({"error": "Failed to mark feature passing for unknown reason"})
 
-        # Get the feature name for the response
+        # Get the feature name for the response and attach evidence in the same transaction
         feature = session.query(Feature).filter(Feature.id == feature_id).first()
-        return json.dumps({"success": True, "feature_id": feature_id, "name": feature.name})
+        entry = _build_evidence_entry("pass", test_summary, test_log, screenshots)
+        if entry is not None:
+            _append_evidence(feature, entry)
+        session.commit()
+        return json.dumps({
+            "success": True,
+            "feature_id": feature_id,
+            "name": feature.name,
+            "evidence_recorded": entry is not None,
+        })
     except Exception as e:
         session.rollback()
         return json.dumps({"error": f"Failed to mark feature passing: {str(e)}"})
@@ -277,7 +386,10 @@ def feature_mark_passing(
 
 @mcp.tool()
 def feature_mark_failing(
-    feature_id: Annotated[int, Field(description="The ID of the feature to mark as failing", ge=1)]
+    feature_id: Annotated[int, Field(description="The ID of the feature to mark as failing", ge=1)],
+    test_summary: TestSummaryParam = None,
+    test_log: TestLogParam = None,
+    screenshots: ScreenshotsParam = None,
 ) -> str:
     """Mark a feature as failing after finding a regression.
 
@@ -291,8 +403,14 @@ def feature_mark_failing(
     3. Verify the fix
     4. Call feature_mark_passing once fixed
 
+    Include test evidence (test_summary describing the regression, plus
+    test_log/screenshots when available) so a human can review what failed.
+
     Args:
         feature_id: The ID of the feature to mark as failing
+        test_summary: How the feature was tested and what failed
+        test_log: Optional raw test output
+        screenshots: Optional screenshot paths inside the project directory
 
     Returns:
         JSON with the updated feature details, or error if not found.
@@ -310,10 +428,13 @@ def feature_mark_failing(
             SET passes = 0, in_progress = 0
             WHERE id = :id
         """), {"id": feature_id})
-        session.commit()
 
-        # Refresh to get updated state
+        # Refresh to get updated state, then attach evidence in the same transaction
         session.refresh(feature)
+        entry = _build_evidence_entry("fail", test_summary, test_log, screenshots)
+        if entry is not None:
+            _append_evidence(feature, entry)
+        session.commit()
 
         return json.dumps({
             "message": f"Feature #{feature_id} marked as failing - regression detected",
@@ -324,6 +445,52 @@ def feature_mark_failing(
         return json.dumps({"error": f"Failed to mark feature failing: {str(e)}"})
     finally:
         session.close()
+
+
+@mcp.tool()
+def feature_record_evidence(
+    feature_id: Annotated[int, Field(description="The ID of the feature the evidence belongs to", ge=1)],
+    result: Annotated[Literal["pass", "fail"], Field(description="Outcome of the test run")],
+    test_summary: Annotated[str, Field(
+        min_length=1,
+        description="How you verified the feature and what you found (steps performed, observed results).",
+    )],
+    test_log: TestLogParam = None,
+    screenshots: ScreenshotsParam = None,
+) -> str:
+    """Attach test evidence to a feature without changing its status.
+
+    Use this when you verified a feature but its status does not change, e.g. a
+    testing agent confirming a passing feature still works (no regression).
+    Evidence is shown on the feature card so a human can review it.
+
+    Args:
+        feature_id: The ID of the feature
+        result: "pass" or "fail"
+        test_summary: How the feature was tested and what was found
+        test_log: Optional raw test output
+        screenshots: Optional screenshot paths inside the project directory
+
+    Returns:
+        JSON with success confirmation, or error if not found.
+    """
+    entry = _build_evidence_entry(result, test_summary, test_log, screenshots)
+    if entry is None:
+        return json.dumps({"error": "test_summary must not be empty"})
+
+    try:
+        with atomic_transaction(_session_maker) as session:
+            feature = session.query(Feature).filter(Feature.id == feature_id).first()
+            if feature is None:
+                return json.dumps({"error": f"Feature with ID {feature_id} not found"})
+            _append_evidence(feature, entry)
+            return json.dumps({
+                "success": True,
+                "feature_id": feature_id,
+                "evidence_count": len(feature.test_evidence),
+            })
+    except Exception as e:
+        return json.dumps({"error": f"Failed to record evidence: {str(e)}"})
 
 
 @mcp.tool()

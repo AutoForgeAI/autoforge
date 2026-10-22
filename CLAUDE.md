@@ -235,8 +235,9 @@ MCP tools available to the agent:
 - `feature_get_graph` - Get full dependency graph
 - `feature_claim_and_get` - Atomically claim next available feature (for parallel mode)
 - `feature_mark_in_progress` - Mark feature as in progress
-- `feature_mark_passing` - Mark feature complete
+- `feature_mark_passing` - Mark feature complete (optionally with test evidence)
 - `feature_mark_failing` - Mark feature as failing
+- `feature_record_evidence` - Attach test evidence (summary, log, screenshots) shown on the feature card
 - `feature_skip` - Move feature to end of queue
 - `feature_clear_in_progress` - Clear in-progress status
 - `feature_create_bulk` - Initialize all features (used by initializer)

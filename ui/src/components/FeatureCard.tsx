@@ -1,4 +1,4 @@
-import { CheckCircle2, Circle, Loader2, MessageCircle, UserCircle } from 'lucide-react'
+import { CheckCircle2, Circle, ClipboardCheck, Loader2, MessageCircle, UserCircle } from 'lucide-react'
 import type { Feature, ActiveAgent } from '../lib/types'
 import { DependencyBadge } from './DependencyBadge'
 import { AgentAvatar } from './AgentAvatar'
@@ -121,6 +121,15 @@ export function FeatureCard({ feature, onClick, isInProgress, allFeatures = [], 
               <Circle size={16} className="text-muted-foreground" />
               <span className="text-muted-foreground">Pending</span>
             </>
+          )}
+          {(feature.evidence_count ?? 0) > 0 && (
+            <span
+              className="ml-auto flex items-center gap-1 text-xs text-muted-foreground"
+              title={`${feature.evidence_count} test evidence record(s)`}
+            >
+              <ClipboardCheck size={14} />
+              Evidence
+            </span>
           )}
         </div>
       </CardContent>

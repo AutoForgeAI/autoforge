@@ -136,9 +136,26 @@ class FeatureResponse(FeatureBase):
     needs_human_input: bool = False
     human_input_request: dict | None = None
     human_input_response: dict | None = None
+    evidence_count: int = 0  # Number of test evidence entries (fetch via /evidence)
 
     class Config:
         from_attributes = True
+
+
+class TestEvidenceEntry(BaseModel):
+    """A single piece of test evidence recorded by an agent."""
+    recorded_at: str | None = None
+    agent_type: str | None = None
+    result: Literal["pass", "fail"] = "pass"
+    summary: str | None = None
+    log: str | None = None
+    screenshots: list[str] = Field(default_factory=list)
+
+
+class FeatureEvidenceResponse(BaseModel):
+    """Test evidence recorded for a feature, oldest first."""
+    feature_id: int
+    evidence: list[TestEvidenceEntry]
 
 
 class HumanInputField(BaseModel):

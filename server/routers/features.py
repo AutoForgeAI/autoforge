@@ -10,7 +10,8 @@ from contextlib import contextmanager
 from pathlib import Path
 from typing import Literal
 
-from fastapi import APIRouter, HTTPException
+from fastapi import APIRouter, HTTPException, Query
+from fastapi.responses import FileResponse
 
 from ..schemas import (
     DependencyGraphEdge,
@@ -20,10 +21,12 @@ from ..schemas import (
     FeatureBulkCreate,
     FeatureBulkCreateResponse,
     FeatureCreate,
+    FeatureEvidenceResponse,
     FeatureListResponse,
     FeatureResponse,
     FeatureUpdate,
     HumanInputResponse,
+    TestEvidenceEntry,
 )
 from ..utils.project_helpers import get_project_path as _get_project_path
 from ..utils.validation import validate_project_name
@@ -108,7 +111,26 @@ def feature_to_response(f, passing_ids: set[int] | None = None) -> FeatureRespon
         needs_human_input=getattr(f, 'needs_human_input', False) or False,
         human_input_request=getattr(f, 'human_input_request', None),
         human_input_response=getattr(f, 'human_input_response', None),
+        evidence_count=len(_evidence_entries(f)),
     )
+
+
+def _evidence_entries(f) -> list[dict]:
+    """Return a feature's test evidence entries, tolerating NULL/malformed data."""
+    evidence = getattr(f, 'test_evidence', None)
+    if not isinstance(evidence, list):
+        return []
+    return [e for e in evidence if isinstance(e, dict)]
+
+
+# Screenshot types that may be served as test evidence
+EVIDENCE_IMAGE_TYPES = {
+    ".png": "image/png",
+    ".jpg": "image/jpeg",
+    ".jpeg": "image/jpeg",
+    ".gif": "image/gif",
+    ".webp": "image/webp",
+}
 
 
 @router.get("", response_model=FeatureListResponse)
@@ -418,6 +440,101 @@ async def get_feature(project_name: str, feature_id: int):
     except Exception:
         logger.exception("Database error in get_feature")
         raise HTTPException(status_code=500, detail="Database error occurred")
+
+
+def _get_feature_or_404(session, Feature, feature_id: int):
+    feature = session.query(Feature).filter(Feature.id == feature_id).first()
+    if not feature:
+        raise HTTPException(status_code=404, detail=f"Feature {feature_id} not found")
+    return feature
+
+
+def _resolve_project_with_db(project_name: str) -> Path:
+    """Validate the project name and ensure its features database exists."""
+    project_name = validate_project_name(project_name)
+    project_dir = _get_project_path(project_name)
+
+    if not project_dir:
+        raise HTTPException(status_code=404, detail=f"Project '{project_name}' not found in registry")
+
+    if not project_dir.exists():
+        raise HTTPException(status_code=404, detail="Project directory not found")
+
+    from autoforge_paths import get_features_db_path
+    if not get_features_db_path(project_dir).exists():
+        raise HTTPException(status_code=404, detail="No features database found")
+
+    return project_dir
+
+
+@router.get("/{feature_id}/evidence", response_model=FeatureEvidenceResponse)
+async def get_feature_evidence(project_name: str, feature_id: int):
+    """Get the test evidence (summaries, logs, screenshots) agents recorded for a feature."""
+    project_dir = _resolve_project_with_db(project_name)
+    _, Feature = _get_db_classes()
+
+    try:
+        with get_db_session(project_dir) as session:
+            feature = _get_feature_or_404(session, Feature, feature_id)
+            entries = []
+            for raw in _evidence_entries(feature):
+                try:
+                    entries.append(TestEvidenceEntry.model_validate(raw))
+                except ValueError:
+                    logger.warning("Skipping malformed evidence entry on feature %s", feature_id)
+            return FeatureEvidenceResponse(feature_id=feature_id, evidence=entries)
+    except HTTPException:
+        raise
+    except Exception:
+        logger.exception("Database error in get_feature_evidence")
+        raise HTTPException(status_code=500, detail="Database error occurred")
+
+
+@router.get("/{feature_id}/evidence/screenshot")
+async def get_feature_evidence_screenshot(
+    project_name: str,
+    feature_id: int,
+    path: str = Query(..., min_length=1, max_length=1024),
+):
+    """Serve a screenshot referenced by a feature's test evidence.
+
+    Only image files that are explicitly listed in the feature's evidence and
+    that resolve inside the project directory can be served.
+    """
+    project_dir = _resolve_project_with_db(project_name)
+    _, Feature = _get_db_classes()
+
+    try:
+        with get_db_session(project_dir) as session:
+            feature = _get_feature_or_404(session, Feature, feature_id)
+            referenced = {
+                shot
+                for entry in _evidence_entries(feature)
+                for shot in (entry.get("screenshots") or [])
+                if isinstance(shot, str)
+            }
+    except HTTPException:
+        raise
+    except Exception:
+        logger.exception("Database error in get_feature_evidence_screenshot")
+        raise HTTPException(status_code=500, detail="Database error occurred")
+
+    if path not in referenced:
+        raise HTTPException(status_code=404, detail="Screenshot not found in feature evidence")
+
+    root = project_dir.resolve()
+    file_path = (root / path).resolve()
+    if not file_path.is_relative_to(root):
+        raise HTTPException(status_code=403, detail="Screenshot path is outside the project directory")
+
+    media_type = EVIDENCE_IMAGE_TYPES.get(file_path.suffix.lower())
+    if media_type is None:
+        raise HTTPException(status_code=400, detail="Unsupported screenshot file type")
+
+    if not file_path.is_file():
+        raise HTTPException(status_code=404, detail="Screenshot file no longer exists")
+
+    return FileResponse(file_path, media_type=media_type)
 
 
 @router.patch("/{feature_id}", response_model=FeatureResponse)
