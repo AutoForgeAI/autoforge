@@ -287,6 +287,7 @@ Projects can be stored in any directory (registered in `~/.autoforge/registry.db
 - `.autoforge/features.db` - SQLite database with feature test cases
 - `.autoforge/.agent.lock` - Lock file to prevent multiple agent instances
 - `.autoforge/allowed_commands.yaml` - Project-specific bash command allowlist (optional)
+- `.autoforge/denied_commands.jsonl` - Log of bash commands blocked by the security hook (gitignored)
 - `.autoforge/.gitignore` - Ignores runtime files
 - `.claude/skills/playwright-cli/` - Playwright CLI skill for browser automation
 - `.playwright/cli.config.json` - Browser configuration (headless, viewport, etc.)
@@ -392,6 +393,11 @@ blocked_commands:
 - Maximum 100 commands per project config
 - Blocklisted commands (sudo, dd, shutdown, etc.) can NEVER be allowed
 - Org-level blocked commands cannot be overridden by project configs
+
+**Denied Command Log:**
+- Every blocked Bash command is appended to `.autoforge/denied_commands.jsonl` (timestamp, command, full command, reason) so users can review it and extend their allowlists
+- Rotates to `denied_commands.jsonl.1` above ~1 MB; gitignored
+- API: `GET /api/projects/{name}/denied-commands` (aggregated by command + recent entries), `DELETE` to clear
 
 **Files:**
 - `security.py` - Command validation logic and hardcoded blocklist

@@ -6,10 +6,12 @@ Pre-tool-use hooks that validate bash commands for security.
 Uses an allowlist approach - only explicitly permitted commands can run.
 """
 
+import json
 import logging
 import os
 import re
 import shlex
+from datetime import datetime, timezone
 from pathlib import Path
 from typing import Optional
 
@@ -893,6 +895,112 @@ def is_command_allowed(command: str, allowed_commands: set[str]) -> bool:
     return False
 
 
+# Rotate the denied-commands log once it grows beyond this size
+DENIED_COMMANDS_LOG_MAX_BYTES = 1_000_000
+# Truncate stored command strings to keep log entries small
+DENIED_COMMANDS_MAX_COMMAND_CHARS = 2000
+
+
+def record_denied_command(
+    project_dir: Optional[Path],
+    command: str,
+    denied_command: Optional[str],
+    reason: str,
+) -> None:
+    """
+    Append a blocked Bash command to the project's denied-commands log.
+
+    The log (``.autoforge/denied_commands.jsonl``) lets users review which
+    commands the agent tried to run so they can extend their allowlists.
+    Failures are logged and swallowed: recording must never affect the
+    security decision itself.
+
+    Args:
+        project_dir: Project directory, or None (nothing is recorded)
+        command: The full command string the agent attempted
+        denied_command: The specific command that caused the block, if known
+        reason: The block reason returned to the agent
+    """
+    if project_dir is None:
+        return
+
+    from autoforge_paths import get_denied_commands_log_path
+
+    entry = {
+        "timestamp": datetime.now(timezone.utc).isoformat(),
+        "command": denied_command,
+        "full_command": command[:DENIED_COMMANDS_MAX_COMMAND_CHARS],
+        "reason": reason.splitlines()[0] if reason else "",
+    }
+
+    try:
+        log_path = get_denied_commands_log_path(project_dir)
+        log_path.parent.mkdir(parents=True, exist_ok=True)
+        if log_path.exists() and log_path.stat().st_size > DENIED_COMMANDS_LOG_MAX_BYTES:
+            log_path.replace(log_path.with_name(log_path.name + ".1"))
+        with open(log_path, "a", encoding="utf-8") as f:
+            f.write(json.dumps(entry) + "\n")
+    except OSError as e:
+        logger.warning(f"Failed to record denied command for {project_dir}: {e}")
+
+
+def load_denied_commands(project_dir: Path) -> list[dict]:
+    """
+    Load all recorded denied-command entries for a project (oldest first).
+
+    Includes the rotated ``.1`` log if present. Malformed lines are skipped.
+    """
+    from autoforge_paths import get_denied_commands_log_path
+
+    log_path = get_denied_commands_log_path(project_dir)
+    entries: list[dict] = []
+    for path in (log_path.with_name(log_path.name + ".1"), log_path):
+        if not path.exists():
+            continue
+        try:
+            lines = path.read_text(encoding="utf-8").splitlines()
+        except OSError as e:
+            logger.warning(f"Failed to read denied commands log {path}: {e}")
+            continue
+        for line in lines:
+            try:
+                entry = json.loads(line)
+            except json.JSONDecodeError:
+                continue
+            if isinstance(entry, dict):
+                entries.append(entry)
+    return entries
+
+
+def summarize_denied_commands(entries: list[dict]) -> list[dict]:
+    """
+    Aggregate denied-command entries by command name.
+
+    Returns:
+        List of dicts with ``command``, ``count``, ``last_seen`` and
+        ``example`` (most recent full command), sorted by count descending.
+    """
+    summary: dict[str, dict] = {}
+    for entry in entries:
+        name = entry.get("command") or "(unparseable)"
+        item = summary.setdefault(name, {"command": name, "count": 0, "last_seen": "", "example": ""})
+        item["count"] += 1
+        timestamp = entry.get("timestamp") or ""
+        if timestamp >= item["last_seen"]:
+            item["last_seen"] = timestamp
+            item["example"] = entry.get("full_command") or ""
+    return sorted(summary.values(), key=lambda i: (-i["count"], i["command"]))
+
+
+def clear_denied_commands(project_dir: Path) -> None:
+    """Delete the project's denied-commands log (including rotated log)."""
+    from autoforge_paths import get_denied_commands_log_path
+
+    log_path = get_denied_commands_log_path(project_dir)
+    for path in (log_path, log_path.with_name(log_path.name + ".1")):
+        path.unlink(missing_ok=True)
+
+
 async def bash_security_hook(input_data, tool_use_id=None, context=None):
     """
     Pre-tool-use hook that validates bash commands using an allowlist.
@@ -914,6 +1022,26 @@ async def bash_security_hook(input_data, tool_use_id=None, context=None):
     if not command:
         return {}
 
+    # Get project directory from context
+    project_dir = None
+    if context and isinstance(context, dict):
+        project_dir_str = context.get("project_dir")
+        if project_dir_str:
+            project_dir = Path(project_dir_str)
+
+    result, denied_command = _validate_bash_command(command, project_dir)
+    if result.get("decision") == "block":
+        record_denied_command(project_dir, command, denied_command, result.get("reason", ""))
+    return result
+
+
+def _validate_bash_command(command: str, project_dir: Optional[Path]) -> tuple[dict, Optional[str]]:
+    """
+    Validate a Bash command string against the effective allow/block lists.
+
+    Returns:
+        Tuple of (hook result, name of the command that caused a block or None)
+    """
     # Extract all commands from the command string
     commands = extract_commands(command)
 
@@ -922,14 +1050,7 @@ async def bash_security_hook(input_data, tool_use_id=None, context=None):
         return {
             "decision": "block",
             "reason": f"Could not parse command for security validation: {command}",
-        }
-
-    # Get project directory from context
-    project_dir = None
-    if context and isinstance(context, dict):
-        project_dir_str = context.get("project_dir")
-        if project_dir_str:
-            project_dir = Path(project_dir_str)
+        }, None
 
     # Get effective commands using hierarchy resolution
     allowed_commands, blocked_commands = get_effective_commands(project_dir)
@@ -947,7 +1068,7 @@ async def bash_security_hook(input_data, tool_use_id=None, context=None):
             return {
                 "decision": "block",
                 "reason": f"Command '{cmd}' is blocked at organization level and cannot be approved.",
-            }
+            }, cmd
 
         # Check allowlist (with pattern matching)
         if not is_command_allowed(cmd, allowed_commands):
@@ -960,7 +1081,7 @@ async def bash_security_hook(input_data, tool_use_id=None, context=None):
             return {
                 "decision": "block",
                 "reason": error_msg,
-            }
+            }, cmd
 
         # Additional validation for sensitive commands
         if cmd in COMMANDS_NEEDING_EXTRA_VALIDATION:
@@ -979,18 +1100,18 @@ async def bash_security_hook(input_data, tool_use_id=None, context=None):
                 extra_procs = pkill_processes - DEFAULT_PKILL_PROCESSES
                 allowed, reason = validate_pkill_command(cmd_segment, extra_procs if extra_procs else None)
                 if not allowed:
-                    return {"decision": "block", "reason": reason}
+                    return {"decision": "block", "reason": reason}, cmd
             elif cmd == "chmod":
                 allowed, reason = validate_chmod_command(cmd_segment)
                 if not allowed:
-                    return {"decision": "block", "reason": reason}
+                    return {"decision": "block", "reason": reason}, cmd
             elif cmd == "init.sh":
                 allowed, reason = validate_init_script(cmd_segment)
                 if not allowed:
-                    return {"decision": "block", "reason": reason}
+                    return {"decision": "block", "reason": reason}, cmd
             elif cmd == "playwright-cli":
                 allowed, reason = validate_playwright_command(cmd_segment)
                 if not allowed:
-                    return {"decision": "block", "reason": reason}
+                    return {"decision": "block", "reason": reason}, cmd
 
-    return {}
+    return {}, None

@@ -15,13 +15,17 @@ from contextlib import contextmanager
 from pathlib import Path
 
 from security import (
+    DENIED_COMMANDS_LOG_MAX_BYTES,
     bash_security_hook,
+    clear_denied_commands,
     extract_commands,
     get_effective_commands,
     get_effective_pkill_processes,
+    load_denied_commands,
     load_org_config,
     load_project_commands,
     matches_pattern,
+    summarize_denied_commands,
     validate_chmod_command,
     validate_init_script,
     validate_pkill_command,
@@ -988,6 +992,76 @@ def test_playwright_cli_validation():
     return passed, failed
 
 
+def test_denied_commands_logging():
+    """Test that blocked commands are recorded for later inspection."""
+    print("\nTesting denied commands logging:\n")
+    passed = 0
+    failed = 0
+
+    def check(condition, description):
+        nonlocal passed, failed
+        if condition:
+            print(f"  PASS: {description}")
+            passed += 1
+        else:
+            print(f"  FAIL: {description}")
+            failed += 1
+
+    with tempfile.TemporaryDirectory() as tmphome:
+        with tempfile.TemporaryDirectory() as tmpproject:
+            with temporary_home(tmphome):
+                project_dir = Path(tmpproject)
+                context = {"project_dir": str(project_dir)}
+                log_path = project_dir / ".autoforge" / "denied_commands.jsonl"
+
+                def run(command):
+                    input_data = {"tool_name": "Bash", "tool_input": {"command": command}}
+                    return asyncio.run(bash_security_hook(input_data, context=context))
+
+                run("ls -la")
+                check(not log_path.exists(), "allowed command is not recorded")
+
+                run("pytest -q tests/")
+                run("npm test && pytest")
+                run("openssl rand -hex 16")
+                run("sudo rm -rf /")
+                run("pkill chrome")
+
+                entries = load_denied_commands(project_dir)
+                check(len(entries) == 5, f"5 denied commands recorded (got {len(entries)})")
+                names = [e.get("command") for e in entries]
+                check(names == ["pytest", "pytest", "openssl", "sudo", "pkill"], f"denied command names recorded ({names})")
+                check(entries[1].get("full_command") == "npm test && pytest", "full command string recorded")
+                check(all(e.get("timestamp") and e.get("reason") for e in entries), "timestamp and reason recorded")
+
+                summary = summarize_denied_commands(entries)
+                check(summary[0]["command"] == "pytest" and summary[0]["count"] == 2, "summary aggregates by command")
+                check(summary[0]["example"] == "npm test && pytest", "summary example is most recent occurrence")
+
+                # Without a project dir nothing is recorded (and nothing crashes)
+                asyncio.run(bash_security_hook({"tool_name": "Bash", "tool_input": {"command": "pytest"}}))
+                check(len(load_denied_commands(project_dir)) == 5, "no recording without project_dir")
+
+                # Malformed lines are skipped
+                with open(log_path, "a", encoding="utf-8") as f:
+                    f.write("not json\n")
+                check(len(load_denied_commands(project_dir)) == 5, "malformed log lines are skipped")
+
+                # Log rotates once it exceeds the size limit; rotated entries are still loaded
+                with open(log_path, "a", encoding="utf-8") as f:
+                    f.write(" " * (DENIED_COMMANDS_LOG_MAX_BYTES + 1) + "\n")
+                run("openssl version")
+                rotated = log_path.with_name(log_path.name + ".1")
+                check(rotated.exists() and log_path.stat().st_size < 1000, "log rotates when too large")
+                check(len(load_denied_commands(project_dir)) == 6, "rotated entries still loaded")
+
+                clear_denied_commands(project_dir)
+                check(not log_path.exists() and not rotated.exists(), "clear removes logs")
+                check(load_denied_commands(project_dir) == [], "no entries after clear")
+
+    return passed, failed
+
+
 def main():
     print("=" * 70)
     print("  SECURITY HOOK TESTS")
@@ -1060,6 +1134,11 @@ def main():
     pw_passed, pw_failed = test_playwright_cli_validation()
     passed += pw_passed
     failed += pw_failed
+
+    # Test denied commands logging
+    denied_passed, denied_failed = test_denied_commands_logging()
+    passed += denied_passed
+    failed += denied_failed
 
     # Commands that SHOULD be blocked
     # Note: blocklisted commands (sudo, shutdown, dd, aws) are tested in

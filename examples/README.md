@@ -11,6 +11,7 @@ This directory contains example configuration files for controlling which bash c
 - [Pattern Matching](#pattern-matching)
 - [Common Use Cases](#common-use-cases)
 - [Security Best Practices](#security-best-practices)
+- [Reviewing Denied Commands](#reviewing-denied-commands)
 
 ---
 
@@ -388,11 +389,34 @@ These commands are **NEVER allowed**, even with user approval:
 
 ---
 
+## Reviewing Denied Commands
+
+Every Bash command the security hook blocks is recorded in
+`{project}/.autoforge/denied_commands.jsonl` (one JSON object per line), so you can
+review afterwards which tools the agent wanted (e.g. `pytest`, `openssl`) and add the
+safe ones to `allowed_commands.yaml`:
+
+```json
+{"timestamp": "2026-01-01T12:00:00+00:00", "command": "pytest", "full_command": "pytest -q tests/", "reason": "Command 'pytest' is not allowed."}
+```
+
+- `command` is the specific command that caused the block; `full_command` is the whole command line (truncated to 2000 chars)
+- The log is gitignored and rotates to `denied_commands.jsonl.1` once it exceeds ~1 MB
+- With the server running, `GET /api/projects/{name}/denied-commands` returns the commands aggregated by name (count, last seen, example) plus the most recent entries; `DELETE` on the same URL clears the log
+
+Quick summary from the shell:
+
+```bash
+jq -r .command .autoforge/denied_commands.jsonl | sort | uniq -c | sort -rn
+```
+
+---
+
 ## Troubleshooting
 
 ### Error: "Command 'X' is not allowed"
 
-**Solution:** Add the command to your project config:
+**Solution:** Add the command to your project config (see [Reviewing Denied Commands](#reviewing-denied-commands) to find every command that was blocked):
 ```yaml
 # In .autoforge/allowed_commands.yaml
 commands:

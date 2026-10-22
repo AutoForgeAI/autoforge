@@ -69,6 +69,29 @@ class ProjectPrompts(BaseModel):
     coding_prompt: str = ""
 
 
+class DeniedCommandEntry(BaseModel):
+    """A single Bash command blocked by the security hook."""
+    timestamp: str = ""
+    command: str | None = None
+    full_command: str = ""
+    reason: str = ""
+
+
+class DeniedCommandSummary(BaseModel):
+    """Denied commands aggregated by command name."""
+    command: str
+    count: int
+    last_seen: str = ""
+    example: str = ""
+
+
+class DeniedCommandsResponse(BaseModel):
+    """Commands the agent tried to run but was not allowed to."""
+    total: int = 0
+    commands: list[DeniedCommandSummary] = []
+    recent: list[DeniedCommandEntry] = []
+
+
 class ProjectPromptsUpdate(BaseModel):
     """Request schema for updating project prompts."""
     app_spec: str | None = None

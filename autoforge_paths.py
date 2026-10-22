@@ -45,6 +45,8 @@ assistant.db-shm
 .claude_settings.expand.*.json
 .progress_cache
 .migration_version
+denied_commands.jsonl
+denied_commands.jsonl.1
 """
 
 
@@ -176,6 +178,16 @@ def get_expand_settings_path(project_dir: Path, uuid_hex: str) -> Path:
     These files are short-lived and always stored in ``.autoforge/``.
     """
     return project_dir / ".autoforge" / f".claude_settings.expand.{uuid_hex}.json"
+
+
+def get_denied_commands_log_path(project_dir: Path) -> Path:
+    """Return the path to ``denied_commands.jsonl``.
+
+    The security hook appends one JSON line per blocked Bash command so users
+    can review what the agent tried to run and extend their allowlists.
+    Always stored in ``.autoforge/``.
+    """
+    return project_dir / ".autoforge" / "denied_commands.jsonl"
 
 
 # ---------------------------------------------------------------------------

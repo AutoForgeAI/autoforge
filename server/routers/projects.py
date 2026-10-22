@@ -15,6 +15,9 @@ from typing import Any, Callable
 from fastapi import APIRouter, HTTPException
 
 from ..schemas import (
+    DeniedCommandEntry,
+    DeniedCommandsResponse,
+    DeniedCommandSummary,
     ProjectCreate,
     ProjectDetail,
     ProjectPrompts,
@@ -392,6 +395,65 @@ async def get_project_stats_endpoint(name: str):
         raise HTTPException(status_code=404, detail="Project directory not found")
 
     return get_project_stats(project_dir)
+
+
+# Maximum number of individual denied-command entries returned by the API
+DENIED_COMMANDS_RECENT_LIMIT = 100
+
+
+def _get_existing_project_dir(name: str) -> Path:
+    """Resolve a registered project's directory or raise 404."""
+    (_, _, get_project_path, _, _, _, _, _, _) = _get_registry_functions()
+
+    name = validate_project_name(name)
+    project_dir = get_project_path(name)
+
+    if not project_dir:
+        raise HTTPException(status_code=404, detail=f"Project '{name}' not found")
+
+    if not project_dir.exists():
+        raise HTTPException(status_code=404, detail="Project directory not found")
+
+    return Path(project_dir)
+
+
+@router.get("/{name}/denied-commands", response_model=DeniedCommandsResponse)
+async def get_denied_commands(name: str):
+    """List Bash commands the agent tried to run but were blocked by the security hook."""
+    _init_imports()
+    from security import load_denied_commands, summarize_denied_commands
+
+    project_dir = _get_existing_project_dir(name)
+    entries = load_denied_commands(project_dir)
+
+    return DeniedCommandsResponse(
+        total=len(entries),
+        commands=[DeniedCommandSummary(**item) for item in summarize_denied_commands(entries)],
+        recent=[
+            DeniedCommandEntry(
+                timestamp=str(e.get("timestamp") or ""),
+                command=e.get("command"),
+                full_command=str(e.get("full_command") or ""),
+                reason=str(e.get("reason") or ""),
+            )
+            for e in reversed(entries[-DENIED_COMMANDS_RECENT_LIMIT:])
+        ],
+    )
+
+
+@router.delete("/{name}/denied-commands")
+async def clear_denied_commands_endpoint(name: str):
+    """Clear the denied-commands log for a project."""
+    _init_imports()
+    from security import clear_denied_commands
+
+    project_dir = _get_existing_project_dir(name)
+    try:
+        clear_denied_commands(project_dir)
+    except OSError as e:
+        raise HTTPException(status_code=500, detail=f"Failed to clear denied commands: {e}")
+
+    return {"success": True, "message": "Denied commands cleared"}
 
 
 @router.post("/{name}/reset")
