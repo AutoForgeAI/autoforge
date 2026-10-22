@@ -29,7 +29,9 @@ from .chat_constants import (
     ROOT_DIR,
     check_rate_limit_error,
     format_client_init_error,
+    remove_system_prompt_file,
     safe_receive_response,
+    write_system_prompt_file,
 )
 
 # Load environment variables from .env file if present
@@ -208,6 +210,7 @@ class AssistantChatSession:
         self._client_entered: bool = False
         self.created_at = datetime.now()
         self._history_loaded: bool = False  # Track if we've loaded history for resumed conversations
+        self._system_prompt_file: Optional[Path] = None
 
     async def close(self) -> None:
         """Clean up resources and close the Claude client."""
@@ -219,6 +222,9 @@ class AssistantChatSession:
             finally:
                 self._client_entered = False
                 self.client = None
+
+        remove_system_prompt_file(self._system_prompt_file, logger)
+        self._system_prompt_file = None
 
     async def start(self) -> AsyncGenerator[dict, None]:
         """
@@ -279,12 +285,11 @@ class AssistantChatSession:
         # Get system prompt with project context
         system_prompt = get_system_prompt(self.project_name, self.project_dir)
 
-        # Write system prompt to CLAUDE.md file to avoid Windows command line length limit
-        # The SDK will read this via setting_sources=["project"]
-        claude_md_path = self.project_dir / "CLAUDE.md"
-        with open(claude_md_path, "w", encoding="utf-8") as f:
-            f.write(system_prompt)
-        logger.info(f"Wrote assistant system prompt to {claude_md_path}")
+        # Pass the system prompt via a file (--system-prompt-file) rather than inline
+        # to avoid the Windows command line length limit (~8191 chars). Never write
+        # it to the project's CLAUDE.md: that would clobber the user's file and leak
+        # the read-only assistant instructions into the coding agents.
+        self._system_prompt_file = write_system_prompt_file(self.project_dir, "assistant", system_prompt)
 
         # Use system Claude CLI
         system_cli = shutil.which("claude")
@@ -304,8 +309,8 @@ class AssistantChatSession:
                     model=model,
                     effort=effort,  # type: ignore[arg-type]  # SDK 0.1.61 Literal omits "xhigh"
                     cli_path=system_cli,
-                    # System prompt loaded from CLAUDE.md via setting_sources
-                    # This avoids Windows command line length limit (~8191 chars)
+                    system_prompt={"type": "file", "path": str(self._system_prompt_file)},
+                    # Load project settings/CLAUDE.md for codebase context
                     setting_sources=["project"],
                     allowed_tools=[*READONLY_BUILTIN_TOOLS, *ASSISTANT_FEATURE_TOOLS],
                     disallowed_tools=DISALLOWED_ASSISTANT_TOOLS,

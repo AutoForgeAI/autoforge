@@ -11,6 +11,7 @@ imports (``from .chat_constants import API_ENV_VARS``) continue to work.
 
 import logging
 import sys
+import uuid
 from pathlib import Path
 from typing import Any, AsyncGenerator
 
@@ -94,6 +95,34 @@ def format_client_init_error(exc: Exception) -> str:
             )
         return msg
     return f"Failed to initialize Claude: {exc}"
+
+
+def write_system_prompt_file(project_dir: Path, session_kind: str, system_prompt: str) -> Path:
+    """Write a chat session's system prompt to an ephemeral file in ``.autoforge/``.
+
+    The Claude Agent SDK passes inline system prompts as a CLI argument, which
+    breaks on Windows ("The command line is too long.") once the prompt plus
+    the other arguments exceed ~8191 characters.  Pass the returned path as
+    ``system_prompt={"type": "file", "path": str(path)}`` so the CLI reads it
+    via ``--system-prompt-file`` instead.  Callers should delete the file with
+    ``remove_system_prompt_file()`` when the session closes.
+    """
+    from autoforge_paths import get_system_prompt_path
+
+    path = get_system_prompt_path(project_dir, session_kind, uuid.uuid4().hex).resolve()
+    path.parent.mkdir(parents=True, exist_ok=True)
+    path.write_text(system_prompt, encoding="utf-8")
+    return path
+
+
+def remove_system_prompt_file(path: Path | None, log: logging.Logger) -> None:
+    """Delete a system prompt file created by ``write_system_prompt_file()``."""
+    if path is None:
+        return
+    try:
+        path.unlink(missing_ok=True)
+    except Exception as e:
+        log.warning(f"Error removing system prompt file {path}: {e}")
 
 
 async def safe_receive_response(client: Any, log: logging.Logger) -> AsyncGenerator:
