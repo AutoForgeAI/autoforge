@@ -65,6 +65,7 @@ from .services.expand_chat_session import cleanup_all_expand_sessions
 from .services.process_manager import cleanup_all_managers, cleanup_orphaned_locks
 from .services.scheduler_service import cleanup_scheduler, get_scheduler
 from .services.terminal_manager import cleanup_all_terminals
+from .utils.mime_types import register_static_mime_types
 from .utils.ws_security import WebSocketOriginMiddleware
 from .websocket import project_websocket
 
@@ -247,6 +248,10 @@ async def setup_status():
 
 # Serve React build files if they exist
 if UI_DIST_DIR.exists():
+    # Windows registry can map .css/.js to text/plain, which makes browsers
+    # refuse the built assets and render an unstyled UI (issue #37).
+    register_static_mime_types()
+
     # Mount static assets
     app.mount("/assets", StaticFiles(directory=UI_DIST_DIR / "assets"), name="assets")
 

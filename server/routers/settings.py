@@ -6,16 +6,12 @@ API endpoints for global settings management.
 Settings are stored in the registry database and shared across all projects.
 """
 
-import mimetypes
 import sys
 
 from fastapi import APIRouter
 
 from ..schemas import ModelInfo, ModelsResponse, ProviderInfo, ProvidersResponse, SettingsResponse, SettingsUpdate
 from ..services.chat_constants import ROOT_DIR
-
-# Mimetype fix for Windows - must run before StaticFiles is mounted
-mimetypes.add_type("text/javascript", ".js", True)
 
 # Ensure root is on sys.path for registry import
 if str(ROOT_DIR) not in sys.path:
