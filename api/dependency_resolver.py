@@ -24,6 +24,16 @@ class DependencyResult(TypedDict):
     missing_dependencies: dict[int, list[int]]  # feature_id -> [missing_ids]
 
 
+class StallDiagnosis(TypedDict):
+    """Why the remaining (non-passing) features cannot be started."""
+
+    needs_human_input: list[int]  # features waiting for a human response
+    failed: list[int]  # features that exhausted their retries
+    missing_dependencies: dict[int, list[int]]  # feature_id -> [nonexistent dep ids]
+    circular_dependencies: list[list[int]]  # cycles among non-passing features
+    waiting_on: dict[int, list[int]]  # feature_id -> [unmet dep ids]
+
+
 def resolve_dependencies(features: list[dict]) -> DependencyResult:
     """Topological sort using Kahn's algorithm with priority-aware ordering.
 
@@ -140,6 +150,62 @@ def get_blocking_dependencies(
     if passing_ids is None:
         passing_ids = {f["id"] for f in all_features if f.get("passes")}
     return [dep_id for dep_id in deps if dep_id not in passing_ids]
+
+
+def diagnose_stalled_features(
+    features: list[dict],
+    failed_ids: set[int] | None = None,
+) -> StallDiagnosis:
+    """Explain why non-passing features cannot make progress.
+
+    Used when no feature is ready to start and nothing is running, so the
+    user can be told the actual root cause instead of waiting indefinitely.
+
+    Args:
+        features: List of all feature dicts
+        failed_ids: IDs of features that exhausted their retries
+
+    Returns:
+        StallDiagnosis grouping the blocked features by root cause
+    """
+    failed_ids = failed_ids or set()
+    feature_map = {f["id"]: f for f in features}
+    pending = [f for f in features if not f.get("passes")]
+    pending_ids = {f["id"] for f in pending}
+
+    needs_human_input: list[int] = []
+    failed: list[int] = []
+    missing: dict[int, list[int]] = {}
+    waiting_on: dict[int, list[int]] = {}
+
+    for f in pending:
+        fid = f["id"]
+        deps = f.get("dependencies") or []
+        if f.get("needs_human_input"):
+            needs_human_input.append(fid)
+        if fid in failed_ids:
+            failed.append(fid)
+        missing_deps = [d for d in deps if d not in feature_map]
+        if missing_deps:
+            missing[fid] = missing_deps
+        unmet = [d for d in deps if d in pending_ids]
+        if unmet:
+            waiting_on[fid] = unmet
+
+    # Cycles only matter among features that have not passed yet
+    subgraph = [
+        {**f, "dependencies": [d for d in (f.get("dependencies") or []) if d in pending_ids]}
+        for f in pending
+    ]
+    cycles = resolve_dependencies(subgraph)["circular_dependencies"] if subgraph else []
+
+    return {
+        "needs_human_input": sorted(needs_human_input),
+        "failed": sorted(failed),
+        "missing_dependencies": missing,
+        "circular_dependencies": cycles,
+        "waiting_on": waiting_on,
+    }
 
 
 def would_create_circular_dependency(
@@ -266,6 +332,10 @@ def _detect_cycles(features: list[dict], feature_map: dict) -> list[list[int]]:
 
     for f in features:
         if f["id"] not in visited:
+            # dfs() returns early once it finds a cycle, so reset the stack state
+            # to avoid reporting features that merely depend on a cycle as cyclic
+            rec_stack.clear()
+            path.clear()
             dfs(f["id"])
 
     return cycles

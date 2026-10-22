@@ -15,6 +15,7 @@ from concurrent.futures import TimeoutError as FuturesTimeoutError
 from api.dependency_resolver import (
     are_dependencies_satisfied,
     compute_scheduling_scores,
+    diagnose_stalled_features,
     get_blocked_features,
     get_blocking_dependencies,
     get_ready_features,
@@ -380,6 +381,53 @@ def test_get_blocked_features():
         return False
 
 
+def test_diagnose_stalled_features():
+    """Test that stalled features are grouped by their root cause."""
+    print("\nTesting diagnose_stalled_features:")
+
+    features = [
+        {"id": 1, "priority": 1, "dependencies": [], "passes": True},
+        {"id": 2, "priority": 2, "dependencies": [3], "passes": False},
+        {"id": 3, "priority": 3, "dependencies": [2], "passes": False},
+        {"id": 4, "priority": 4, "dependencies": [99], "passes": False},
+        {"id": 5, "priority": 5, "dependencies": [1], "passes": False},
+        {"id": 6, "priority": 6, "dependencies": [5], "passes": False},
+        {"id": 7, "priority": 7, "dependencies": [], "passes": False, "needs_human_input": True},
+        {"id": 8, "priority": 8, "dependencies": [2, 7], "passes": False},
+    ]
+
+    diagnosis = diagnose_stalled_features(features, failed_ids={5})
+
+    assert diagnosis["failed"] == [5]
+    assert diagnosis["needs_human_input"] == [7]
+    assert diagnosis["missing_dependencies"] == {4: [99]}
+    assert len(diagnosis["circular_dependencies"]) == 1
+    assert set(diagnosis["circular_dependencies"][0]) == {2, 3}
+    # Passing dependency (1) is not reported as unmet
+    assert 5 not in diagnosis["waiting_on"]
+    assert diagnosis["waiting_on"][6] == [5]
+    assert diagnosis["waiting_on"][8] == [2, 7]
+    print("  PASS: Root causes identified")
+    return True
+
+
+def test_diagnose_stalled_features_ignores_passing_cycles():
+    """A cycle involving passing features does not block anything."""
+    print("\nTesting diagnose_stalled_features ignores cycles through passing features:")
+
+    features = [
+        {"id": 1, "priority": 1, "dependencies": [2], "passes": True},
+        {"id": 2, "priority": 2, "dependencies": [1], "passes": False},
+    ]
+
+    diagnosis = diagnose_stalled_features(features)
+
+    assert diagnosis["circular_dependencies"] == []
+    assert diagnosis["waiting_on"] == {}
+    print("  PASS: No cycle reported")
+    return True
+
+
 def run_all_tests():
     """Run all tests and report results."""
     print("=" * 60)
@@ -399,6 +447,8 @@ def run_all_tests():
         test_get_blocking_dependencies,
         test_get_ready_features,
         test_get_blocked_features,
+        test_diagnose_stalled_features,
+        test_diagnose_stalled_features_ignores_passing_cycles,
     ]
 
     passed = 0

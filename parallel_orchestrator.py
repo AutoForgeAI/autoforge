@@ -34,7 +34,12 @@ from typing import Any, Callable, Literal
 from sqlalchemy import text
 
 from api.database import Feature, create_database
-from api.dependency_resolver import are_dependencies_satisfied, compute_scheduling_scores
+from api.dependency_resolver import (
+    StallDiagnosis,
+    are_dependencies_satisfied,
+    compute_scheduling_scores,
+    diagnose_stalled_features,
+)
 from progress import has_features
 from server.utils.process_utils import kill_process_tree
 
@@ -199,6 +204,8 @@ class ParallelOrchestrator:
 
         # Track feature failures to prevent infinite retry loops
         self._failure_counts: dict[int, int] = {}
+        # Last stall explanation printed, so it is only repeated when it changes
+        self._last_stall_message: str | None = None
 
         # Track recently tested feature IDs to avoid redundant re-testing.
         # Cleared when all passing features have been covered at least once.
@@ -1575,7 +1582,9 @@ class ParallelOrchestrator:
                     slots = self.max_concurrency - current
                     for feature in resumable[:slots]:
                         print(f"Resuming feature #{feature['id']}: {feature['name']}", flush=True)
-                        self.start_feature(feature["id"], resume=True)
+                        success, msg = self.start_feature(feature["id"], resume=True)
+                        if not success:
+                            print(f"Could not resume feature #{feature['id']}: {msg}", flush=True)
                     await asyncio.sleep(0.5)  # Brief delay for subprocess to claim feature before re-querying
                     continue
 
@@ -1602,10 +1611,12 @@ class ParallelOrchestrator:
                             print("\nAll features complete!", flush=True)
                             break
 
-                        # Still have pending features but all are blocked by dependencies
-                        print("No ready features available. All remaining features may be blocked by dependencies.", flush=True)
+                        # Still have pending features but none can start: explain why
+                        self._report_stall(fresh_dicts)
                         await self._wait_for_agent_completion(timeout=POLL_INTERVAL * 2)
                         continue
+
+                self._last_stall_message = None
 
                 # Build dependency-aware batches from ready features
                 slots = self.max_concurrency - current
@@ -1657,6 +1668,18 @@ class ParallelOrchestrator:
             await self._wait_for_agent_completion(timeout=1.0)
 
         print("Orchestrator finished.", flush=True)
+
+    def _report_stall(self, feature_dicts: list[dict]) -> None:
+        """Print why no feature can start, only when the explanation changes."""
+        failed_ids = {
+            fid for fid, count in self._failure_counts.items() if count >= MAX_FEATURE_RETRIES
+        }
+        diagnosis = diagnose_stalled_features(feature_dicts, failed_ids)
+        message = format_stall_diagnosis(diagnosis)
+        if message != self._last_stall_message:
+            debug_log.log("STALL", "No ready features and nothing running", **diagnosis)
+            print(message, flush=True)
+            self._last_stall_message = message
 
     def get_status(self) -> dict:
         """Get current orchestrator status."""
@@ -1711,6 +1734,47 @@ class ParallelOrchestrator:
             debug_log.log("CLEANUP", "Engine disposed successfully")
         except Exception as e:
             debug_log.log("CLEANUP", f"Engine dispose failed: {e}")
+
+
+def _format_ids(ids: list[int], limit: int = 10) -> str:
+    shown = ", ".join(f"#{i}" for i in ids[:limit])
+    return shown + (f" (+{len(ids) - limit} more)" if len(ids) > limit else "")
+
+
+def format_stall_diagnosis(diagnosis: StallDiagnosis) -> str:
+    """Build a human-readable explanation of why no feature can start."""
+    lines = ["No features can be started right now. Reason(s):"]
+    if diagnosis["circular_dependencies"]:
+        cycles = "; ".join(" -> ".join(f"#{i}" for i in [*c, c[0]]) for c in diagnosis["circular_dependencies"])
+        lines.append(f"  - Circular dependencies: {cycles}. Remove one dependency in each cycle.")
+    if diagnosis["missing_dependencies"]:
+        missing = "; ".join(
+            f"#{fid} needs {_format_ids(deps)}" for fid, deps in diagnosis["missing_dependencies"].items()
+        )
+        lines.append(f"  - Dependencies on features that do not exist: {missing}. Remove these dependencies.")
+    if diagnosis["failed"]:
+        lines.append(
+            f"  - Features that failed {MAX_FEATURE_RETRIES} times and will not be retried this run: "
+            f"{_format_ids(diagnosis['failed'])}. Restart the agent to retry them."
+        )
+    if diagnosis["needs_human_input"]:
+        lines.append(
+            f"  - Features waiting for your input: {_format_ids(diagnosis['needs_human_input'])}. "
+            "Answer them in the UI to continue."
+        )
+    root_causes = (
+        set(diagnosis["failed"])
+        | set(diagnosis["needs_human_input"])
+        | set(diagnosis["missing_dependencies"])
+        | {fid for cycle in diagnosis["circular_dependencies"] for fid in cycle}
+    )
+    waiting = sorted(fid for fid in diagnosis["waiting_on"] if fid not in root_causes)
+    if waiting:
+        lines.append(f"  - {len(waiting)} other feature(s) are waiting on the features above: {_format_ids(waiting)}.")
+    if len(lines) == 1:
+        lines.append("  - Unknown (see orchestrator_debug.log for the full feature state).")
+    lines.append("The agent will keep waiting and start work as soon as a feature becomes ready.")
+    return "\n".join(lines)
 
 
 async def run_parallel_orchestrator(
