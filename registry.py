@@ -827,6 +827,21 @@ API_PROVIDERS: dict[str, dict[str, Any]] = {
         ],
         "default_model": "qwen3-coder",
     },
+    "gemini": {
+        # Gemini has no Anthropic Messages API, so it is reached through an
+        # Anthropic-compatible translation proxy (LiteLLM). Model IDs are the
+        # `model_name` aliases defined in the proxy config, see
+        # examples/litellm_gemini_config.yaml.
+        "name": "Google Gemini (via LiteLLM)",
+        "base_url": "http://localhost:4000",
+        "requires_auth": True,
+        "auth_env_var": "ANTHROPIC_AUTH_TOKEN",
+        "models": [
+            {"id": "gemini-2.5-pro", "name": "Gemini 2.5 Pro"},
+            {"id": "gemini-2.5-flash", "name": "Gemini 2.5 Flash"},
+        ],
+        "default_model": "gemini-2.5-pro",
+    },
     "custom": {
         "name": "Custom Provider",
         "base_url": "",

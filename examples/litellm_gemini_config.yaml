@@ -1,0 +1,40 @@
+# LiteLLM proxy config for running AutoForge agents on Google Gemini
+# ==================================================================
+#
+# AutoForge drives agents through the Claude Agent SDK, which speaks the
+# Anthropic Messages API. Gemini does not, so a LiteLLM proxy sits in between
+# and translates Anthropic requests (/v1/messages) into Gemini API calls.
+#
+# Setup:
+#   pip install 'litellm[proxy]'
+#   export GEMINI_API_KEY=...            # from https://aistudio.google.com/apikey
+#   export LITELLM_MASTER_KEY=sk-anything  # token AutoForge will send to the proxy
+#   litellm --config examples/litellm_gemini_config.yaml --port 4000
+#
+# Then in the AutoForge Settings UI:
+#   API Provider -> "Google Gemini (via LiteLLM)"
+#   Base URL     -> http://localhost:4000 (default)
+#   Auth token   -> the value of LITELLM_MASTER_KEY
+#   Model        -> one of the model_name entries below
+#
+# The `model_name` values are what AutoForge requests; add more entries (or
+# point them at Vertex AI with `vertex_ai/gemini-...`) as needed.
+
+model_list:
+  - model_name: gemini-2.5-pro
+    litellm_params:
+      model: gemini/gemini-2.5-pro
+      api_key: os.environ/GEMINI_API_KEY
+
+  - model_name: gemini-2.5-flash
+    litellm_params:
+      model: gemini/gemini-2.5-flash
+      api_key: os.environ/GEMINI_API_KEY
+
+litellm_settings:
+  # Claude Code sends Anthropic-only request fields (e.g. thinking/betas);
+  # drop the ones Gemini does not understand instead of failing the request.
+  drop_params: true
+
+general_settings:
+  master_key: os.environ/LITELLM_MASTER_KEY

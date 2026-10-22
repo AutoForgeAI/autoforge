@@ -23,6 +23,7 @@ const PROVIDER_INFO_TEXT: Record<string, string> = {
   kimi: 'Get an API key at kimi.com',
   glm: 'Get an API key at open.bigmodel.cn',
   ollama: 'Run models locally. Install from ollama.com',
+  gemini: 'Requires a LiteLLM proxy translating to the Gemini API. See examples/litellm_gemini_config.yaml',
   custom: 'Connect to any OpenAI-compatible API endpoint.',
 }
 
@@ -113,8 +114,8 @@ export function SettingsView() {
   const currentProviderInfo: ProviderInfo | undefined = providers.find(p => p.id === currentProvider)
   const isAlternativeProvider = currentProvider !== 'claude'
   const showAuthField = isAlternativeProvider && currentProviderInfo?.requires_auth
-  const showBaseUrlField = currentProvider === 'custom' || currentProvider === 'azure'
-  const showCustomModelInput = currentProvider === 'custom' || currentProvider === 'ollama'
+  const showBaseUrlField = currentProvider === 'custom' || currentProvider === 'azure' || currentProvider === 'gemini'
+  const showCustomModelInput = currentProvider === 'custom' || currentProvider === 'ollama' || currentProvider === 'gemini'
 
   return (
     <div className="flex-1 overflow-y-auto">
@@ -379,7 +380,7 @@ export function SettingsView() {
                       ))}
                     </div>
                   )}
-                  {/* Custom model input for Ollama/Custom */}
+                  {/* Custom model input for Ollama/Gemini/Custom */}
                   {showCustomModelInput && (
                     <div className="flex gap-2 pt-1">
                       <input
