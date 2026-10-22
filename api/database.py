@@ -5,10 +5,16 @@ Database Models and Connection
 SQLite database schema for feature storage using SQLAlchemy.
 """
 
+import logging
+import os
+import re
+import sqlite3
 import sys
 from datetime import datetime, timezone
 from pathlib import Path
 from typing import Generator, Optional
+
+logger = logging.getLogger(__name__)
 
 
 def _utc_now() -> datetime:
@@ -29,6 +35,7 @@ from sqlalchemy import (
     event,
     text,
 )
+from sqlalchemy.exc import OperationalError
 from sqlalchemy.orm import DeclarativeBase, Session, relationship, sessionmaker
 from sqlalchemy.types import JSON
 
@@ -291,24 +298,177 @@ def _is_network_path(path: Path) -> bool:
         except (AttributeError, OSError):
             pass
     else:
-        # Unix: Check mount type via /proc/mounts or mount command
+        # Unix: Check mount type via /proc/mounts
         try:
             with open("/proc/mounts", "r") as f:
                 mounts = f.read()
-                # Check each mount point to find which one contains our path
-                for line in mounts.splitlines():
-                    parts = line.split()
-                    if len(parts) >= 3:
-                        mount_point = parts[1]
-                        fs_type = parts[2]
-                        # Check if path is under this mount point and if it's a network FS
-                        if path_str.startswith(mount_point):
-                            if fs_type in ("nfs", "nfs4", "cifs", "smbfs", "fuse.sshfs"):
-                                return True
-        except (FileNotFoundError, PermissionError):
-            pass
+        except OSError:
+            return False
+        fs_type = _fs_type_for_path(path_str, mounts)
+        if fs_type is not None and _is_unsafe_wal_fs_type(fs_type):
+            return True
 
     return False
+
+
+# Filesystems where SQLite's WAL mode is known to be unreliable: network
+# filesystems (no coherent shared-memory/mmap across hosts) and VM/container
+# host-share filesystems such as WSL's /mnt/c (9p/drvfs) or VirtualBox shares,
+# where mmap of the -shm file typically fails with "disk I/O error".
+_UNSAFE_WAL_FS_TYPES = frozenset({
+    "nfs", "nfs4", "cifs", "smbfs", "smb3", "ncpfs", "afs", "coda",
+    "9p", "drvfs", "v9fs", "vboxsf", "vmhgfs", "prl_fs", "virtiofs",
+    "ceph", "glusterfs", "lustre", "gpfs", "ocfs2", "gfs2", "davfs",
+})
+
+
+def _is_unsafe_wal_fs_type(fs_type: str) -> bool:
+    """Return True if WAL mode should not be used on this filesystem type."""
+    if fs_type in _UNSAFE_WAL_FS_TYPES:
+        return True
+    # FUSE filesystems (sshfs, rclone, s3fs, gcsfuse, vmhgfs-fuse, ...) rarely
+    # implement the shared mmap semantics WAL needs. Local FUSE filesystems
+    # that are known to work fine are allowed.
+    if fs_type == "fuseblk" or not fs_type.startswith("fuse"):
+        return False
+    return True
+
+
+def _fs_type_for_path(path_str: str, mounts: str) -> Optional[str]:
+    """Find the filesystem type of the mount containing ``path_str``.
+
+    Args:
+        path_str: Absolute, resolved POSIX path
+        mounts: Contents of /proc/mounts
+
+    Returns:
+        The filesystem type of the longest matching mount point, or None.
+    """
+    best_mount: Optional[str] = None
+    best_type: Optional[str] = None
+    for line in mounts.splitlines():
+        parts = line.split()
+        if len(parts) < 3:
+            continue
+        # /proc/mounts escapes spaces, tabs, newlines and backslashes as octal
+        mount_point = re.sub(r"\\([0-7]{3})", lambda m: chr(int(m.group(1), 8)), parts[1])
+        fs_type = parts[2]
+        # Match on path component boundaries so /mnt/c does not match /mnt/code
+        prefix = mount_point.rstrip("/") + "/"
+        if path_str != mount_point and not path_str.startswith(prefix):
+            continue
+        # Later entries with the same mount point shadow earlier ones
+        if best_mount is None or len(mount_point) >= len(best_mount):
+            best_mount = mount_point
+            best_type = fs_type
+    return best_type
+
+
+def _is_wal_io_error(exc: BaseException) -> bool:
+    """Return True if ``exc`` looks like SQLite failing to use WAL on this filesystem."""
+    if not isinstance(exc, (sqlite3.OperationalError, OperationalError)):
+        return False
+    message = str(exc).lower()
+    return "disk i/o error" in message or "locking protocol" in message
+
+
+def _apply_journal_mode(engine, journal_mode: str) -> None:
+    """Set the journal mode and verify the database is actually readable.
+
+    PRAGMA journal_mode must run outside of a transaction, so this uses the
+    raw DBAPI connection. The trailing schema read forces SQLite to open the
+    WAL index (-shm), which is where unsupported filesystems fail.
+    """
+    with engine.connect() as conn:
+        raw_conn = conn.connection.dbapi_connection
+        if raw_conn is None:
+            raise RuntimeError("Failed to get raw DBAPI connection")
+        cursor = raw_conn.cursor()
+        try:
+            cursor.execute(f"PRAGMA journal_mode={journal_mode}")
+            cursor.execute("PRAGMA busy_timeout=30000")
+            cursor.execute("SELECT count(*) FROM sqlite_master").fetchall()
+        finally:
+            cursor.close()
+
+
+def _has_wal_header(db_path: Path) -> bool:
+    """Return True if the database file header says it is in WAL mode.
+
+    Bytes 18 and 19 of the SQLite header are the file format write/read
+    versions; both are 2 for WAL databases and 1 for rollback-journal ones.
+    """
+    try:
+        with open(db_path, "rb") as f:
+            header = f.read(20)
+    except OSError:
+        return False
+    return len(header) == 20 and header.startswith(b"SQLite format 3\x00") and 2 in (header[18], header[19])
+
+
+def _probe_wal_support(db_dir: Path) -> bool:
+    """Check whether WAL mode works in ``db_dir`` using a throwaway database.
+
+    Probing on a separate file means a shared features.db is never switched to
+    WAL (and back) by every process that opens it on a filesystem where WAL
+    doesn't work. Doing that while other processes have the database open
+    causes "database is locked" in the new process and "disk I/O error" in the
+    existing ones.
+    """
+    # Per-process file name so concurrent probes don't interfere with each other
+    probe_path = db_dir / f".wal-probe-{os.getpid()}.db"
+    supported = False
+    try:
+        conn = sqlite3.connect(str(probe_path), timeout=5)
+        try:
+            mode = conn.execute("PRAGMA journal_mode=WAL").fetchone()
+            conn.execute("CREATE TABLE IF NOT EXISTS probe (x INTEGER)")
+            conn.execute("SELECT count(*) FROM sqlite_master").fetchall()
+            supported = mode is not None and str(mode[0]).lower() == "wal"
+        finally:
+            conn.close()
+    except sqlite3.Error as e:
+        logger.info("SQLite WAL probe failed in %s: %s", db_dir, e)
+    finally:
+        for suffix in ("", "-wal", "-shm", "-journal"):
+            try:
+                Path(f"{probe_path}{suffix}").unlink()
+            except OSError:
+                pass
+    return supported
+
+
+def _wal_supported(db_dir: Path) -> bool:
+    """Return whether WAL works in ``db_dir``, probing once per directory per process."""
+    key = db_dir.as_posix()
+    if key not in _wal_support_cache:
+        _wal_support_cache[key] = _probe_wal_support(db_dir)
+    return _wal_support_cache[key]
+
+
+# Cache of WAL probe results. Key: database directory (posix string)
+_wal_support_cache: dict[str, bool] = {}
+
+
+def _force_rollback_journal(db_path: Path) -> None:
+    """Convert a database that is stuck in WAL mode back to DELETE mode.
+
+    A database whose header says WAL cannot be opened normally on a filesystem
+    without shared-memory support. In EXCLUSIVE locking mode SQLite keeps the
+    WAL index in heap memory instead of the -shm file, which lets us open it
+    and switch the journal mode.
+    """
+    if not db_path.exists():
+        return
+    conn = sqlite3.connect(str(db_path), timeout=30)
+    try:
+        conn.execute("PRAGMA locking_mode=EXCLUSIVE")
+        conn.execute("PRAGMA journal_mode=DELETE").fetchall()
+        conn.execute("PRAGMA locking_mode=NORMAL")
+        # Locking mode NORMAL only takes effect after the next access
+        conn.execute("SELECT count(*) FROM sqlite_master").fetchall()
+    finally:
+        conn.close()
 
 
 def _migrate_add_human_input_columns(engine) -> None:
@@ -414,9 +574,21 @@ def create_database(project_dir: Path) -> tuple:
     db_path.parent.mkdir(parents=True, exist_ok=True)
 
     # Choose journal mode based on filesystem type
-    # WAL mode doesn't work reliably on network filesystems and can cause corruption
-    is_network = _is_network_path(project_dir)
-    journal_mode = "DELETE" if is_network else "WAL"
+    # WAL mode doesn't work reliably on network filesystems and can cause corruption.
+    # Filesystems we can't detect are probed on a throwaway file so the shared
+    # features.db is never switched to WAL where WAL doesn't work.
+    use_wal = not _is_network_path(project_dir) and _wal_supported(db_path.parent)
+    journal_mode = "WAL" if use_wal else "DELETE"
+
+    if not use_wal and _has_wal_header(db_path):
+        # A database left in WAL mode (e.g. by an older version that crashed with
+        # "disk I/O error") can't be opened normally without WAL support
+        logger.warning("Converting %s from WAL to journal_mode=DELETE", db_path)
+        try:
+            _force_rollback_journal(db_path)
+        except sqlite3.OperationalError as e:
+            # Another process may hold the database; the retry below handles it
+            logger.warning("Could not convert %s to journal_mode=DELETE yet: %s", db_path, e)
 
     engine = create_engine(db_url, connect_args={
         "check_same_thread": False,
@@ -426,17 +598,23 @@ def create_database(project_dir: Path) -> tuple:
     # Set journal mode BEFORE configuring event hooks
     # PRAGMA journal_mode must run outside of a transaction, and our event hooks
     # start a transaction with BEGIN IMMEDIATE on every operation
-    with engine.connect() as conn:
-        # Get raw DBAPI connection to execute PRAGMA outside transaction
-        raw_conn = conn.connection.dbapi_connection
-        if raw_conn is None:
-            raise RuntimeError("Failed to get raw DBAPI connection")
-        cursor = raw_conn.cursor()
-        try:
-            cursor.execute(f"PRAGMA journal_mode={journal_mode}")
-            cursor.execute("PRAGMA busy_timeout=30000")
-        finally:
-            cursor.close()
+    try:
+        _apply_journal_mode(engine, journal_mode)
+    except (sqlite3.OperationalError, OperationalError) as e:
+        # Some filesystems (WSL /mnt/*, Docker/VM shares, FUSE mounts, ...) don't
+        # support the shared memory WAL needs and fail with "disk I/O error".
+        # Fall back to the rollback journal instead of failing to start.
+        if not _is_wal_io_error(e):
+            raise
+        logger.warning(
+            "SQLite failed to open %s in journal_mode=%s (%s); falling back to journal_mode=DELETE. "
+            "This usually means the project is on a network, VM-shared or FUSE filesystem.",
+            db_path, journal_mode, e,
+        )
+        _wal_support_cache[db_path.parent.as_posix()] = False
+        engine.dispose()
+        _force_rollback_journal(db_path)
+        _apply_journal_mode(engine, "DELETE")
 
     # Configure IMMEDIATE transactions via event hooks AFTER setting PRAGMAs
     # This must happen before create_all() and migrations run
