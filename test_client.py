@@ -16,8 +16,10 @@ from pathlib import Path
 from client import (
     EXTRA_READ_PATHS_BLOCKLIST,
     EXTRA_READ_PATHS_VAR,
+    MAX_TURNS_VAR,
     convert_model_for_vertex,
     get_extra_read_paths,
+    get_max_turns,
 )
 
 
@@ -114,6 +116,46 @@ class TestConvertModelForVertex(unittest.TestCase):
     def test_empty_string_unchanged(self):
         os.environ["CLAUDE_CODE_USE_VERTEX"] = "1"
         self.assertEqual(convert_model_for_vertex(""), "")
+
+
+class TestGetMaxTurns(unittest.TestCase):
+    """Tests for get_max_turns and the AUTOFORGE_MAX_TURNS override."""
+
+    def setUp(self):
+        """Save original env state."""
+        self._orig = os.environ.pop(MAX_TURNS_VAR, None)
+
+    def tearDown(self):
+        """Restore original env state."""
+        os.environ.pop(MAX_TURNS_VAR, None)
+        if self._orig is not None:
+            os.environ[MAX_TURNS_VAR] = self._orig
+
+    def test_defaults_per_agent_type(self):
+        self.assertEqual(get_max_turns("coding"), 300)
+        self.assertEqual(get_max_turns("testing"), 100)
+        self.assertEqual(get_max_turns("initializer"), 300)
+
+    def test_unknown_agent_type_uses_fallback(self):
+        self.assertEqual(get_max_turns("unknown"), 300)
+
+    def test_env_override_applies_to_all_types(self):
+        os.environ[MAX_TURNS_VAR] = "42"
+        self.assertEqual(get_max_turns("coding"), 42)
+        self.assertEqual(get_max_turns("testing"), 42)
+
+    def test_env_override_whitespace_trimmed(self):
+        os.environ[MAX_TURNS_VAR] = " 500 "
+        self.assertEqual(get_max_turns("coding"), 500)
+
+    def test_invalid_override_falls_back_to_default(self):
+        for bad in ("abc", "0", "-5", "1.5"):
+            os.environ[MAX_TURNS_VAR] = bad
+            self.assertEqual(get_max_turns("testing"), 100, f"value {bad!r}")
+
+    def test_empty_override_uses_default(self):
+        os.environ[MAX_TURNS_VAR] = ""
+        self.assertEqual(get_max_turns("coding"), 300)
 
 
 class TestExtraReadPathsBlocklist(unittest.TestCase):

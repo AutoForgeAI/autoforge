@@ -391,6 +391,7 @@ blocked_commands:
 **Limits:**
 - Maximum 100 commands per project config
 - Blocklisted commands (sudo, dd, shutdown, etc.) can NEVER be allowed
+- `rm` targets must resolve inside the project directory (blocks `/`, `~`, `.`, `..`, `$VAR`, `{a,b}` brace expansion, bare `*` at the project root, and paths escaping the project, including via symlinks followed by a trailing slash or glob)
 - Org-level blocked commands cannot be overridden by project configs
 
 **Files:**
@@ -455,6 +456,10 @@ Alternative providers are configured via the **Settings UI** (gear icon > API Pr
 - `examples/` - Configuration examples and documentation for security settings
 
 ## Key Patterns
+
+### Agent Session Limits
+
+`max_turns` defaults to 300 for coding/initializer agents and 100 for testing agents. Set `AUTOFORGE_MAX_TURNS` (positive integer) to override it for all agent types.
 
 ### Prompt Loading Fallback Chain
 

@@ -14,7 +14,13 @@ from pathlib import Path
 from typing import Optional
 from zoneinfo import ZoneInfo
 
-from claude_agent_sdk import ClaudeSDKClient
+from claude_agent_sdk import (
+    ClaudeSDKClient,
+    MirrorErrorMessage,
+    ResultMessage,
+    SystemMessage,
+    TaskNotificationMessage,
+)
 
 # Fix Windows console encoding for Unicode characters (emoji, etc.)
 # Without this, print() crashes when Claude outputs emoji like ✅
@@ -48,6 +54,46 @@ from rate_limit_utils import (
 
 # Configuration
 AUTO_CONTINUE_DELAY_SECONDS = 3
+
+
+def _print_system_message(msg: SystemMessage) -> None:
+    """Log the system messages that matter for debugging; ignore the rest."""
+    if isinstance(msg, TaskNotificationMessage):
+        if msg.status != "completed":
+            print(f"\n[Subagent {msg.status}] {msg.summary}", flush=True)
+    elif isinstance(msg, MirrorErrorMessage):
+        print(f"\n[Session mirror error] {msg.error}", flush=True)
+    elif msg.subtype == "init":
+        # The init message reports MCP server status. A server that failed to
+        # start (e.g. feature DB init error) otherwise only shows up later as
+        # confusing "tool not found" errors.
+        for server in msg.data.get("mcp_servers") or []:
+            status = server.get("status")
+            if status != "connected":
+                print(f"[MCP] Server '{server.get('name')}' is not connected (status: {status})", flush=True)
+
+
+def _print_result_message(msg: ResultMessage) -> str:
+    """
+    Print a summary of a ResultMessage.
+
+    Returns:
+        Error text if the result is an error, otherwise an empty string.
+    """
+    summary = f"{msg.num_turns} turns, {msg.duration_ms / 1000:.1f}s"
+    if msg.total_cost_usd is not None:
+        summary += f", ${msg.total_cost_usd:.4f}"
+
+    if not msg.is_error:
+        print(f"\n[Result] {summary}", flush=True)
+        return ""
+
+    details = "; ".join(msg.errors or []) or msg.result or ""
+    if msg.api_error_status:
+        details = f"API status {msg.api_error_status}: {details}"
+    error_text = f"[Result error: {msg.subtype}] {details}".rstrip()
+    print(f"\n{error_text} ({summary})", flush=True)
+    return error_text
 
 
 async def run_agent_session(
@@ -123,6 +169,17 @@ async def run_agent_session(
                                 else:
                                     # Tool succeeded - just show brief confirmation
                                     print("   [Done]", flush=True)
+
+                    elif isinstance(msg, SystemMessage):
+                        _print_system_message(msg)
+
+                    # Handle ResultMessage (end of turn: errors, turn count, cost)
+                    elif isinstance(msg, ResultMessage):
+                        error_text = _print_result_message(msg)
+                        if error_text:
+                            # Surface errors in the response so rate-limit
+                            # detection in the caller can see them
+                            response_text += f"\n{error_text}"
 
                 break  # Normal completion
             except Exception as inner_exc:

@@ -32,6 +32,44 @@ EXTRA_READ_PATHS_VAR = "EXTRA_READ_PATHS"
 EXTRA_READ_PATHS_BLOCKLIST = SENSITIVE_DIRECTORIES
 
 
+# Override the per-agent-type max_turns defaults with a single positive integer.
+# Example: AUTOFORGE_MAX_TURNS=500
+MAX_TURNS_VAR = "AUTOFORGE_MAX_TURNS"
+
+# Default max_turns per agent type:
+#   - coding/initializer: 300 turns (complex multi-step implementation)
+#   - testing: 100 turns (focused verification of a single feature)
+DEFAULT_MAX_TURNS = {
+    "coding": 300,
+    "testing": 100,
+    "initializer": 300,
+}
+
+# Appended to Claude Code's built-in system prompt (the "claude_code" preset),
+# which keeps the CLI's tool-usage and editing guidance intact.
+SYSTEM_PROMPT_APPEND = "You are an expert full-stack developer building a production-quality web application."
+
+
+def get_max_turns(agent_type: str) -> int:
+    """
+    Get max_turns for an agent type, honoring the AUTOFORGE_MAX_TURNS override.
+
+    Invalid overrides (non-integer or < 1) are ignored with a warning.
+    """
+    default = DEFAULT_MAX_TURNS.get(agent_type, 300)
+    raw_value = os.getenv(MAX_TURNS_VAR, "").strip()
+    if not raw_value:
+        return default
+    try:
+        value = int(raw_value)
+    except ValueError:
+        value = 0
+    if value < 1:
+        print(f"   - Warning: Ignoring invalid {MAX_TURNS_VAR}={raw_value!r} (must be a positive integer)")
+        return default
+    return value
+
+
 def convert_model_for_vertex(model: str) -> str:
     """
     Convert model name format for Vertex AI compatibility.
@@ -241,15 +279,7 @@ def create_client(
     }
     feature_tools = feature_tools_map.get(agent_type, CODING_AGENT_TOOLS)
 
-    # Select max_turns based on agent type:
-    #   - coding/initializer: 300 turns (complex multi-step implementation)
-    #   - testing: 100 turns (focused verification of a single feature)
-    max_turns_map = {
-        "coding": 300,
-        "testing": 100,
-        "initializer": 300,
-    }
-    max_turns = max_turns_map.get(agent_type, 300)
+    max_turns = get_max_turns(agent_type)
 
     # Build allowed tools list based on agent type.
     allowed_tools = [*BUILTIN_TOOLS, *feature_tools]
@@ -328,6 +358,7 @@ def create_client(
     # Build MCP servers config - features is always included, playwright only in standard mode
     mcp_servers = {
         "features": {
+            "type": "stdio",
             "command": sys.executable,  # Use the same Python that's running this script
             "args": ["-m", "mcp_server.feature_mcp"],
             "env": {
@@ -458,7 +489,13 @@ def create_client(
             # --effort flag accepts it; the SDK forwards the string unchanged.
             effort=effort,  # type: ignore[arg-type]
             cli_path=system_cli,  # Use system CLI to avoid bundled Bun crash (exit code 3)
-            system_prompt="You are an expert full-stack developer building a production-quality web application.",
+            # Use Claude Code's built-in system prompt and append our role, rather than
+            # replacing it (a plain string would drop the CLI's tool-usage guidance).
+            system_prompt={
+                "type": "preset",
+                "preset": "claude_code",
+                "append": SYSTEM_PROMPT_APPEND,
+            },
             setting_sources=["project"],  # Enable skills, commands, and CLAUDE.md from project dir
             max_buffer_size=10 * 1024 * 1024,  # 10MB for large Playwright screenshots
             allowed_tools=allowed_tools,
@@ -492,7 +529,7 @@ def create_client(
             # parameters. Instead, context is managed via:
             # 1. betas=["context-1m-2025-08-07"] - Extended context window
             # 2. PreCompact hook - Intercept and customize compaction behavior
-            # 3. max_turns - Limit conversation turns (per agent type: coding=300, testing=100)
+            # 3. max_turns - Limit conversation turns (coding=300, testing=100; AUTOFORGE_MAX_TURNS overrides)
             #
             # Future SDK versions may add explicit compaction controls. When available,
             # consider adding:

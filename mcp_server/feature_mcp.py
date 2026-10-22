@@ -106,14 +106,33 @@ async def server_lifespan(server: FastMCP):
     """Initialize database on startup, cleanup on shutdown."""
     global _session_maker, _engine
 
-    # Create project directory if it doesn't exist
-    PROJECT_DIR.mkdir(parents=True, exist_ok=True)
+    # Fail fast with a clear message if the database can't be initialized.
+    # Otherwise the agent only sees cryptic tool errors later in the session.
+    # stdout is reserved for the MCP protocol, so report on stderr.
+    try:
+        # Create project directory if it doesn't exist
+        PROJECT_DIR.mkdir(parents=True, exist_ok=True)
 
-    # Initialize database
-    _engine, _session_maker = create_database(PROJECT_DIR)
+        # Initialize database
+        _engine, _session_maker = create_database(PROJECT_DIR)
 
-    # Run migration if needed (converts legacy JSON to SQLite)
-    migrate_json_to_sqlite(PROJECT_DIR, _session_maker)
+        # Run migration if needed (converts legacy JSON to SQLite)
+        migrate_json_to_sqlite(PROJECT_DIR, _session_maker)
+
+        # Readiness probe: make sure the features table is actually queryable
+        session = _session_maker()
+        try:
+            session.query(Feature.id).limit(1).all()
+        finally:
+            session.close()
+    except Exception as e:
+        print(
+            f"[feature_mcp] Failed to initialize feature database for project '{PROJECT_DIR}': "
+            f"{type(e).__name__}: {e}",
+            file=sys.stderr,
+            flush=True,
+        )
+        raise
 
     yield
 

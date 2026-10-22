@@ -6,6 +6,7 @@ Pre-tool-use hooks that validate bash commands for security.
 Uses an allowlist approach - only explicitly permitted commands can run.
 """
 
+import glob
 import logging
 import os
 import re
@@ -59,7 +60,7 @@ ALLOWED_COMMANDS = {
     "curl",
     # File operations
     "mv",
-    "rm",  # Use with caution
+    "rm",  # Targets restricted to the project directory; validated separately
     "touch",
     # Shell scripts
     "sh",
@@ -71,7 +72,7 @@ ALLOWED_COMMANDS = {
 }
 
 # Commands that need additional validation even when in the allowlist
-COMMANDS_NEEDING_EXTRA_VALIDATION = {"pkill", "chmod", "init.sh", "playwright-cli"}
+COMMANDS_NEEDING_EXTRA_VALIDATION = {"pkill", "chmod", "init.sh", "playwright-cli", "rm"}
 
 # Commands that are NEVER allowed, even with user approval
 # These commands can cause permanent system damage or security breaches
@@ -411,6 +412,108 @@ def validate_chmod_command(command_string: str) -> tuple[bool, str]:
 
     if not re.match(r"^[ugoa]*\+x$", mode):
         return False, f"chmod only allowed with +x mode, got: {mode}"
+
+    return True, ""
+
+
+def _is_within(path: str, root: str) -> bool:
+    """Return True if path is strictly inside root (not root itself)."""
+    try:
+        return os.path.commonpath([path, root]) == root and path != root
+    except ValueError:
+        # Different drives on Windows
+        return False
+
+
+def _resolve_rm_target(target: str, base: str) -> str:
+    """Resolve an rm target to the real path rm would act on."""
+    joined = os.path.normpath(os.path.join(base, target))
+    stripped = target.rstrip("/")
+    if target.endswith("/") or stripped == "." or stripped.endswith("/.") or stripped in ("", ".."):
+        # With a trailing slash (or '.'), rm follows a symlink to its target
+        return os.path.realpath(joined)
+    # Otherwise resolve symlinks in the parent only: rm removes a symlink
+    # itself, not what it points to.
+    parent, name = os.path.split(joined)
+    return os.path.join(os.path.realpath(parent), name) if name else os.path.realpath(joined)
+
+
+def validate_rm_command(command_string: str, project_dir: Optional[Path] = None) -> tuple[bool, str]:
+    """
+    Validate rm commands - targets must stay inside the project directory.
+
+    Blocks:
+    - Root, home, current/parent directory targets (rm -rf /, ~, ., ..)
+    - Home, variable, command-substitution and brace-expansion targets that
+      can't be validated statically (~/x, $HOME, `pwd`, {../x,y})
+    - Symlinks followed via a trailing slash (link/) or a glob match
+    - Bare wildcards at the project root (rm -rf *, rm -rf .*)
+    - Absolute or ../ paths that resolve outside the project directory
+      (or to the project directory itself)
+    - --no-preserve-root
+
+    Relative paths are resolved against project_dir (or the current working
+    directory when project_dir is unknown).
+
+    Returns:
+        Tuple of (is_allowed, reason_if_blocked)
+    """
+    try:
+        tokens = shlex.split(command_string)
+    except ValueError:
+        return False, "Could not parse rm command"
+
+    if not tokens or os.path.basename(tokens[0]) != "rm":
+        return False, "Not an rm command"
+
+    targets = []
+    end_of_options = False
+    for token in tokens[1:]:
+        if not end_of_options and token == "--":
+            end_of_options = True
+        elif not end_of_options and token.startswith("-") and token != "-":
+            if token == "--no-preserve-root":
+                return False, "rm --no-preserve-root is not allowed"
+        else:
+            targets.append(token)
+
+    if not targets:
+        return False, "rm requires at least one target"
+
+    base = os.path.realpath(str(project_dir) if project_dir else os.getcwd())
+
+    for target in targets:
+        if any(ch in target for ch in "~$`{"):
+            return False, (
+                f"rm target '{target}' uses home, variable, command or brace expansion and cannot be validated"
+            )
+
+        candidates = [target]
+        if glob.has_magic(target):
+            # A glob can match a symlink (e.g. 'es*/' -> 'esc/'), so validate
+            # every path bash would expand it to, not just the pattern.
+            pattern = os.path.join(base, target)
+            candidates += glob.glob(pattern)
+            # Parent directories matched by a glob are followed by rm even
+            # when the final file doesn't exist yet (e.g. 'e*/x' via 'esc/').
+            parent_pattern = os.path.dirname(pattern.rstrip("/"))
+            while glob.has_magic(parent_pattern):
+                for match in glob.glob(parent_pattern):
+                    real = os.path.realpath(match)
+                    if real != base and not _is_within(real, base):
+                        return False, f"rm target '{target}' is outside the project directory"
+                parent_pattern = os.path.dirname(parent_pattern)
+
+        for candidate in candidates:
+            resolved = _resolve_rm_target(candidate, base)
+            if not _is_within(resolved, base):
+                return False, f"rm target '{target}' is outside the project directory"
+
+        # Pure wildcard directly in the project root would wipe the whole project
+        resolved = _resolve_rm_target(target, base)
+        name = os.path.basename(resolved)
+        if os.path.dirname(resolved) == base and re.fullmatch(r"[*?.]+", name) and re.search(r"[*?]", name):
+            return False, f"rm target '{target}' would delete the entire project directory"
 
     return True, ""
 
@@ -964,32 +1067,27 @@ async def bash_security_hook(input_data, tool_use_id=None, context=None):
 
         # Additional validation for sensitive commands
         if cmd in COMMANDS_NEEDING_EXTRA_VALIDATION:
-            # Find the specific segment containing this command by searching
-            # each segment's extracted commands for a match
-            cmd_segment = ""
-            for segment in segments:
-                if cmd in extract_commands(segment):
-                    cmd_segment = segment
-                    break
-            if not cmd_segment:
-                cmd_segment = command  # Fallback to full command
+            # Validate EVERY segment containing this command, not just the
+            # first one: 'rm -rf dist && rm -rf ../x' must check both.
+            cmd_segments = [segment for segment in segments if cmd in extract_commands(segment)]
+            if not cmd_segments:
+                cmd_segments = [command]  # Fallback to full command
 
-            if cmd == "pkill":
-                # Pass configured extra processes (beyond defaults)
-                extra_procs = pkill_processes - DEFAULT_PKILL_PROCESSES
-                allowed, reason = validate_pkill_command(cmd_segment, extra_procs if extra_procs else None)
-                if not allowed:
-                    return {"decision": "block", "reason": reason}
-            elif cmd == "chmod":
-                allowed, reason = validate_chmod_command(cmd_segment)
-                if not allowed:
-                    return {"decision": "block", "reason": reason}
-            elif cmd == "init.sh":
-                allowed, reason = validate_init_script(cmd_segment)
-                if not allowed:
-                    return {"decision": "block", "reason": reason}
-            elif cmd == "playwright-cli":
-                allowed, reason = validate_playwright_command(cmd_segment)
+            for cmd_segment in cmd_segments:
+                if cmd == "pkill":
+                    # Pass configured extra processes (beyond defaults)
+                    extra_procs = pkill_processes - DEFAULT_PKILL_PROCESSES
+                    allowed, reason = validate_pkill_command(cmd_segment, extra_procs if extra_procs else None)
+                elif cmd == "chmod":
+                    allowed, reason = validate_chmod_command(cmd_segment)
+                elif cmd == "init.sh":
+                    allowed, reason = validate_init_script(cmd_segment)
+                elif cmd == "playwright-cli":
+                    allowed, reason = validate_playwright_command(cmd_segment)
+                elif cmd == "rm":
+                    allowed, reason = validate_rm_command(cmd_segment, project_dir)
+                else:
+                    continue
                 if not allowed:
                     return {"decision": "block", "reason": reason}
 
