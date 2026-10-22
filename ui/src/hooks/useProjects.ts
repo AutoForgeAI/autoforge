@@ -37,6 +37,18 @@ export function useCreateProject() {
   })
 }
 
+export function useImportProject() {
+  const queryClient = useQueryClient()
+
+  return useMutation({
+    mutationFn: ({ name, path }: { name: string; path: string }) =>
+      api.importProject(name, path),
+    // Await the refetch so the imported project is in the list before the
+    // caller selects it (otherwise the stale list clears the selection).
+    onSuccess: () => queryClient.invalidateQueries({ queryKey: ['projects'] }),
+  })
+}
+
 export function useDeleteProject() {
   const queryClient = useQueryClient()
 

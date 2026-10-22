@@ -9,6 +9,7 @@ Supports two paths for new projects:
 """
 
 import os
+import re
 import subprocess
 import sys
 from pathlib import Path
@@ -32,6 +33,7 @@ from auth import is_auth_error, print_auth_error_help
 # Load environment variables from .env file if present
 load_dotenv()
 
+from autoforge_paths import is_existing_autoforge_project
 from prompts import (
     get_project_prompts_dir,
     has_project_prompts,
@@ -101,6 +103,7 @@ def display_menu(projects: list[tuple[str, Path]]) -> None:
     if projects:
         print("[2] Continue existing project")
 
+    print("[3] Import existing project folder")
     print("[q] Quit")
     print()
 
@@ -188,6 +191,48 @@ def get_new_project_info() -> tuple[str, Path] | None:
     project_path = Path(path_str).resolve()
 
     return name, project_path
+
+
+def import_existing_project_flow() -> tuple[str, Path] | None:
+    """Register an existing AutoForge project folder (e.g. after a reinstall).
+
+    Returns:
+        Tuple of (name, path) for the imported project, or None if cancelled.
+    """
+    print("\n" + "-" * 40)
+    print("  Import Existing Project")
+    print("-" * 40)
+    print("\nEnter the full path of a folder previously created with AutoForge")
+    print("(it contains a .autoforge/ directory). Leave empty to cancel.\n")
+
+    path_str = input("Project path: ").strip()
+    if not path_str:
+        return None
+
+    project_dir = Path(path_str).expanduser().resolve()
+    if not is_existing_autoforge_project(project_dir):
+        print(f"No AutoForge project found at {project_dir}")
+        return None
+
+    for name, info in list_registered_projects().items():
+        if Path(info["path"]).resolve() == project_dir:
+            print(f"This folder is already registered as '{name}'")
+            return None
+
+    default_name = re.sub(r"[^a-zA-Z0-9_-]", "-", project_dir.name)[:50] or "project"
+    name = input(f"Project name [{default_name}]: ").strip() or default_name
+    if not re.match(r"^[a-zA-Z0-9_-]{1,50}$", name):
+        print("Project name can only contain letters, numbers, hyphens, and underscores (1-50 chars)")
+        return None
+
+    existing = get_project_path(name)
+    if existing:
+        print(f"Project '{name}' already exists at {existing}")
+        return None
+
+    register_project(name, project_dir)
+    print(f"\nImported project '{name}' from {project_dir}")
+    return name, project_dir
 
 
 def ensure_project_scaffolded(project_name: str, project_dir: Path) -> Path:
@@ -452,6 +497,12 @@ def main() -> None:
 
         elif choice == '1':
             result = create_new_project_flow()
+            if result:
+                project_name, project_dir = result
+                run_agent(project_name, project_dir)
+
+        elif choice == '3':
+            result = import_existing_project_flow()
             if result:
                 project_name, project_dir = result
                 run_agent(project_name, project_dir)

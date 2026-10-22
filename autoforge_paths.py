@@ -98,6 +98,22 @@ def get_autoforge_dir(project_dir: Path) -> Path:
     return project_dir / ".autoforge"
 
 
+def is_existing_autoforge_project(project_dir: Path) -> bool:
+    """Return True if *project_dir* already contains AutoForge project data.
+
+    Used when re-importing a project into a fresh registry (e.g. after a
+    reinstall).  A folder counts as an AutoForge project if it has a
+    ``features.db`` or an ``app_spec.txt`` in any supported layout
+    (``.autoforge/``, legacy ``.autocoder/``, or legacy root-level).
+    """
+    if not project_dir.is_dir():
+        return False
+    if _resolve_path(project_dir, "features.db").exists():
+        return True
+    prompts_dir = _resolve_dir(project_dir, "prompts")
+    return (prompts_dir / "app_spec.txt").exists()
+
+
 def ensure_autoforge_dir(project_dir: Path) -> Path:
     """Create the ``.autoforge/`` directory (if needed) and write its ``.gitignore``.
 
