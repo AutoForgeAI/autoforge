@@ -34,6 +34,50 @@ load_dotenv()
 
 logger = logging.getLogger(__name__)
 
+# Built-in tools available to the spec creation agent.
+SPEC_ALLOWED_TOOLS = [
+    "Read",
+    "Write",
+    "Edit",
+    "Glob",
+    "WebFetch",
+    "WebSearch",
+]
+
+# Tools removed from the model entirely. The web UI has no way to answer a
+# permission prompt, so a tool that "requires approval" just fails and the
+# model ends up asking the user for an approval they cannot give (issue #14).
+# allowed_tools only pre-approves; disallowed_tools hides the tool.
+SPEC_DISALLOWED_TOOLS = [
+    "Bash",
+    "BashOutput",
+    "KillShell",
+    "NotebookEdit",
+]
+
+# Appended to the skill prompt so the model knows its limits up front and
+# doesn't ask the user to approve commands.
+SPEC_ENVIRONMENT_NOTE = """
+
+---
+
+# ENVIRONMENT CONSTRAINTS (Web UI)
+
+You are running inside the AutoForge web UI, not an interactive terminal:
+
+- You CANNOT run shell commands (no Bash, no Python, no scripts). This is a
+  deliberate security restriction, not a permission the user can grant.
+  Never ask the user to approve or allow a command - there is no way for
+  them to do so.
+- Your tools are: Read, Write, Edit, Glob, WebFetch and WebSearch.
+- You can read text files (code, Markdown, CSV, JSON, YAML, etc.), images
+  and PDFs with the Read tool.
+- Binary data files (Parquet, SQLite, Excel, Feather, Pickle, archives, ...)
+  cannot be inspected. If the project contains one, tell the user you can't
+  open it here and ask them to describe its structure (columns, types,
+  sample rows) or to provide a text export such as CSV or JSON, or a schema.
+"""
+
 
 class SpecChatSession:
     """
@@ -122,6 +166,7 @@ class SpecChatSession:
                     "Edit(./**)",
                     "Glob(./**)",
                 ],
+                "deny": list(SPEC_DISALLOWED_TOOLS),
             },
         }
         from autoforge_paths import get_claude_settings_path
@@ -133,7 +178,7 @@ class SpecChatSession:
         # Replace $ARGUMENTS with absolute project path (like CLI does in start.py:184)
         # Using absolute path avoids confusion when project folder name differs from app name
         project_path = str(self.project_dir.resolve())
-        system_prompt = skill_content.replace("$ARGUMENTS", project_path)
+        system_prompt = skill_content.replace("$ARGUMENTS", project_path) + SPEC_ENVIRONMENT_NOTE
 
         # Write system prompt to CLAUDE.md file to avoid Windows command line length limit
         # The SDK will read this via setting_sources=["project"]
@@ -164,14 +209,8 @@ class SpecChatSession:
                     # System prompt loaded from CLAUDE.md via setting_sources
                     # Include "user" for global skills and subagents from ~/.claude/
                     setting_sources=["project", "user"],
-                    allowed_tools=[
-                        "Read",
-                        "Write",
-                        "Edit",
-                        "Glob",
-                        "WebFetch",
-                        "WebSearch",
-                    ],
+                    allowed_tools=list(SPEC_ALLOWED_TOOLS),
+                    disallowed_tools=list(SPEC_DISALLOWED_TOOLS),
                     permission_mode="acceptEdits",  # Auto-approve file writes for spec creation
                     max_turns=100,
                     cwd=str(self.project_dir.resolve()),
