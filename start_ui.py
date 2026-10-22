@@ -98,6 +98,19 @@ def install_python_deps() -> bool:
         return False
 
     print("  Installing Python dependencies...")
+
+    # Venvs created by uv don't ship pip unless seeded; let uv install into them
+    has_pip = subprocess.run(
+        [str(venv_python), "-m", "pip", "--version"],
+        stdout=subprocess.DEVNULL, stderr=subprocess.DEVNULL,
+    ).returncode == 0
+    uv = shutil.which("uv")
+    if not has_pip and uv:
+        return run_command([
+            uv, "pip", "install", "--python", str(venv_python),
+            "-q", "-r", str(requirements)
+        ])
+
     return run_command([
         str(venv_python), "-m", "pip", "install",
         "-q", "--upgrade", "pip"
