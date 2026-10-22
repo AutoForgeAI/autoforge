@@ -7,6 +7,7 @@ Tests for the client module utility functions.
 Run with: python test_client.py
 """
 
+import io
 import os
 import sys
 import tempfile
@@ -16,6 +17,7 @@ from pathlib import Path
 from client import (
     EXTRA_READ_PATHS_BLOCKLIST,
     EXTRA_READ_PATHS_VAR,
+    CliStderrFilter,
     convert_model_for_vertex,
     get_extra_read_paths,
 )
@@ -114,6 +116,79 @@ class TestConvertModelForVertex(unittest.TestCase):
     def test_empty_string_unchanged(self):
         os.environ["CLAUDE_CODE_USE_VERTEX"] = "1"
         self.assertEqual(convert_model_for_vertex(""), "")
+
+
+class TestCliStderrFilter(unittest.TestCase):
+    """Tests for the CLI stderr filter that hides benign hook AbortErrors (#38)."""
+
+    def _run(self, lines):
+        out = io.StringIO()
+        f = CliStderrFilter(stream=out)
+        for line in lines:
+            f(line)
+        return out.getvalue().splitlines()
+
+    def test_suppresses_hook_abort_error_and_stack(self):
+        lines = [
+            "Error in hook callback hook_0: VJ [AbortError]",
+            "    at AbortSignal.Y (file:///x/cli.js:4930:315)",
+            "    at [nodejs.internal.kHybridDispatch] (node:internal/event_target:845:20)",
+            "    at runAbort (node:internal/abort_controller:488:10)",
+        ]
+        self.assertEqual(self._run(lines), [])
+
+    def test_suppresses_abort_error_message_variant(self):
+        lines = ["Error in hook callback hook_3: AbortError: The operation was aborted"]
+        self.assertEqual(self._run(lines), [])
+
+    def test_forwards_lines_after_abort_trace(self):
+        lines = [
+            "Error in hook callback hook_0: VJ [AbortError]",
+            "    at AbortSignal.Y (file:///x/cli.js:4930:315)",
+            "Some real error",
+            "    at foo (bar.js:1:1)",
+        ]
+        self.assertEqual(self._run(lines), ["Some real error", "    at foo (bar.js:1:1)"])
+
+    def test_forwards_other_hook_errors(self):
+        lines = ["Error in hook callback hook_0: Error: boom", "    at x (y.js:1:1)"]
+        self.assertEqual(self._run(lines), lines)
+
+    # The SDK delivers raw pipe chunks (rstripped), not single lines.
+
+    def test_chunk_with_real_error_after_abort_trace(self):
+        chunk = (
+            "Error in hook callback hook_0: VJ [AbortError]\n"
+            "    at AbortSignal.Y (file:///x/cli.js:4930:315)\n"
+            "    at runAbort (node:internal/abort_controller:488:10)\n"
+            "Some real error\n"
+            "    at foo (bar.js:1:1)"
+        )
+        self.assertEqual(self._run([chunk]), ["Some real error", "    at foo (bar.js:1:1)"])
+
+    def test_chunk_with_real_error_before_abort_trace(self):
+        chunk = (
+            "Real problem: ENOSPC\n"
+            "Error in hook callback hook_1: VJ [AbortError]\n"
+            "    at AbortSignal.Y (file:///x/cli.js:4930:315)"
+        )
+        self.assertEqual(self._run([chunk]), ["Real problem: ENOSPC"])
+
+    def test_chunk_with_only_abort_trace_is_suppressed(self):
+        chunk = (
+            "Error in hook callback hook_0: VJ [AbortError]\n"
+            "    at AbortSignal.Y (file:///x/cli.js:4930:315)\n"
+            "    at [nodejs.internal.kHybridDispatch] (node:internal/event_target:845:20)\n"
+            "    at runAbort (node:internal/abort_controller:488:10)"
+        )
+        self.assertEqual(self._run([chunk]), [])
+
+    def test_abort_trace_frames_continue_in_next_chunk(self):
+        chunks = [
+            "Error in hook callback hook_0: VJ [AbortError]\n    at AbortSignal.Y (file:///x/cli.js:4930:315)",
+            "    at runAbort (node:internal/abort_controller:488:10)\nReal problem: ENOSPC",
+        ]
+        self.assertEqual(self._run(chunks), ["Real problem: ENOSPC"])
 
 
 class TestExtraReadPathsBlocklist(unittest.TestCase):

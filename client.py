@@ -31,6 +31,49 @@ EXTRA_READ_PATHS_VAR = "EXTRA_READ_PATHS"
 # this blocklist and the filesystem browser API share a single source of truth.
 EXTRA_READ_PATHS_BLOCKLIST = SENSITIVE_DIRECTORIES
 
+# The Claude Code CLI aborts in-flight SDK hook callbacks whenever the tool call
+# they guard is cancelled (e.g. a sibling parallel tool call failed, the turn was
+# interrupted, or the session is shutting down). It then logs the rejected
+# promise as "Error in hook callback hook_N: ... [AbortError]" followed by a
+# Node stack trace. The tool call was already abandoned, so the abort is
+# harmless, but the trace floods the agent log (issue #38).
+HOOK_ABORT_ERROR_RE = re.compile(r"Error in hook callback \S+:.*\bAbortError\b")
+
+
+class CliStderrFilter:
+    """
+    stderr callback for ClaudeAgentOptions that drops benign hook AbortErrors.
+
+    Lines matching HOOK_ABORT_ERROR_RE, plus the indented "at ..." stack frames
+    that follow them, are suppressed. Everything else is forwarded unchanged.
+
+    The SDK does not call this once per line: it passes raw pipe chunks from
+    anyio's TextReceiveStream (with trailing whitespace stripped), so a single
+    call may hold several lines, e.g. an abort trace followed by a real error.
+    Each chunk is therefore split into lines and filtered line by line, with
+    the trace state carried across calls. Because the SDK strips the trailing
+    newline, a chunk boundary inside a line can't be detected; such a split
+    header is forwarded rather than held back, so real output is never lost.
+    """
+
+    def __init__(self, stream=None):
+        self._stream = stream
+        self._in_abort_trace = False
+
+    def __call__(self, chunk: str) -> None:
+        forwarded = [line for line in chunk.splitlines() if self._keep(line)]
+        if forwarded:
+            print("\n".join(forwarded), file=self._stream or sys.stderr, flush=True)
+
+    def _keep(self, line: str) -> bool:
+        if HOOK_ABORT_ERROR_RE.search(line):
+            self._in_abort_trace = True
+            return False
+        if self._in_abort_trace and line.lstrip().startswith("at "):
+            return False
+        self._in_abort_trace = False
+        return True
+
 
 def convert_model_for_vertex(model: str) -> str:
     """
@@ -478,6 +521,7 @@ def create_client(
             cwd=str(project_dir.resolve()),
             settings=str(settings_file.resolve()),  # Use absolute path
             env=sdk_env,  # Pass API configuration overrides to CLI subprocess
+            stderr=CliStderrFilter(),  # Drop benign hook AbortError traces (issue #38)
             # Enable extended context beta for better handling of long sessions.
             # This provides up to 1M tokens of context with automatic compaction.
             # See: https://docs.anthropic.com/en/api/beta-headers
