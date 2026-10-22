@@ -86,6 +86,13 @@ Implement the chosen feature thoroughly:
 
 **CRITICAL:** You MUST verify features through the actual UI.
 
+**No browser UI?** For CLI tools, scripts, libraries, and API-only services, verify through bash
+instead of the browser: plan the expected exit codes, output, and side effects first, run the
+program with simulated user input (stdin, arguments, input files), and check stdout, stderr, the
+exit code, and produced files against that plan -- including at least one invalid input. Save the
+scenario as `tests/feature_<id>_test.sh` (run with `bash tests/feature_<id>_test.sh`) so testing
+agents can re-run it for regression checks.
+
 Use `playwright-cli` for browser automation:
 
 - Open the browser: `playwright-cli open http://localhost:PORT`

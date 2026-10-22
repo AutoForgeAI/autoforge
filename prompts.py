@@ -17,7 +17,7 @@ from pathlib import Path
 TEMPLATES_DIR = Path(__file__).parent / ".claude" / "templates"
 
 # Migration version — bump when adding new migration steps
-CURRENT_MIGRATION_VERSION = 1
+CURRENT_MIGRATION_VERSION = 2
 
 
 def get_project_prompts_dir(project_dir: Path) -> Path:
@@ -821,6 +821,73 @@ def _migrate_v0_to_v1(project_dir: Path) -> list[str]:
     return migrated
 
 
+# Phrases from the v1 testing prompt (browser-only) and their v2 replacements
+# (browser or command-line verification). Only exact matches are replaced, so
+# user-customized wording is left untouched.
+_V2_TESTING_PHRASES = (
+    (
+        "3. Test the feature in the browser\n",
+        "3. Test the feature the way a real user would (browser for web UIs, bash for CLIs/scripts/libraries)\n",
+    ),
+    (
+        "**Quality Bar:**\n- Zero console errors\n- All verification steps pass\n"
+        "- Visual appearance correct\n- API calls succeed\n",
+        "**Quality Bar:**\n- All verification steps pass\n"
+        "- Web UI: zero console errors, visual appearance correct, API calls succeed\n"
+        "- CLI / non-UI: expected exit codes, expected stdout/stderr, correct side effects, "
+        "clean failure on invalid input\n",
+    ),
+    (
+        "3. Verify the fix with browser automation\n",
+        "3. Verify the fix with browser automation (web UI) or your scenario script (CLI / non-UI)\n",
+    ),
+)
+
+
+def _get_template_section(name: str, start_pattern: str, end_pattern: str) -> str | None:
+    """Return the section of a base template from start_pattern up to (not including) end_pattern."""
+    template_path = TEMPLATES_DIR / f"{name}.template.md"
+    try:
+        template = template_path.read_text(encoding="utf-8")
+    except (OSError, PermissionError):
+        return None
+    match = re.search(f"{start_pattern}.*?(?={end_pattern})", template, flags=re.DOTALL)
+    return match.group(0) if match else None
+
+
+def _migrate_testing_prompt_to_v2(content: str) -> str:
+    """Add command-line verification guidance for non-web projects to a testing prompt.
+
+    The STEP 2 section is only replaced when it is the unmodified v1 (browser-only)
+    text, so project-specific customizations are preserved.
+    """
+    new_step2 = _get_template_section("testing_prompt", r"### STEP 2: VERIFY THE FEATURE", r"### STEP 3:")
+    if new_step2 and _CLI_TESTING_STEP2 in content:
+        content = content.replace(_CLI_TESTING_STEP2, new_step2, 1)
+
+    for old_phrase, new_phrase in _V2_TESTING_PHRASES:
+        content = content.replace(old_phrase, new_phrase, 1)
+
+    return content
+
+
+def _migrate_v1_to_v2(project_dir: Path) -> list[str]:
+    """Migrate testing_prompt.md to support CLI / non-web verification (issue #136)."""
+    migrated: list[str] = []
+    testing_prompt_path = get_project_prompts_dir(project_dir) / "testing_prompt.md"
+    if not testing_prompt_path.exists():
+        return migrated
+    try:
+        content = testing_prompt_path.read_text(encoding="utf-8")
+        updated = _migrate_testing_prompt_to_v2(content)
+        if updated != content:
+            testing_prompt_path.write_text(updated, encoding="utf-8")
+            migrated.append("Updated testing_prompt.md with command-line verification for non-web projects")
+    except (OSError, PermissionError) as e:
+        print(f"  Warning: Could not update testing_prompt.md: {e}")
+    return migrated
+
+
 def migrate_project_to_current(project_dir: Path) -> list[str]:
     """Migrate an existing project to the current AutoForge version.
 
@@ -836,7 +903,8 @@ def migrate_project_to_current(project_dir: Path) -> list[str]:
     if current < 1:
         migrated.extend(_migrate_v0_to_v1(project_dir))
 
-    # Future: if current < 2: migrated.extend(_migrate_v1_to_v2(project_dir))
+    if current < 2:
+        migrated.extend(_migrate_v1_to_v2(project_dir))
 
     _set_migration_version(project_dir, CURRENT_MIGRATION_VERSION)
     return migrated
