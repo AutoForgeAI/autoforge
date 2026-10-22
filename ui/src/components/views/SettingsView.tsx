@@ -7,7 +7,7 @@
  */
 
 import { useState } from 'react'
-import { Loader2, AlertCircle, AlertTriangle, Check, Moon, Sun, Eye, EyeOff, ShieldCheck, Settings } from 'lucide-react'
+import { Loader2, AlertCircle, AlertTriangle, Check, Moon, Sun, Eye, EyeOff, ShieldCheck, Settings, Languages } from 'lucide-react'
 import { useSettings, useUpdateSettings, useAvailableModels, useAvailableProviders } from '@/hooks/useProjects'
 import { useTheme, THEMES } from '@/hooks/useTheme'
 import type { EffortLevel, ProviderInfo } from '@/lib/types'
@@ -17,13 +17,14 @@ import { Label } from '@/components/ui/label'
 import { Alert, AlertDescription } from '@/components/ui/alert'
 import { Button } from '@/components/ui/button'
 import { Card, CardContent, CardHeader, CardTitle } from '@/components/ui/card'
+import { useI18n, LOCALES, type TranslationKey } from '@/i18n'
 
-const PROVIDER_INFO_TEXT: Record<string, string> = {
-  claude: 'Default provider. Uses Claude CLI credentials. API key auth is recommended.',
-  kimi: 'Get an API key at kimi.com',
-  glm: 'Get an API key at open.bigmodel.cn',
-  ollama: 'Run models locally. Install from ollama.com',
-  custom: 'Connect to any OpenAI-compatible API endpoint.',
+const PROVIDER_INFO_KEYS: Record<string, TranslationKey> = {
+  claude: 'settings.provider.claude',
+  kimi: 'settings.provider.kimi',
+  glm: 'settings.provider.glm',
+  ollama: 'settings.provider.ollama',
+  custom: 'settings.provider.custom',
 }
 
 export function SettingsView() {
@@ -32,6 +33,7 @@ export function SettingsView() {
   const { data: providersData } = useAvailableProviders()
   const updateSettings = useUpdateSettings()
   const { theme, setTheme, darkMode, toggleDarkMode } = useTheme()
+  const { t, tRich, locale, setLocale } = useI18n()
 
   const [showAuthToken, setShowAuthToken] = useState(false)
   const [authTokenInput, setAuthTokenInput] = useState('')
@@ -122,7 +124,7 @@ export function SettingsView() {
         {/* Header */}
         <div className="flex items-center gap-3">
           <Settings size={24} className="text-primary" />
-          <h1 className="text-2xl font-bold">Settings</h1>
+          <h1 className="text-2xl font-bold">{t('settings.title')}</h1>
           {isSaving && <Loader2 className="animate-spin" size={16} />}
         </div>
 
@@ -130,7 +132,7 @@ export function SettingsView() {
         {isLoading && (
           <div className="flex items-center justify-center py-8">
             <Loader2 className="animate-spin" size={24} />
-            <span className="ml-2">Loading settings...</span>
+            <span className="ml-2">{t('settings.loading')}</span>
           </div>
         )}
 
@@ -139,13 +141,13 @@ export function SettingsView() {
           <Alert variant="destructive">
             <AlertCircle className="h-4 w-4" />
             <AlertDescription>
-              Failed to load settings
+              {t('settings.loadFailed')}
               <Button
                 variant="link"
                 onClick={() => refetch()}
                 className="ml-2 p-0 h-auto"
               >
-                Retry
+                {t('settings.retry')}
               </Button>
             </AlertDescription>
           </Alert>
@@ -157,12 +159,12 @@ export function SettingsView() {
             {/* Appearance Card */}
             <Card>
               <CardHeader>
-                <CardTitle>Appearance</CardTitle>
+                <CardTitle>{t('settings.appearance')}</CardTitle>
               </CardHeader>
               <CardContent className="space-y-6">
                 {/* Theme Selection */}
                 <div className="space-y-3">
-                  <Label className="font-medium">Theme</Label>
+                  <Label className="font-medium">{t('settings.theme')}</Label>
                   <div className="grid gap-2">
                     {THEMES.map((themeOption) => (
                       <button
@@ -194,7 +196,7 @@ export function SettingsView() {
                         <div className="flex-1 min-w-0">
                           <div className="font-medium text-sm">{themeOption.name}</div>
                           <div className="text-xs text-muted-foreground">
-                            {themeOption.description}
+                            {t(`theme.${themeOption.id}.description`)}
                           </div>
                         </div>
 
@@ -211,10 +213,10 @@ export function SettingsView() {
                 <div className="flex items-center justify-between">
                   <div className="space-y-0.5">
                     <Label htmlFor="dark-mode" className="font-medium">
-                      Dark Mode
+                      {t('settings.darkMode')}
                     </Label>
                     <p className="text-sm text-muted-foreground">
-                      Switch between light and dark appearance
+                      {t('settings.darkModeDescription')}
                     </p>
                   </div>
                   <Button
@@ -225,8 +227,39 @@ export function SettingsView() {
                     className="gap-2"
                   >
                     {darkMode ? <Sun size={16} /> : <Moon size={16} />}
-                    {darkMode ? 'Light' : 'Dark'}
+                    {darkMode ? t('settings.light') : t('settings.dark')}
                   </Button>
+                </div>
+
+                {/* Language Selection */}
+                <div className="space-y-2">
+                  <div className="space-y-0.5">
+                    <Label className="font-medium flex items-center gap-1.5">
+                      <Languages size={14} />
+                      {t('language.label')}
+                    </Label>
+                    <p className="text-sm text-muted-foreground">
+                      {t('language.description')}
+                    </p>
+                  </div>
+                  <div className="flex rounded-lg border overflow-hidden" role="radiogroup" aria-label={t('language.label')}>
+                    {LOCALES.map((option) => (
+                      <button
+                        key={option.id}
+                        role="radio"
+                        aria-checked={locale === option.id}
+                        lang={option.id}
+                        onClick={() => setLocale(option.id)}
+                        className={`flex-1 py-2 px-3 text-sm font-medium transition-colors ${
+                          locale === option.id
+                            ? 'bg-primary text-primary-foreground'
+                            : 'bg-background text-foreground hover:bg-muted'
+                        }`}
+                      >
+                        {option.nativeName}
+                      </button>
+                    ))}
+                  </div>
                 </div>
               </CardContent>
             </Card>
@@ -234,12 +267,12 @@ export function SettingsView() {
             {/* API Configuration Card */}
             <Card>
               <CardHeader>
-                <CardTitle>API Configuration</CardTitle>
+                <CardTitle>{t('settings.apiConfiguration')}</CardTitle>
               </CardHeader>
               <CardContent className="space-y-6">
                 {/* API Provider Selection */}
                 <div className="space-y-3">
-                  <Label className="font-medium">API Provider</Label>
+                  <Label className="font-medium">{t('settings.apiProvider')}</Label>
                   <div className="flex flex-wrap gap-1.5">
                     {providers.map((provider) => (
                       <button
@@ -257,14 +290,19 @@ export function SettingsView() {
                     ))}
                   </div>
                   <p className="text-xs text-muted-foreground">
-                    {PROVIDER_INFO_TEXT[currentProvider] ?? ''}
+                    {PROVIDER_INFO_KEYS[currentProvider] ? t(PROVIDER_INFO_KEYS[currentProvider]) : ''}
                   </p>
 
                   {currentProvider === 'claude' && (
                     <Alert className="border-amber-500/50 bg-amber-50 dark:bg-amber-950/20 mt-2">
                       <AlertTriangle className="h-4 w-4 text-amber-600" />
                       <AlertDescription className="text-xs text-amber-700 dark:text-amber-300">
-                        Anthropic's policy may not permit using subscription-based auth (<code className="text-xs">claude login</code>) with third-party agents. Consider using an API key provider or setting the <code className="text-xs">ANTHROPIC_API_KEY</code> environment variable to avoid potential account issues.
+                        <span>
+                          {tRich('settings.claudeAuthWarning', {
+                            loginCommand: <code className="text-xs">claude login</code>,
+                            envVar: <code className="text-xs">ANTHROPIC_API_KEY</code>,
+                          })}
+                        </span>
                       </AlertDescription>
                     </Alert>
                   )}
@@ -272,18 +310,18 @@ export function SettingsView() {
                   {/* Auth Token Field */}
                   {showAuthField && (
                     <div className="space-y-2 pt-1">
-                      <Label className="text-sm">API Key</Label>
+                      <Label className="text-sm">{t('settings.apiKey')}</Label>
                       {settings.api_has_auth_token && !authTokenInput && (
                         <div className="flex items-center gap-2 text-sm text-muted-foreground">
                           <ShieldCheck size={14} className="text-green-500" />
-                          <span>Configured</span>
+                          <span>{t('settings.configured')}</span>
                           <Button
                             variant="ghost"
                             size="sm"
                             className="h-auto py-0.5 px-2 text-xs"
                             onClick={() => setAuthTokenInput(' ')}
                           >
-                            Change
+                            {t('settings.change')}
                           </Button>
                         </div>
                       )}
@@ -294,7 +332,7 @@ export function SettingsView() {
                               type={showAuthToken ? 'text' : 'password'}
                               value={authTokenInput.trim()}
                               onChange={(e) => setAuthTokenInput(e.target.value)}
-                              placeholder="Enter API key..."
+                              placeholder={t('settings.apiKeyPlaceholder')}
                               className="w-full py-1.5 px-3 pe-9 text-sm border rounded-md bg-background"
                             />
                             <button
@@ -310,7 +348,7 @@ export function SettingsView() {
                             onClick={handleSaveAuthToken}
                             disabled={!authTokenInput.trim() || isSaving}
                           >
-                            Save
+                            {t('settings.save')}
                           </Button>
                         </div>
                       )}
@@ -320,7 +358,7 @@ export function SettingsView() {
                   {/* Custom Base URL Field */}
                   {showBaseUrlField && (
                     <div className="space-y-2 pt-1">
-                      <Label className="text-sm">Base URL</Label>
+                      <Label className="text-sm">{t('settings.baseUrl')}</Label>
                       {settings.api_base_url && !customBaseUrlInput && (
                         <div className="flex items-center gap-2 text-sm text-muted-foreground">
                           <ShieldCheck size={14} className="text-green-500" />
@@ -331,7 +369,7 @@ export function SettingsView() {
                             className="h-auto py-0.5 px-2 text-xs shrink-0"
                             onClick={() => setCustomBaseUrlInput(settings.api_base_url || '')}
                           >
-                            Change
+                            {t('settings.change')}
                           </Button>
                         </div>
                       )}
@@ -349,7 +387,7 @@ export function SettingsView() {
                             onClick={handleSaveCustomBaseUrl}
                             disabled={!customBaseUrlInput.trim() || isSaving}
                           >
-                            Save
+                            {t('settings.save')}
                           </Button>
                         </div>
                       )}
@@ -359,7 +397,7 @@ export function SettingsView() {
 
                 {/* Model Selection */}
                 <div className="space-y-2">
-                  <Label className="font-medium">Model</Label>
+                  <Label className="font-medium">{t('settings.model')}</Label>
                   {models.length > 0 && (
                     <div className="flex rounded-lg border overflow-hidden">
                       {models.map((model) => (
@@ -386,7 +424,7 @@ export function SettingsView() {
                         type="text"
                         value={customModelInput}
                         onChange={(e) => setCustomModelInput(e.target.value)}
-                        placeholder="Custom model name..."
+                        placeholder={t('settings.customModelPlaceholder')}
                         className="flex-1 py-1.5 px-3 text-sm border rounded-md bg-background"
                         onKeyDown={(e) => e.key === 'Enter' && handleSaveCustomModel()}
                       />
@@ -395,7 +433,7 @@ export function SettingsView() {
                         onClick={handleSaveCustomModel}
                         disabled={!customModelInput.trim() || isSaving}
                       >
-                        Set
+                        {t('settings.set')}
                       </Button>
                     </div>
                   )}
@@ -406,17 +444,17 @@ export function SettingsView() {
             {/* Agent Configuration Card */}
             <Card>
               <CardHeader>
-                <CardTitle>Agent Configuration</CardTitle>
+                <CardTitle>{t('settings.agentConfiguration')}</CardTitle>
               </CardHeader>
               <CardContent className="space-y-6">
                 {/* YOLO Mode Toggle */}
                 <div className="flex items-center justify-between">
                   <div className="space-y-0.5">
                     <Label htmlFor="yolo-mode" className="font-medium">
-                      YOLO Mode
+                      {t('settings.yoloMode')}
                     </Label>
                     <p className="text-sm text-muted-foreground">
-                      Skip testing for rapid prototyping
+                      {t('settings.yoloModeDescription')}
                     </p>
                   </div>
                   <Switch
@@ -429,9 +467,9 @@ export function SettingsView() {
 
                 {/* Reasoning Effort */}
                 <div className="space-y-2">
-                  <Label className="font-medium">Reasoning Effort</Label>
+                  <Label className="font-medium">{t('settings.effort')}</Label>
                   <p className="text-sm text-muted-foreground">
-                    How deeply Claude thinks before responding. xhigh is recommended for autonomous coding.
+                    {t('settings.effortDescription')}
                   </p>
                   <div className="flex rounded-lg border overflow-hidden">
                     {(['low', 'medium', 'high', 'xhigh', 'max'] as EffortLevel[]).map((level) => (
@@ -453,9 +491,9 @@ export function SettingsView() {
 
                 {/* Regression Agents */}
                 <div className="space-y-2">
-                  <Label className="font-medium">Regression Agents</Label>
+                  <Label className="font-medium">{t('settings.regressionAgents')}</Label>
                   <p className="text-sm text-muted-foreground">
-                    Number of regression testing agents (0 = disabled)
+                    {t('settings.regressionAgentsDescription')}
                   </p>
                   <div className="flex rounded-lg border overflow-hidden">
                     {[0, 1, 2, 3].map((ratio) => (
@@ -477,9 +515,9 @@ export function SettingsView() {
 
                 {/* Features per Coding Agent */}
                 <div className="space-y-2">
-                  <Label className="font-medium">Features per Coding Agent</Label>
+                  <Label className="font-medium">{t('settings.codingBatchSize')}</Label>
                   <p className="text-sm text-muted-foreground">
-                    Number of features assigned to each coding agent session
+                    {t('settings.codingBatchSizeDescription')}
                   </p>
                   <Slider
                     min={1}
@@ -492,9 +530,9 @@ export function SettingsView() {
 
                 {/* Features per Testing Agent */}
                 <div className="space-y-2">
-                  <Label className="font-medium">Features per Testing Agent</Label>
+                  <Label className="font-medium">{t('settings.testingBatchSize')}</Label>
                   <p className="text-sm text-muted-foreground">
-                    Number of features assigned to each testing agent session
+                    {t('settings.testingBatchSizeDescription')}
                   </p>
                   <Slider
                     min={1}
@@ -511,7 +549,7 @@ export function SettingsView() {
             {updateSettings.isError && (
               <Alert variant="destructive">
                 <AlertDescription>
-                  Failed to save settings. Please try again.
+                  {t('settings.saveFailed')}
                 </AlertDescription>
               </Alert>
             )}

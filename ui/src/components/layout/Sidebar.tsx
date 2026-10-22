@@ -19,6 +19,7 @@ import {
 import { Button } from '@/components/ui/button'
 import { Tooltip, TooltipTrigger, TooltipContent } from '@/components/ui/tooltip'
 import { cn } from '@/lib/utils'
+import { useI18n } from '@/i18n'
 
 /**
  * Collapsible left sidebar for view navigation.
@@ -42,6 +43,7 @@ export function Sidebar() {
     wsState,
     setIsSpecCreating,
   } = useAppContext()
+  const { t } = useI18n()
 
   const browserCount = wsState.browserScreenshots.size
   const logCount = wsState.logs.length
@@ -116,13 +118,13 @@ export function Sidebar() {
             {/* Section label (expanded only) */}
             {!sidebarCollapsed && (
               <p className="px-3 pb-1 text-[10px] font-semibold uppercase tracking-widest text-sidebar-foreground/40">
-                Views
+                {t('sidebar.views')}
               </p>
             )}
 
             <SidebarItem
               icon={LayoutDashboard}
-              label="Dashboard"
+              label={t('sidebar.dashboard')}
               isActive={activeView === 'dashboard'}
               isCollapsed={sidebarCollapsed}
               onClick={() => setActiveView('dashboard')}
@@ -130,7 +132,7 @@ export function Sidebar() {
             />
             <SidebarItem
               icon={Columns3}
-              label="Kanban"
+              label={t('sidebar.kanban')}
               isActive={activeView === 'kanban'}
               isCollapsed={sidebarCollapsed}
               onClick={() => setActiveView('kanban')}
@@ -138,7 +140,7 @@ export function Sidebar() {
             />
             <SidebarItem
               icon={GitBranch}
-              label="Graph"
+              label={t('sidebar.graph')}
               isActive={activeView === 'graph'}
               isCollapsed={sidebarCollapsed}
               onClick={() => setActiveView('graph')}
@@ -146,7 +148,7 @@ export function Sidebar() {
             />
             <SidebarItem
               icon={Monitor}
-              label="Browsers"
+              label={t('sidebar.browsers')}
               isActive={activeView === 'browsers'}
               isCollapsed={sidebarCollapsed}
               onClick={() => setActiveView('browsers')}
@@ -160,13 +162,13 @@ export function Sidebar() {
             {/* Section label */}
             {!sidebarCollapsed && (
               <p className="px-3 pb-1 text-[10px] font-semibold uppercase tracking-widest text-sidebar-foreground/40">
-                Tools
+                {t('sidebar.tools')}
               </p>
             )}
 
             <SidebarItem
               icon={Terminal}
-              label="Terminal"
+              label={t('sidebar.terminal')}
               isActive={activeView === 'terminal'}
               isCollapsed={sidebarCollapsed}
               onClick={() => setActiveView('terminal')}
@@ -174,7 +176,7 @@ export function Sidebar() {
             />
             <SidebarItem
               icon={ScrollText}
-              label="Logs"
+              label={t('sidebar.logs')}
               isActive={activeView === 'logs'}
               isCollapsed={sidebarCollapsed}
               onClick={() => setActiveView('logs')}
@@ -183,7 +185,7 @@ export function Sidebar() {
             />
             <SidebarItem
               icon={Bot}
-              label="Assistant"
+              label={t('sidebar.assistant')}
               isActive={activeView === 'assistant'}
               isCollapsed={sidebarCollapsed}
               onClick={() => setActiveView('assistant')}
@@ -195,7 +197,7 @@ export function Sidebar() {
           !sidebarCollapsed && (
             <div className="px-3 py-8 text-center">
               <p className="text-sm text-sidebar-foreground/40 leading-relaxed">
-                Select a project to get started
+                {t('sidebar.selectProject')}
               </p>
             </div>
           )
@@ -210,7 +212,7 @@ export function Sidebar() {
           {/* Settings - navigates to settings view */}
           <UtilityButton
             icon={Settings}
-            label="Settings"
+            label={t('sidebar.settings')}
             shortcut=","
             collapsed={sidebarCollapsed}
             onClick={() => setActiveView('settings')}
@@ -219,7 +221,7 @@ export function Sidebar() {
           {/* Dark mode toggle */}
           <UtilityButton
             icon={darkMode ? Sun : Moon}
-            label={darkMode ? 'Light mode' : 'Dark mode'}
+            label={darkMode ? t('sidebar.lightMode') : t('sidebar.darkMode')}
             collapsed={sidebarCollapsed}
             onClick={toggleDarkMode}
           />
@@ -227,7 +229,7 @@ export function Sidebar() {
           {/* Docs link */}
           <UtilityButton
             icon={BookOpen}
-            label="Docs"
+            label={t('sidebar.docs')}
             collapsed={sidebarCollapsed}
             onClick={() => window.open('https://autoforge.cc', '_blank')}
           />
@@ -236,7 +238,7 @@ export function Sidebar() {
           <div className={cn('mt-1 pt-1', !sidebarCollapsed && 'border-t border-sidebar-border/40')}>
             <UtilityButton
               icon={sidebarCollapsed ? PanelLeftOpen : PanelLeftClose}
-              label={sidebarCollapsed ? 'Expand sidebar' : 'Collapse'}
+              label={sidebarCollapsed ? t('sidebar.expand') : t('sidebar.collapse')}
               shortcut="["
               collapsed={sidebarCollapsed}
               onClick={toggleSidebar}

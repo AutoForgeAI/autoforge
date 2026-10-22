@@ -266,6 +266,11 @@ Key components:
 - `ScheduleModal.tsx` - Schedule management UI
 - `SettingsModal.tsx` - Global settings panel
 
+Internationalization (`src/i18n/`, see its README.md):
+- `locales/en.ts` is the source of truth for translation keys; other locales (e.g. `zh-CN.ts`) are typed against it
+- Components call `const { t } = useI18n()` from `@/i18n`; language is chosen in Settings and stored in `localStorage` (`autoforge-locale`)
+- Translated so far: sidebar and Settings view; when touching other components, prefer `t()` over hard-coded strings
+
 In-app documentation (`/#/docs` route):
 - `src/components/docs/sections/` - Content for each doc section (GettingStarted.tsx, AgentSystem.tsx, etc.)
 - `src/components/docs/docsData.ts` - Sidebar structure, subsection IDs, search keywords
