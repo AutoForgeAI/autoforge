@@ -23,6 +23,7 @@ const PROVIDER_INFO_TEXT: Record<string, string> = {
   kimi: 'Get an API key at kimi.com',
   glm: 'Get an API key at open.bigmodel.cn',
   ollama: 'Run models locally. Install from ollama.com',
+  gemini: 'Runs through an Anthropic-compatible gateway such as LiteLLM. The gateway holds your Gemini key (aistudio.google.com); enter the gateway key below, if any.',
   custom: 'Connect to any OpenAI-compatible API endpoint.',
 }
 
@@ -113,8 +114,8 @@ export function SettingsView() {
   const currentProviderInfo: ProviderInfo | undefined = providers.find(p => p.id === currentProvider)
   const isAlternativeProvider = currentProvider !== 'claude'
   const showAuthField = isAlternativeProvider && currentProviderInfo?.requires_auth
-  const showBaseUrlField = currentProvider === 'custom' || currentProvider === 'azure'
-  const showCustomModelInput = currentProvider === 'custom' || currentProvider === 'ollama'
+  const showBaseUrlField = currentProvider === 'custom' || currentProvider === 'azure' || currentProvider === 'gemini'
+  const showCustomModelInput = currentProvider === 'custom' || currentProvider === 'ollama' || currentProvider === 'gemini'
 
   return (
     <div className="flex-1 overflow-y-auto">
@@ -341,7 +342,7 @@ export function SettingsView() {
                             type="text"
                             value={customBaseUrlInput}
                             onChange={(e) => setCustomBaseUrlInput(e.target.value)}
-                            placeholder={currentProvider === 'azure' ? 'https://your-resource.services.ai.azure.com/anthropic' : 'https://api.example.com/v1'}
+                            placeholder={currentProvider === 'azure' ? 'https://your-resource.services.ai.azure.com/anthropic' : currentProvider === 'gemini' ? 'http://localhost:4000' : 'https://api.example.com/v1'}
                             className="flex-1 py-1.5 px-3 text-sm border rounded-md bg-background"
                           />
                           <Button

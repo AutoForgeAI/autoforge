@@ -332,13 +332,23 @@ When test progress increases, the agent sends:
 }
 ```
 
-### Alternative API Providers (GLM, Ollama, Kimi, Custom)
+### Alternative API Providers (GLM, Ollama, Kimi, Gemini, Custom)
 
 Alternative providers are configured via the **Settings UI** (gear icon > API Provider). Select your provider, set the base URL, auth token, and model directly in the UI — no `.env` changes needed.
 
-Available providers: **Claude** (default), **GLM** (Zhipu AI), **Ollama** (local models), **Kimi** (Moonshot), **Custom**
+Available providers: **Claude** (default), **GLM** (Zhipu AI), **Ollama** (local models), **Kimi** (Moonshot), **Gemini** (Google, via LiteLLM), **Custom**
 
 For Ollama, install [Ollama v0.14.0+](https://ollama.com), run `ollama serve`, and pull a coding model (e.g., `ollama pull qwen3-coder`). Then select "Ollama" in the Settings UI.
+
+For Google Gemini, run an Anthropic-compatible gateway such as [LiteLLM](https://docs.litellm.ai/) in front of the Gemini API (Google does not offer an Anthropic Messages endpoint, and the agents run on the Claude Agent SDK):
+
+```bash
+pip install 'litellm[proxy]'
+export GEMINI_API_KEY=your-gemini-api-key   # from aistudio.google.com
+litellm --model gemini/gemini-2.5-pro --alias gemini-2.5-pro --port 4000
+```
+
+Then select "Google Gemini (via LiteLLM)" in the Settings UI. The base URL defaults to `http://localhost:4000`; enter the LiteLLM master key as the API key if you configured one. Pick a listed model or type any model name your gateway serves (e.g. a `model_list` entry in a LiteLLM `config.yaml`). Tool-use quality and context handling depend on the model and gateway, so results may differ from Claude.
 
 ### Using Vertex AI
 

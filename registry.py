@@ -827,6 +827,20 @@ API_PROVIDERS: dict[str, dict[str, Any]] = {
         ],
         "default_model": "qwen3-coder",
     },
+    "gemini": {
+        # Google does not expose an Anthropic Messages-compatible endpoint, so Gemini is
+        # reached through an Anthropic-compatible gateway such as LiteLLM (default port 4000)
+        # that translates /v1/messages requests to the Gemini API.
+        "name": "Google Gemini (via LiteLLM)",
+        "base_url": "http://localhost:4000",
+        "requires_auth": True,
+        "auth_env_var": "ANTHROPIC_AUTH_TOKEN",
+        "models": [
+            {"id": "gemini-2.5-pro", "name": "Gemini 2.5 Pro"},
+            {"id": "gemini-2.5-flash", "name": "Gemini 2.5 Flash"},
+        ],
+        "default_model": "gemini-2.5-pro",
+    },
     "custom": {
         "name": "Custom Provider",
         "base_url": "",

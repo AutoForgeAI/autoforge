@@ -418,17 +418,22 @@ Run coding agents via Google Cloud Vertex AI:
 
 **Note:** Use `@` instead of `-` in model names for Vertex AI.
 
-### Alternative API Providers (GLM, Ollama, Kimi, Custom)
+### Alternative API Providers (GLM, Ollama, Kimi, Gemini, Custom)
 
 Alternative providers are configured via the **Settings UI** (gear icon > API Provider section). Select a provider, set the base URL, auth token, and model — no `.env` changes needed.
 
-**Available providers:** Claude (default), GLM (Zhipu AI), Ollama (local models), Kimi (Moonshot), Custom
+**Available providers:** Claude (default), GLM (Zhipu AI), Ollama (local models), Kimi (Moonshot), Gemini (Google, via LiteLLM), Custom
 
 **Ollama notes:**
 - Requires Ollama v0.14.0+ with Anthropic API compatibility
 - Install: https://ollama.com → `ollama serve` → `ollama pull qwen3-coder`
 - Recommended models: `qwen3-coder`, `deepseek-coder-v2`, `codellama`
 - Performance depends on local hardware (GPU recommended)
+
+**Gemini notes:**
+- Google has no Anthropic Messages-compatible endpoint, so Gemini goes through an Anthropic-compatible gateway (LiteLLM proxy, default `http://localhost:4000`)
+- Start: `GEMINI_API_KEY=... litellm --model gemini/gemini-2.5-pro --alias gemini-2.5-pro --port 4000`
+- Auth token is sent as `ANTHROPIC_AUTH_TOKEN` (the LiteLLM master key, if set); base URL and model are editable in the UI
 
 ## Claude Code Integration
 
