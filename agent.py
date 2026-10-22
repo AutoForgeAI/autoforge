@@ -299,12 +299,17 @@ async def run_autonomous_agent(
             # Don't crash - return error status so the loop can retry
             status, response = "error", str(e)
 
-        # Check for project completion - EXIT when all features pass
-        if "all features are passing" in response.lower() or "no more work to do" in response.lower():
+        # Check for project completion - EXIT when all features pass.
+        # Use the database as the source of truth rather than scanning the agent's
+        # response text, so the loop can't keep spawning regression-only sessions
+        # once everything passes (#13), whatever status the session ended with.
+        passing, _in_progress, total, _nhi = count_passing_tests(project_dir)
+        if not is_initializer and total > 0 and passing == total:
             print("\n" + "=" * 70)
-            print("  🎉 PROJECT COMPLETE - ALL FEATURES PASSING!")
+            print("  ALL FEATURES COMPLETE!")
             print("=" * 70)
-            print_progress_summary(project_dir)
+            print(f"\nCongratulations! All {total} features are passing.")
+            print("The autonomous agent has finished its work.")
             break
 
         # Handle status
@@ -377,16 +382,6 @@ async def run_autonomous_agent(
 
             sys.stdout.flush()  # this should allow the pause to be displayed before sleeping
             print_progress_summary(project_dir)
-
-            # Check if all features are complete - exit gracefully if done
-            passing, in_progress, total, _nhi = count_passing_tests(project_dir)
-            if total > 0 and passing == total:
-                print("\n" + "=" * 70)
-                print("  ALL FEATURES COMPLETE!")
-                print("=" * 70)
-                print(f"\nCongratulations! All {total} features are passing.")
-                print("The autonomous agent has finished its work.")
-                break
 
             # Single-feature mode, batch mode, or testing agent: exit after one session
             if feature_ids and len(feature_ids) > 1:

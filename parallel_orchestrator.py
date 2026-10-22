@@ -627,6 +627,26 @@ class ParallelOrchestrator:
             f"{failed_count} failed, {pending_count} pending -> {is_complete}")
         return is_complete
 
+    def get_stall_state(self, feature_dicts: list[dict]) -> str:
+        """Explain why no coding agent can be started right now.
+
+        Called when nothing is ready and no coding agent is running.
+
+        Returns:
+            "work" - a feature is ready or resumable after all (stale snapshot)
+            "testing" - testing agents are still running and may flip features back to failing
+            "human_input" - remaining work is waiting on a human response
+            "blocked" - remaining features can never become ready in this run
+        """
+        if self.get_resumable_features(feature_dicts) or self.get_ready_features(feature_dicts):
+            return "work"
+        with self._lock:
+            if self.running_testing_agents:
+                return "testing"
+        if any(not fd.get("passes") and fd.get("needs_human_input") for fd in feature_dicts):
+            return "human_input"
+        return "blocked"
+
     def get_passing_count(self, feature_dicts: list[dict] | None = None) -> int:
         """Get the number of passing features.
 
@@ -657,6 +677,8 @@ class ParallelOrchestrator:
         - YOLO mode is enabled
         - testing_agent_ratio is 0
         - No passing features exist yet
+        - All features are complete
+        - No coding agents are running
 
         Args:
             feature_dicts: Pre-fetched list of feature dicts. If None, queries the database.
@@ -673,6 +695,13 @@ class ParallelOrchestrator:
         # Don't spawn testing agents if all features are already complete
         if self.get_all_complete(feature_dicts):
             return
+
+        # Only regression test while coding agents are changing the code. When no
+        # coding agent is running (e.g. every remaining feature is blocked), repeated
+        # testing sessions can't find anything new and just burn tokens (#13).
+        with self._lock:
+            if not self.running_coding_agents:
+                return
 
         # Spawn testing agents one at a time, re-checking limits each time
         # This avoids TOCTOU race by holding lock during the decision
@@ -1484,6 +1513,7 @@ class ParallelOrchestrator:
 
         debug_log.section("FEATURE LOOP STARTING")
         loop_iteration = 0
+        waiting_notice_shown = False  # Print the "waiting for human input" notice once per stall
         while self.is_running and not self._shutdown_requested:
             loop_iteration += 1
             if loop_iteration <= 3:
@@ -1602,10 +1632,32 @@ class ParallelOrchestrator:
                             print("\nAll features complete!", flush=True)
                             break
 
-                        # Still have pending features but all are blocked by dependencies
-                        print("No ready features available. All remaining features may be blocked by dependencies.", flush=True)
+                        stall = self.get_stall_state(fresh_dicts)
+                        if stall == "work":
+                            continue  # Snapshot was stale; re-run the loop with fresh data
+
+                        if stall == "blocked":
+                            # Nothing can ever become ready in this run - exit instead of
+                            # idling forever (#13). Restarting resets retry counters.
+                            print("\nNo remaining features can be started: they have failed too many times "
+                                  "or depend on features that cannot complete.", flush=True)
+                            print("Stopping the agent. Fix the blockers and start it again to retry.", flush=True)
+                            break
+
+                        if stall == "human_input":
+                            if not waiting_notice_shown:
+                                waiting_ids = [fd["id"] for fd in fresh_dicts
+                                               if not fd.get("passes") and fd.get("needs_human_input")]
+                                print("No ready features available. Waiting for human input on feature(s): "
+                                      f"{', '.join(f'#{fid}' for fid in waiting_ids)}", flush=True)
+                                waiting_notice_shown = True
+                        elif stall == "testing":
+                            debug_log.log("STALL", "Waiting for testing agents before re-evaluating")
+
                         await self._wait_for_agent_completion(timeout=POLL_INTERVAL * 2)
                         continue
+
+                waiting_notice_shown = False
 
                 # Build dependency-aware batches from ready features
                 slots = self.max_concurrency - current
