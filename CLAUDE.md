@@ -210,6 +210,7 @@ The FastAPI server provides REST and WebSocket endpoints for the UI:
 - `scheduler_service.py` - APScheduler-based automated agent scheduling
 - `dev_server_manager.py` - Dev server lifecycle management
 - `assistant_chat_session.py` / `assistant_database.py` - Assistant chat sessions with SQLite persistence
+- `assistant_agent_tools.py` - In-process MCP server giving the assistant agent control tools (status/start/stop/pause/resume)
 - `spec_chat_session.py` - Spec creation chat sessions
 - `expand_chat_session.py` - Expand project chat sessions
 - `chat_constants.py` - Shared constants for chat services

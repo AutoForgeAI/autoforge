@@ -181,6 +181,16 @@ export function useAssistantChat({
               toolDescription = `Checking project progress`;
             } else if (data.tool === "mcp__features__feature_get_next") {
               toolDescription = `Getting next pending feature`;
+            } else if (data.tool === "mcp__agent_control__agent_get_status") {
+              toolDescription = `Checking agent status`;
+            } else if (data.tool === "mcp__agent_control__agent_start") {
+              toolDescription = `Starting coding agent`;
+            } else if (data.tool === "mcp__agent_control__agent_stop") {
+              toolDescription = `Stopping coding agent`;
+            } else if (data.tool === "mcp__agent_control__agent_pause") {
+              toolDescription = `Pausing coding agent (after current work)`;
+            } else if (data.tool === "mcp__agent_control__agent_resume") {
+              toolDescription = `Resuming coding agent`;
             } else if (data.tool === "Read") {
               const input = data.input as { file_path?: string };
               const path = input.file_path || "";
