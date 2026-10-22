@@ -129,6 +129,40 @@ export function useUpdateFeature(projectName: string) {
       api.updateFeature(projectName, featureId, update),
     onSuccess: () => {
       queryClient.invalidateQueries({ queryKey: ['features', projectName] })
+      queryClient.invalidateQueries({ queryKey: ['feature-readiness', projectName] })
+    },
+  })
+}
+
+export function useFeatureReadiness(projectName: string, featureId: number, enabled = true) {
+  return useQuery({
+    queryKey: ['feature-readiness', projectName, featureId],
+    queryFn: () => api.getFeatureReadiness(projectName, featureId),
+    enabled,
+  })
+}
+
+export function usePromoteFeature(projectName: string) {
+  const queryClient = useQueryClient()
+
+  return useMutation({
+    mutationFn: ({ featureId, force = false }: { featureId: number; force?: boolean }) =>
+      api.promoteFeature(projectName, featureId, force),
+    onSuccess: () => {
+      queryClient.invalidateQueries({ queryKey: ['features', projectName] })
+      queryClient.invalidateQueries({ queryKey: ['feature-readiness', projectName] })
+    },
+  })
+}
+
+export function useMoveFeatureToBacklog(projectName: string) {
+  const queryClient = useQueryClient()
+
+  return useMutation({
+    mutationFn: (featureId: number) => api.moveFeatureToBacklog(projectName, featureId),
+    onSuccess: () => {
+      queryClient.invalidateQueries({ queryKey: ['features', projectName] })
+      queryClient.invalidateQueries({ queryKey: ['feature-readiness', projectName] })
     },
   })
 }
@@ -308,6 +342,7 @@ const DEFAULT_SETTINGS: Settings = {
   api_base_url: null,
   api_has_auth_token: false,
   api_model: null,
+  maturity_priority: ['beta', 'limited_beta', 'alpha'],
 }
 
 const DEFAULT_PROVIDERS: ProvidersResponse = {

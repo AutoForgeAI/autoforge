@@ -35,6 +35,7 @@ from sqlalchemy import text
 
 from api.database import Feature, create_database
 from api.dependency_resolver import are_dependencies_satisfied, compute_scheduling_scores
+from api.maturity import get_maturity_order, sort_build_queue
 from progress import has_features
 from server.utils.process_utils import kill_process_tree
 
@@ -180,6 +181,9 @@ class ParallelOrchestrator:
         self.testing_agent_ratio = min(max(testing_agent_ratio, 0), 3)  # Clamp 0-3
         self.testing_batch_size = min(max(testing_batch_size, 1), 15)  # Clamp 1-15
         self.batch_size = min(max(batch_size, 1), 15)  # Clamp 1-15
+        # Maturity tag priority for the build queue (refreshed every loop iteration
+        # so settings changes apply without restarting the agent)
+        self.maturity_order = get_maturity_order()
         self.on_output = on_output
         self.on_status = on_status
 
@@ -427,6 +431,8 @@ class ParallelOrchestrator:
                     cf = feature_map.get(cid)
                     if not cf or cf.get("passes") or cf.get("in_progress"):
                         continue
+                    if cf.get("backlog") or cf.get("needs_human_input"):
+                        continue
                     # Check if ALL deps are satisfied by simulated passing set
                     deps = cf.get("dependencies") or []
                     if all(d in simulated_passing for d in deps):
@@ -499,6 +505,9 @@ class ParallelOrchestrator:
             # Skip if blocked for human input
             if fd.get("needs_human_input"):
                 continue
+            # Never resume backlog items (moved back to backlog by a human)
+            if fd.get("backlog"):
+                continue
             # Skip if already running in this orchestrator instance
             if fd["id"] in running_ids:
                 continue
@@ -507,10 +516,10 @@ class ParallelOrchestrator:
                 continue
             resumable.append(fd)
 
-        # Sort by scheduling score (higher = first), then priority, then id
+        # Sort by maturity tag, then scheduling score (higher = first), then priority, then id
         if scheduling_scores is None:
             scheduling_scores = compute_scheduling_scores(feature_dicts)
-        resumable.sort(key=lambda f: (-scheduling_scores.get(f["id"], 0), f["priority"], f["id"]))
+        sort_build_queue(resumable, scheduling_scores, self.maturity_order)
         return resumable
 
     def get_ready_features(
@@ -543,10 +552,17 @@ class ParallelOrchestrator:
                 running_ids.update(batch_ids)
 
         ready = []
-        skipped_reasons = {"passes": 0, "in_progress": 0, "running": 0, "failed": 0, "deps": 0, "needs_human_input": 0}
+        skipped_reasons = {
+            "passes": 0, "in_progress": 0, "running": 0, "failed": 0, "deps": 0,
+            "needs_human_input": 0, "backlog": 0,
+        }
         for fd in feature_dicts:
             if fd.get("passes"):
                 skipped_reasons["passes"] += 1
+                continue
+            # Guardrail: agents only ever start work from Pending, never from Backlog
+            if fd.get("backlog"):
+                skipped_reasons["backlog"] += 1
                 continue
             if fd.get("needs_human_input"):
                 skipped_reasons["needs_human_input"] += 1
@@ -568,10 +584,10 @@ class ParallelOrchestrator:
             else:
                 skipped_reasons["deps"] += 1
 
-        # Sort by scheduling score (higher = first), then priority, then id
+        # Sort by maturity tag, then scheduling score (higher = first), then priority, then id
         if scheduling_scores is None:
             scheduling_scores = compute_scheduling_scores(feature_dicts)
-        ready.sort(key=lambda f: (-scheduling_scores.get(f["id"], 0), f["priority"], f["id"]))
+        sort_build_queue(ready, scheduling_scores, self.maturity_order)
 
         # Summary counts for logging
         passing = skipped_reasons["passes"]
@@ -611,11 +627,15 @@ class ParallelOrchestrator:
 
         passing_count = 0
         failed_count = 0
+        backlog_count = 0
         pending_count = 0
         for fd in feature_dicts:
             if fd.get("passes"):
                 passing_count += 1
                 continue  # Completed successfully
+            if fd.get("backlog") and not fd.get("in_progress"):
+                backlog_count += 1
+                continue  # Not committed - excluded from the build queue
             if self._failure_counts.get(fd["id"], 0) >= MAX_FEATURE_RETRIES:
                 failed_count += 1
                 continue  # Permanently failed, count as "done"
@@ -624,7 +644,7 @@ class ParallelOrchestrator:
         total = len(feature_dicts)
         is_complete = pending_count == 0
         debug_log.log("COMPLETE_CHECK", f"get_all_complete: {passing_count}/{total} passing, "
-            f"{failed_count} failed, {pending_count} pending -> {is_complete}")
+            f"{failed_count} failed, {backlog_count} backlog, {pending_count} pending -> {is_complete}")
         return is_complete
 
     def get_passing_count(self, feature_dicts: list[dict] | None = None) -> int:
@@ -1499,6 +1519,7 @@ class ParallelOrchestrator:
 
             # Pre-compute scheduling scores once (BFS + reverse topo sort)
             scheduling_scores = compute_scheduling_scores(feature_dicts)
+            self.maturity_order = get_maturity_order()
 
             # Log every iteration to debug file (first 10, then every 5th)
             if loop_iteration <= 10 or loop_iteration % 5 == 0:
@@ -1518,6 +1539,10 @@ class ParallelOrchestrator:
                 # Check if all complete
                 if self.get_all_complete(feature_dicts):
                     print("\nAll features complete!", flush=True)
+                    backlog_left = sum(1 for fd in feature_dicts if fd.get("backlog") and not fd.get("passes"))
+                    if backlog_left:
+                        print(f"{backlog_left} backlog feature(s) were not built - promote them to "
+                              "Pending to include them in the build queue.", flush=True)
                     break
 
                 # --- Graceful pause (drain mode) ---
@@ -1603,7 +1628,8 @@ class ParallelOrchestrator:
                             break
 
                         # Still have pending features but all are blocked by dependencies
-                        print("No ready features available. All remaining features may be blocked by dependencies.", flush=True)
+                        print("No ready features available. All remaining features may be blocked by "
+                              "dependencies or waiting for human input.", flush=True)
                         await self._wait_for_agent_completion(timeout=POLL_INTERVAL * 2)
                         continue
 

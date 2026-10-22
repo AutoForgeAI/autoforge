@@ -19,7 +19,7 @@ Tools:
 - feature_create: Create a single feature
 - feature_add_dependency: Add a dependency between features
 - feature_remove_dependency: Remove a dependency
-- feature_get_ready: Get features ready to implement
+- feature_get_ready: Get features ready to implement (excludes backlog, ordered by maturity tag)
 - feature_get_blocked: Get features blocked by dependencies (with limit)
 - feature_get_graph: Get the dependency graph
 
@@ -47,6 +47,7 @@ from api.dependency_resolver import (
     compute_scheduling_scores,
     would_create_circular_dependency,
 )
+from api.maturity import get_maturity_order, is_schedulable, sort_build_queue
 from api.migration import migrate_json_to_sqlite
 
 # Configuration from environment
@@ -152,19 +153,22 @@ def feature_get_stats() -> str:
             func.count(Feature.id).label('total'),
             func.sum(case((Feature.passes == True, 1), else_=0)).label('passing'),
             func.sum(case((Feature.in_progress == True, 1), else_=0)).label('in_progress'),
-            func.sum(case((Feature.needs_human_input == True, 1), else_=0)).label('needs_human_input')
+            func.sum(case((Feature.needs_human_input == True, 1), else_=0)).label('needs_human_input'),
+            func.sum(case((Feature.backlog == True, 1), else_=0)).label('backlog')
         ).first()
 
         total = result.total or 0
         passing = int(result.passing or 0)
         in_progress = int(result.in_progress or 0)
         needs_human_input = int(result.needs_human_input or 0)
+        backlog = int(result.backlog or 0)
         percentage = round((passing / total) * 100, 1) if total > 0 else 0.0
 
         return json.dumps({
             "passing": passing,
             "in_progress": in_progress,
             "needs_human_input": needs_human_input,
+            "backlog": backlog,
             "total": total,
             "percentage": percentage
         })
@@ -409,7 +413,7 @@ def feature_mark_in_progress(
         result = session.execute(text("""
             UPDATE features
             SET in_progress = 1
-            WHERE id = :id AND passes = 0 AND in_progress = 0 AND needs_human_input = 0
+            WHERE id = :id AND passes = 0 AND in_progress = 0 AND needs_human_input = 0 AND backlog = 0
         """), {"id": feature_id})
         session.commit()
 
@@ -424,6 +428,8 @@ def feature_mark_in_progress(
                 return json.dumps({"error": f"Feature with ID {feature_id} is already in-progress"})
             if getattr(feature, 'needs_human_input', False):
                 return json.dumps({"error": f"Feature with ID {feature_id} is blocked waiting for human input"})
+            if feature.backlog:
+                return json.dumps({"error": f"Feature with ID {feature_id} is in the backlog (not ready to build)"})
             return json.dumps({"error": "Failed to mark feature in-progress for unknown reason"})
 
         # Fetch the claimed feature
@@ -464,11 +470,14 @@ def feature_claim_and_get(
         if getattr(feature, 'needs_human_input', False):
             return json.dumps({"error": f"Feature with ID {feature_id} is blocked waiting for human input"})
 
+        if feature.backlog:
+            return json.dumps({"error": f"Feature with ID {feature_id} is in the backlog (not ready to build)"})
+
         # Try atomic claim: only succeeds if not already claimed and not blocked for human input
         result = session.execute(text("""
             UPDATE features
             SET in_progress = 1
-            WHERE id = :id AND passes = 0 AND in_progress = 0 AND needs_human_input = 0
+            WHERE id = :id AND passes = 0 AND in_progress = 0 AND needs_human_input = 0 AND backlog = 0
         """), {"id": feature_id})
         session.commit()
 
@@ -797,7 +806,9 @@ def feature_get_ready(
     """Get all features ready to start (dependencies satisfied, not in progress).
 
     Useful for parallel execution - returns multiple features that can run simultaneously.
-    A feature is ready if it is not passing, not in progress, and all dependencies are passing.
+    A feature is ready if it is not passing, not in progress, not in the backlog,
+    and all dependencies are passing. Results are ordered by maturity tag
+    (beta > limited_beta > alpha by default), then by scheduling score.
 
     Args:
         limit: Maximum number of features to return (1-50, default 10)
@@ -812,18 +823,15 @@ def feature_get_ready(
 
         ready = []
         all_dicts = [f.to_dict() for f in all_features]
-        for f in all_features:
-            if f.passes or f.in_progress:
+        for fd in all_dicts:
+            if not is_schedulable(fd):
                 continue
-            if getattr(f, 'needs_human_input', False):
-                continue
-            deps = f.dependencies or []
-            if all(dep_id in passing_ids for dep_id in deps):
-                ready.append(f.to_dict())
+            if all(dep_id in passing_ids for dep_id in fd["dependencies"]):
+                ready.append(fd)
 
-        # Sort by scheduling score (higher = first), then priority, then id
+        # Sort by maturity tag, then scheduling score (higher = first), then priority, then id
         scores = compute_scheduling_scores(all_dicts)
-        ready.sort(key=lambda f: (-scores.get(f["id"], 0), f["priority"], f["id"]))
+        sort_build_queue(ready, scores, get_maturity_order())
 
         return json.dumps({
             "features": ready[:limit],
@@ -899,6 +907,8 @@ def feature_get_graph() -> str:
 
             if f.passes:
                 status = "done"
+            elif f.backlog:
+                status = "backlog"
             elif getattr(f, 'needs_human_input', False):
                 status = "needs_human_input"
             elif blocking:

@@ -95,10 +95,28 @@ export interface Feature {
   needs_human_input?: boolean
   human_input_request?: HumanInputRequest | null
   human_input_response?: HumanInputResponseData | null
+  backlog?: boolean                 // Not committed / not ready - excluded from agent queue
+  maturity?: MaturityLevel | null   // Spec review maturity tag
+  spec_notes?: string | null        // Spec review notes (rollout constraints, risks, ...)
+}
+
+// Spec roadmapping maturity tags
+export type MaturityLevel = 'alpha' | 'limited_beta' | 'beta'
+
+export interface ReadinessCheck {
+  id: string
+  label: string
+  passed: boolean
+}
+
+export interface FeatureReadiness {
+  feature_id: number
+  ready: boolean
+  checks: ReadinessCheck[]
 }
 
 // Status type for graph nodes
-export type FeatureStatus = 'pending' | 'in_progress' | 'done' | 'blocked' | 'needs_human_input'
+export type FeatureStatus = 'pending' | 'in_progress' | 'done' | 'blocked' | 'needs_human_input' | 'backlog'
 
 // Graph visualization types
 export interface GraphNode {
@@ -108,6 +126,7 @@ export interface GraphNode {
   status: FeatureStatus
   priority: number
   dependencies: number[]
+  maturity?: MaturityLevel | null
 }
 
 export interface GraphEdge {
@@ -125,6 +144,7 @@ export interface FeatureListResponse {
   in_progress: Feature[]
   done: Feature[]
   needs_human_input: Feature[]
+  backlog?: Feature[]
 }
 
 export interface FeatureCreate {
@@ -134,6 +154,9 @@ export interface FeatureCreate {
   steps: string[]
   priority?: number
   dependencies?: number[]
+  backlog?: boolean
+  maturity?: MaturityLevel | null
+  spec_notes?: string | null
 }
 
 export interface FeatureUpdate {
@@ -143,6 +166,8 @@ export interface FeatureUpdate {
   steps?: string[]
   priority?: number
   dependencies?: number[]
+  maturity?: MaturityLevel | null  // null clears the tag
+  spec_notes?: string | null
 }
 
 // Agent types
@@ -658,6 +683,7 @@ export interface Settings {
   api_base_url: string | null
   api_has_auth_token: boolean
   api_model: string | null
+  maturity_priority: MaturityLevel[]  // Build queue order of maturity tags
 }
 
 export interface SettingsUpdate {
@@ -671,6 +697,7 @@ export interface SettingsUpdate {
   api_base_url?: string
   api_auth_token?: string
   api_model?: string
+  maturity_priority?: MaturityLevel[]
 }
 
 export interface ProjectSettingsUpdate {

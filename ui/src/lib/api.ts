@@ -13,6 +13,7 @@ import type {
   FeatureUpdate,
   FeatureBulkCreate,
   FeatureBulkCreateResponse,
+  FeatureReadiness,
   DependencyGraph,
   AgentStatusResponse,
   AgentActionResponse,
@@ -48,7 +49,10 @@ async function fetchJSON<T>(url: string, options?: RequestInit): Promise<T> {
 
   if (!response.ok) {
     const error = await response.json().catch(() => ({ detail: 'Unknown error' }))
-    throw new Error(error.detail || `HTTP ${response.status}`)
+    const detail = typeof error.detail === 'object' && error.detail !== null
+      ? error.detail.message ?? JSON.stringify(error.detail)
+      : error.detail
+    throw new Error(detail || `HTTP ${response.status}`)
   }
 
   // Handle 204 No Content responses
@@ -157,6 +161,23 @@ export async function deleteFeature(projectName: string, featureId: number): Pro
 export async function skipFeature(projectName: string, featureId: number): Promise<void> {
   await fetchJSON(`/projects/${encodeURIComponent(projectName)}/features/${featureId}/skip`, {
     method: 'PATCH',
+  })
+}
+
+export async function getFeatureReadiness(projectName: string, featureId: number): Promise<FeatureReadiness> {
+  return fetchJSON(`/projects/${encodeURIComponent(projectName)}/features/${featureId}/readiness`)
+}
+
+export async function promoteFeature(projectName: string, featureId: number, force = false): Promise<Feature> {
+  return fetchJSON(`/projects/${encodeURIComponent(projectName)}/features/${featureId}/promote`, {
+    method: 'POST',
+    body: JSON.stringify({ force }),
+  })
+}
+
+export async function moveFeatureToBacklog(projectName: string, featureId: number): Promise<Feature> {
+  return fetchJSON(`/projects/${encodeURIComponent(projectName)}/features/${featureId}/backlog`, {
+    method: 'POST',
   })
 }
 

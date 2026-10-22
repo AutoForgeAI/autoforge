@@ -101,6 +101,9 @@ class ProjectSettingsUpdate(BaseModel):
 # Feature Schemas
 # ============================================================================
 
+MaturityLevel = Literal["alpha", "limited_beta", "beta"]
+
+
 class FeatureBase(BaseModel):
     """Base feature attributes."""
     category: str
@@ -108,6 +111,11 @@ class FeatureBase(BaseModel):
     description: str
     steps: list[str]
     dependencies: list[int] = Field(default_factory=list)  # Optional dependencies
+    # Backlog = not committed / not ready; excluded from the agent queue
+    backlog: bool = False
+    # Spec review outcome: maturity tag + optional notes (rollout constraints, risks, ...)
+    maturity: MaturityLevel | None = None
+    spec_notes: str | None = Field(None, max_length=5000)
 
 
 class FeatureCreate(FeatureBase):
@@ -123,6 +131,10 @@ class FeatureUpdate(BaseModel):
     steps: list[str] | None = None
     priority: int | None = None
     dependencies: list[int] | None = None  # Optional - can update dependencies
+    # Spec review fields; send an explicit null to clear. Moving in/out of the
+    # backlog goes through the /backlog and /promote endpoints (ready checks).
+    maturity: MaturityLevel | None = None
+    spec_notes: str | None = Field(None, max_length=5000)
 
 
 class FeatureResponse(FeatureBase):
@@ -168,6 +180,26 @@ class FeatureListResponse(BaseModel):
     in_progress: list[FeatureResponse]
     done: list[FeatureResponse]
     needs_human_input: list[FeatureResponse] = Field(default_factory=list)
+    backlog: list[FeatureResponse] = Field(default_factory=list)
+
+
+class ReadinessCheck(BaseModel):
+    """A single item of the spec completeness checklist."""
+    id: str
+    label: str
+    passed: bool
+
+
+class FeatureReadinessResponse(BaseModel):
+    """Result of running the ready checks for a feature."""
+    feature_id: int
+    ready: bool
+    checks: list[ReadinessCheck]
+
+
+class FeaturePromoteRequest(BaseModel):
+    """Request to promote a feature from Backlog to Pending."""
+    force: bool = False  # Human override: promote even if ready checks fail
 
 
 class FeatureBulkCreate(BaseModel):
@@ -191,9 +223,10 @@ class DependencyGraphNode(BaseModel):
     id: int
     name: str
     category: str
-    status: Literal["pending", "in_progress", "done", "blocked", "needs_human_input"]
+    status: Literal["pending", "in_progress", "done", "blocked", "needs_human_input", "backlog"]
     priority: int
     dependencies: list[int]
+    maturity: MaturityLevel | None = None
 
 
 class DependencyGraphEdge(BaseModel):
@@ -489,6 +522,8 @@ class SettingsResponse(BaseModel):
     api_base_url: str | None = None
     api_has_auth_token: bool = False  # Never expose actual token
     api_model: str | None = None
+    # Build queue priority of maturity tags (first = scheduled first)
+    maturity_priority: list[str] = Field(default_factory=lambda: ["beta", "limited_beta", "alpha"])
 
 
 class ModelsResponse(BaseModel):
@@ -510,6 +545,14 @@ class SettingsUpdate(BaseModel):
     api_base_url: str | None = Field(None, max_length=500)
     api_auth_token: str | None = Field(None, max_length=500)  # Write-only, never returned
     api_model: str | None = Field(None, max_length=200)
+    maturity_priority: list[MaturityLevel] | None = None
+
+    @field_validator('maturity_priority')
+    @classmethod
+    def validate_maturity_priority(cls, v: list[str] | None) -> list[str] | None:
+        if v is not None and sorted(v) != sorted(["alpha", "limited_beta", "beta"]):
+            raise ValueError("maturity_priority must list alpha, limited_beta and beta exactly once")
+        return v
 
     @field_validator('api_base_url')
     @classmethod

@@ -11,7 +11,8 @@ interface KanbanColumnProps {
   features: Feature[]
   allFeatures?: Feature[]
   activeAgents?: ActiveAgent[]
-  color: 'pending' | 'progress' | 'done' | 'human_input'
+  color: 'backlog' | 'pending' | 'progress' | 'done' | 'human_input'
+  subtitle?: string
   onFeatureClick: (feature: Feature) => void
   onAddFeature?: () => void
   onExpandProject?: () => void
@@ -21,6 +22,7 @@ interface KanbanColumnProps {
 }
 
 const colorMap = {
+  backlog: 'border-t-4 border-t-muted border-dashed',
   pending: 'border-t-4 border-t-muted',
   progress: 'border-t-4 border-t-primary',
   done: 'border-t-4 border-t-primary',
@@ -34,6 +36,7 @@ export function KanbanColumn({
   allFeatures = [],
   activeAgents = [],
   color,
+  subtitle,
   onFeatureClick,
   onAddFeature,
   onExpandProject,
@@ -55,10 +58,13 @@ export function KanbanColumn({
     <Card className={`overflow-hidden ${colorMap[color]} py-0`}>
       {/* Header */}
       <CardHeader className="px-4 py-3 border-b flex-row items-center justify-between space-y-0">
-        <CardTitle className="text-lg font-semibold flex items-center gap-2">
-          {title}
-          <Badge variant="secondary">{count}</Badge>
-        </CardTitle>
+        <div className="min-w-0">
+          <CardTitle className="text-lg font-semibold flex items-center gap-2">
+            {title}
+            <Badge variant="secondary">{count}</Badge>
+          </CardTitle>
+          {subtitle && <p className="text-xs text-muted-foreground mt-0.5">{subtitle}</p>}
+        </div>
         {(onAddFeature || onExpandProject) && (
           <div className="flex items-center gap-2">
             {onAddFeature && (

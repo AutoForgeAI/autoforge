@@ -224,7 +224,12 @@ The FastAPI server provides REST and WebSocket endpoints for the UI:
 Features are stored in SQLite (`features.db`) via SQLAlchemy. The agent interacts with features through an MCP server:
 
 - `mcp_server/feature_mcp.py` - MCP server exposing feature management tools
-- `api/database.py` - SQLAlchemy models (Feature table with priority, category, name, description, steps, passes, dependencies)
+- `api/database.py` - SQLAlchemy models (Feature table with priority, category, name, description, steps, passes, dependencies, backlog, maturity, spec_notes)
+- `api/maturity.py` - Backlog/maturity helpers: ready checks (spec completeness checklist), maturity-tag queue ordering
+
+**Backlog & maturity tags:**
+- `backlog=True` features are not committed / not ready: agents never claim or schedule them (MCP claim SQL + orchestrator guard). They leave the backlog only via `POST /api/projects/{name}/features/{id}/promote`, which enforces ready checks (description, ≥1 test step, maturity tag, dependencies exist and aren't in backlog) unless `{"force": true}` (human override). `POST .../backlog` moves a feature back.
+- Maturity tags (`alpha` / `limited_beta` / `beta`) are set via `PATCH .../features/{id}` (`maturity`, `spec_notes`). The build queue sorts by maturity rank first (global setting `maturity_priority`, default beta > limited_beta > alpha; untagged last), then the dependency-aware scheduling score.
 
 MCP tools available to the agent:
 - `feature_get_stats` - Progress statistics

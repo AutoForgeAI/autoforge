@@ -21,9 +21,12 @@ from ..schemas import (
     FeatureBulkCreateResponse,
     FeatureCreate,
     FeatureListResponse,
+    FeaturePromoteRequest,
+    FeatureReadinessResponse,
     FeatureResponse,
     FeatureUpdate,
     HumanInputResponse,
+    ReadinessCheck,
 )
 from ..utils.project_helpers import get_project_path as _get_project_path
 from ..utils.validation import validate_project_name
@@ -108,6 +111,9 @@ def feature_to_response(f, passing_ids: set[int] | None = None) -> FeatureRespon
         needs_human_input=getattr(f, 'needs_human_input', False) or False,
         human_input_request=getattr(f, 'human_input_request', None),
         human_input_response=getattr(f, 'human_input_response', None),
+        backlog=bool(getattr(f, 'backlog', False)),
+        maturity=getattr(f, 'maturity', None),
+        spec_notes=getattr(f, 'spec_notes', None),
     )
 
 
@@ -116,9 +122,11 @@ async def list_features(project_name: str):
     """
     List all features for a project organized by status.
 
-    Returns features in three lists:
-    - pending: passes=False, not currently being worked on
+    Returns features in these lists:
+    - backlog: not committed / not ready, excluded from the agent queue
+    - pending: passes=False, build-ready, not currently being worked on
     - in_progress: features currently being worked on (tracked via agent output)
+    - needs_human_input: waiting for a human to answer an agent request
     - done: passes=True
     """
     project_name = validate_project_name(project_name)
@@ -148,11 +156,14 @@ async def list_features(project_name: str):
             in_progress = []
             done = []
             needs_human_input_list = []
+            backlog = []
 
             for f in all_features:
                 feature_response = feature_to_response(f, passing_ids)
                 if f.passes:
                     done.append(feature_response)
+                elif f.backlog:
+                    backlog.append(feature_response)
                 elif getattr(f, 'needs_human_input', False):
                     needs_human_input_list.append(feature_response)
                 elif f.in_progress:
@@ -165,6 +176,7 @@ async def list_features(project_name: str):
                 in_progress=in_progress,
                 done=done,
                 needs_human_input=needs_human_input_list,
+                backlog=backlog,
             )
     except HTTPException:
         raise
@@ -206,6 +218,9 @@ async def create_feature(project_name: str, feature: FeatureCreate):
                 dependencies=feature.dependencies if feature.dependencies else None,
                 passes=False,
                 in_progress=False,
+                backlog=feature.backlog,
+                maturity=feature.maturity,
+                spec_notes=feature.spec_notes,
             )
 
             session.add(db_feature)
@@ -288,6 +303,9 @@ async def create_features_bulk(project_name: str, bulk: FeatureBulkCreate):
                     dependencies=feature_data.dependencies if feature_data.dependencies else None,
                     passes=False,
                     in_progress=False,
+                    backlog=feature_data.backlog,
+                    maturity=feature_data.maturity,
+                    spec_notes=feature_data.spec_notes,
                 )
                 session.add(db_feature)
                 session.flush()  # Flush to get the ID immediately
@@ -349,9 +367,11 @@ async def get_dependency_graph(project_name: str):
                 deps = f.dependencies or []
                 blocking = [d for d in deps if d not in passing_ids]
 
-                status: Literal["pending", "in_progress", "done", "blocked", "needs_human_input"]
+                status: Literal["pending", "in_progress", "done", "blocked", "needs_human_input", "backlog"]
                 if f.passes:
                     status = "done"
+                elif f.backlog:
+                    status = "backlog"
                 elif getattr(f, 'needs_human_input', False):
                     status = "needs_human_input"
                 elif blocking:
@@ -367,7 +387,8 @@ async def get_dependency_graph(project_name: str):
                     category=f.category,
                     status=status,
                     priority=f.priority,
-                    dependencies=deps
+                    dependencies=deps,
+                    maturity=f.maturity,
                 ))
 
                 for dep_id in deps:
@@ -467,6 +488,11 @@ async def update_feature(project_name: str, feature_id: int, update: FeatureUpda
                 feature.priority = update.priority
             if update.dependencies is not None:
                 feature.dependencies = update.dependencies if update.dependencies else None
+            # Spec review fields: an explicit null clears the value
+            if "maturity" in update.model_fields_set:
+                feature.maturity = update.maturity
+            if "spec_notes" in update.model_fields_set:
+                feature.spec_notes = update.spec_notes.strip() if update.spec_notes else None
 
             session.commit()
             session.refresh(feature)
@@ -532,6 +558,128 @@ async def delete_feature(project_name: str, feature_id: int):
     except Exception:
         logger.exception("Failed to delete feature")
         raise HTTPException(status_code=500, detail="Failed to delete feature")
+
+
+def _load_project_dir(project_name: str) -> Path:
+    """Validate the project name and return its directory, raising 404s as needed."""
+    project_name = validate_project_name(project_name)
+    project_dir = _get_project_path(project_name)
+
+    if not project_dir:
+        raise HTTPException(status_code=404, detail=f"Project '{project_name}' not found in registry")
+
+    if not project_dir.exists():
+        raise HTTPException(status_code=404, detail="Project directory not found")
+
+    return project_dir
+
+
+def _readiness(feature, all_features) -> FeatureReadinessResponse:
+    """Run the spec completeness checklist for a feature."""
+    from api.maturity import check_readiness
+
+    checks = check_readiness(feature.to_dict(), [f.to_dict() for f in all_features])
+    return FeatureReadinessResponse(
+        feature_id=feature.id,
+        ready=all(c["passed"] for c in checks),
+        checks=[ReadinessCheck(**c) for c in checks],
+    )
+
+
+@router.get("/{feature_id}/readiness", response_model=FeatureReadinessResponse)
+async def get_feature_readiness(project_name: str, feature_id: int):
+    """Return the ready checks that gate promoting a feature from Backlog to Pending."""
+    project_dir = _load_project_dir(project_name)
+    _, Feature = _get_db_classes()
+
+    try:
+        with get_db_session(project_dir) as session:
+            all_features = session.query(Feature).all()
+            feature = next((f for f in all_features if f.id == feature_id), None)
+            if not feature:
+                raise HTTPException(status_code=404, detail=f"Feature {feature_id} not found")
+            return _readiness(feature, all_features)
+    except HTTPException:
+        raise
+    except Exception:
+        logger.exception("Failed to check feature readiness")
+        raise HTTPException(status_code=500, detail="Failed to check feature readiness")
+
+
+@router.post("/{feature_id}/promote", response_model=FeatureResponse)
+async def promote_feature(project_name: str, feature_id: int, request: FeaturePromoteRequest | None = None):
+    """Promote a feature from Backlog to Pending (build-ready).
+
+    Ready checks are enforced: if any fail the request is rejected with 409 and
+    the failing checks, unless ``force`` is set (explicit human override).
+    """
+    project_dir = _load_project_dir(project_name)
+    force = request.force if request else False
+    _, Feature = _get_db_classes()
+
+    try:
+        with get_db_session(project_dir) as session:
+            all_features = session.query(Feature).all()
+            feature = next((f for f in all_features if f.id == feature_id), None)
+            if not feature:
+                raise HTTPException(status_code=404, detail=f"Feature {feature_id} not found")
+            if not feature.backlog:
+                raise HTTPException(status_code=400, detail=f"Feature {feature_id} is not in the backlog")
+
+            readiness = _readiness(feature, all_features)
+            if not readiness.ready and not force:
+                raise HTTPException(
+                    status_code=409,
+                    detail={
+                        "message": "Feature is not ready to build. Fix the failing checks or promote with force.",
+                        "checks": [c.model_dump() for c in readiness.checks],
+                    },
+                )
+
+            feature.backlog = False
+            session.commit()
+            session.refresh(feature)
+
+            passing_ids = {f.id for f in all_features if f.passes}
+            return feature_to_response(feature, passing_ids)
+    except HTTPException:
+        raise
+    except Exception:
+        logger.exception("Failed to promote feature")
+        raise HTTPException(status_code=500, detail="Failed to promote feature")
+
+
+@router.post("/{feature_id}/backlog", response_model=FeatureResponse)
+async def move_feature_to_backlog(project_name: str, feature_id: int):
+    """Move a feature back to the Backlog so agents will not pick it up."""
+    project_dir = _load_project_dir(project_name)
+    _, Feature = _get_db_classes()
+
+    try:
+        with get_db_session(project_dir) as session:
+            feature = session.query(Feature).filter(Feature.id == feature_id).first()
+            if not feature:
+                raise HTTPException(status_code=404, detail=f"Feature {feature_id} not found")
+            if feature.passes:
+                raise HTTPException(status_code=400, detail="Cannot move a completed feature to the backlog")
+            if feature.in_progress:
+                raise HTTPException(
+                    status_code=400,
+                    detail="Cannot move a feature to the backlog while an agent is working on it",
+                )
+
+            feature.backlog = True
+            session.commit()
+            session.refresh(feature)
+
+            all_features = session.query(Feature).all()
+            passing_ids = {f.id for f in all_features if f.passes}
+            return feature_to_response(feature, passing_ids)
+    except HTTPException:
+        raise
+    except Exception:
+        logger.exception("Failed to move feature to backlog")
+        raise HTTPException(status_code=500, detail="Failed to move feature to backlog")
 
 
 @router.patch("/{feature_id}/skip")

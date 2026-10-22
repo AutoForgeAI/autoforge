@@ -10,6 +10,8 @@ import heapq
 from collections import deque
 from typing import TypedDict
 
+from api.maturity import is_schedulable, sort_build_queue
+
 # Security: Prevent DoS via excessive dependencies
 MAX_DEPENDENCIES_PER_FEATURE = 20
 MAX_DEPENDENCY_DEPTH = 50  # Prevent stack overflow in cycle detection
@@ -352,34 +354,40 @@ def compute_scheduling_scores(features: list[dict]) -> dict[int, float]:
     return scores
 
 
-def get_ready_features(features: list[dict], limit: int = 10) -> list[dict]:
+def get_ready_features(
+    features: list[dict],
+    limit: int = 10,
+    maturity_order: list[str] | None = None,
+) -> list[dict]:
     """Get features that are ready to be worked on.
 
     A feature is ready if:
     - It is not passing
     - It is not in progress
+    - It is not in the backlog or waiting for human input
     - All its dependencies are satisfied
 
     Args:
         features: List of all feature dicts
         limit: Maximum number of features to return
+        maturity_order: Maturity tag priority (default: beta > limited_beta > alpha)
 
     Returns:
-        List of ready features, sorted by priority
+        List of ready features, sorted by maturity tag then scheduling score
     """
     passing_ids = {f["id"] for f in features if f.get("passes")}
 
     ready = []
     for f in features:
-        if f.get("passes") or f.get("in_progress"):
+        if not is_schedulable(f):
             continue
         deps = f.get("dependencies") or []
         if all(dep_id in passing_ids for dep_id in deps):
             ready.append(f)
 
-    # Sort by scheduling score (higher = first), then priority, then id
+    # Sort by maturity tag, then scheduling score (higher = first), then priority, then id
     scores = compute_scheduling_scores(features)
-    ready.sort(key=lambda f: (-scores.get(f["id"], 0), f.get("priority", 999), f["id"]))
+    sort_build_queue(ready, scores, maturity_order)
 
     return ready[:limit]
 
@@ -427,6 +435,8 @@ def build_graph_data(features: list[dict]) -> dict:
 
         if f.get("passes"):
             status = "done"
+        elif f.get("backlog"):
+            status = "backlog"
         elif blocking:
             status = "blocked"
         elif f.get("in_progress"):

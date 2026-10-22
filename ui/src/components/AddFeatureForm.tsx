@@ -13,6 +13,9 @@ import { Input } from '@/components/ui/input'
 import { Textarea } from '@/components/ui/textarea'
 import { Label } from '@/components/ui/label'
 import { Alert, AlertDescription } from '@/components/ui/alert'
+import { Checkbox } from '@/components/ui/checkbox'
+import { MATURITY_LEVELS, MATURITY_META } from '../lib/maturity'
+import type { MaturityLevel } from '../lib/types'
 
 interface Step {
   id: string
@@ -33,6 +36,8 @@ export function AddFeatureForm({ projectName, onClose }: AddFeatureFormProps) {
   const [steps, setSteps] = useState<Step[]>([{ id: `${formId}-step-0`, value: '' }])
   const [error, setError] = useState<string | null>(null)
   const [stepCounter, setStepCounter] = useState(1)
+  const [backlog, setBacklog] = useState(false)
+  const [maturity, setMaturity] = useState<MaturityLevel | null>(null)
 
   const createFeature = useCreateFeature(projectName)
 
@@ -67,6 +72,8 @@ export function AddFeatureForm({ projectName, onClose }: AddFeatureFormProps) {
         description: description.trim(),
         steps: filteredSteps,
         priority: priority ? parseInt(priority, 10) : undefined,
+        backlog,
+        maturity,
       })
       onClose()
     } catch (err) {
@@ -192,6 +199,41 @@ export function AddFeatureForm({ projectName, onClose }: AddFeatureFormProps) {
               <Plus size={16} />
               Add Step
             </Button>
+          </div>
+
+          {/* Spec roadmapping */}
+          <div className="space-y-3">
+            <div className="space-y-2">
+              <Label>Maturity <span className="text-muted-foreground font-normal">(optional)</span></Label>
+              <div className="flex flex-wrap gap-2">
+                {MATURITY_LEVELS.map(level => (
+                  <Button
+                    key={level}
+                    type="button"
+                    size="sm"
+                    variant={maturity === level ? 'default' : 'outline'}
+                    title={MATURITY_META[level].description}
+                    aria-pressed={maturity === level}
+                    onClick={() => setMaturity(maturity === level ? null : level)}
+                  >
+                    {MATURITY_META[level].label}
+                  </Button>
+                ))}
+              </div>
+            </div>
+            <div className="flex items-start gap-2">
+              <Checkbox
+                id={`${formId}-backlog`}
+                checked={backlog}
+                onCheckedChange={(checked) => setBacklog(checked === true)}
+              />
+              <div className="space-y-0.5">
+                <Label htmlFor={`${formId}-backlog`}>Add to Backlog</Label>
+                <p className="text-xs text-muted-foreground">
+                  Not ready yet - agents won't pick it up until it is promoted to Pending.
+                </p>
+              </div>
+            </div>
           </div>
 
           {/* Actions */}

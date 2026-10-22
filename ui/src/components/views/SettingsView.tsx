@@ -7,10 +7,11 @@
  */
 
 import { useState } from 'react'
-import { Loader2, AlertCircle, AlertTriangle, Check, Moon, Sun, Eye, EyeOff, ShieldCheck, Settings } from 'lucide-react'
+import { Loader2, AlertCircle, AlertTriangle, Check, Moon, Sun, Eye, EyeOff, ShieldCheck, Settings, ChevronUp, ChevronDown } from 'lucide-react'
 import { useSettings, useUpdateSettings, useAvailableModels, useAvailableProviders } from '@/hooks/useProjects'
 import { useTheme, THEMES } from '@/hooks/useTheme'
-import type { EffortLevel, ProviderInfo } from '@/lib/types'
+import { MATURITY_META } from '@/lib/maturity'
+import type { EffortLevel, MaturityLevel, ProviderInfo } from '@/lib/types'
 import { Switch } from '@/components/ui/switch'
 import { Slider } from '@/components/ui/slider'
 import { Label } from '@/components/ui/label'
@@ -60,6 +61,14 @@ export function SettingsView() {
     if (!updateSettings.isPending) {
       updateSettings.mutate({ batch_size: size })
     }
+  }
+
+  const handleMaturityMove = (order: MaturityLevel[], index: number, delta: -1 | 1) => {
+    const target = index + delta
+    if (updateSettings.isPending || target < 0 || target >= order.length) return
+    const next = [...order]
+    ;[next[index], next[target]] = [next[target], next[index]]
+    updateSettings.mutate({ maturity_priority: next })
   }
 
   const handleTestingBatchSizeChange = (size: number) => {
@@ -503,6 +512,43 @@ export function SettingsView() {
                     onChange={handleTestingBatchSizeChange}
                     disabled={isSaving}
                   />
+                </div>
+
+                {/* Maturity priority */}
+                <div className="space-y-2">
+                  <Label className="font-medium">Maturity Priority</Label>
+                  <p className="text-sm text-muted-foreground">
+                    Order in which agents pick up Pending features by maturity tag. Untagged features go last.
+                  </p>
+                  <ol className="space-y-1 max-w-sm">
+                    {(settings.maturity_priority ?? ['beta', 'limited_beta', 'alpha']).map((level, index, order) => {
+                      const label = MATURITY_META[level]?.label ?? level
+                      return (
+                        <li key={level} className="flex items-center gap-2 rounded-md border px-3 py-1.5 text-sm">
+                          <span className="font-mono text-xs text-muted-foreground w-4">{index + 1}</span>
+                          <span className="flex-1">{label}</span>
+                          <Button
+                            variant="ghost"
+                            size="icon-xs"
+                            aria-label={`Move ${label} up`}
+                            onClick={() => handleMaturityMove(order, index, -1)}
+                            disabled={isSaving || index === 0}
+                          >
+                            <ChevronUp size={14} />
+                          </Button>
+                          <Button
+                            variant="ghost"
+                            size="icon-xs"
+                            aria-label={`Move ${label} down`}
+                            onClick={() => handleMaturityMove(order, index, 1)}
+                            disabled={isSaving || index === order.length - 1}
+                          >
+                            <ChevronDown size={14} />
+                          </Button>
+                        </li>
+                      )
+                    })}
+                  </ol>
                 </div>
               </CardContent>
             </Card>
