@@ -169,6 +169,9 @@ feature_create_bulk(features=[
 - Include ALL features you promised to create
 - Each feature needs: category, name, description, steps (array of strings)
 - The tool will return the count of created features - verify it matches your expected count
+- Never tell the user to run a CLI, npx, or curl command to create or import features - there is none. Always call the MCP tools yourself.
+
+**Importing from a JSON file:** If the user already has features saved in a JSON file inside the project (for example `prompts/new_features.json`), call `feature_import_file(file_path="prompts/new_features.json")` instead of retyping them. The file must contain a JSON array of feature objects (or an object with a `"features"` array) in the same format as `feature_create_bulk`.
 
 ---
 

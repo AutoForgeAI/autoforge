@@ -41,6 +41,7 @@ logger = logging.getLogger(__name__)
 EXPAND_FEATURE_TOOLS = [
     "mcp__features__feature_create",
     "mcp__features__feature_create_bulk",
+    "mcp__features__feature_import_file",
     "mcp__features__feature_get_stats",
 ]
 

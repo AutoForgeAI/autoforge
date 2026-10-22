@@ -16,6 +16,7 @@ Tools:
 - feature_claim_and_get: Atomically claim and get feature details
 - feature_clear_in_progress: Clear in-progress status
 - feature_create_bulk: Create multiple features at once
+- feature_import_file: Import features from a JSON file in the project
 - feature_create: Create a single feature
 - feature_add_dependency: Add a dependency between features
 - feature_remove_dependency: Remove a dependency
@@ -51,6 +52,9 @@ from api.migration import migrate_json_to_sqlite
 
 # Configuration from environment
 PROJECT_DIR = Path(os.environ.get("PROJECT_DIR", ".")).resolve()
+
+# Upper bound for feature_import_file to avoid loading huge files into memory
+MAX_IMPORT_FILE_BYTES = 5 * 1024 * 1024
 
 
 # Pydantic models for input validation
@@ -631,6 +635,63 @@ def feature_create_bulk(
                 "created": len(created_features),
                 "with_dependencies": deps_count
             })
+    except Exception as e:
+        return json.dumps({"error": str(e)})
+
+
+@mcp.tool()
+def feature_import_file(
+    file_path: Annotated[str, Field(min_length=1, description="Path to a JSON feature file, relative to the project directory (absolute paths must be inside the project)")]
+) -> str:
+    """Import features from a JSON file inside the project directory.
+
+    Use this when the user already has a feature list saved as a JSON file
+    (e.g. prompts/new_features.json) and wants it added to the backlog.
+    There is no CLI or npx command for importing features -- this tool is
+    the way to do it.
+
+    The file must contain either a JSON array of features, or an object with
+    a "features" array. Each feature uses the same format as
+    feature_create_bulk: category, name, description, steps, and optionally
+    depends_on_indices.
+
+    Args:
+        file_path: Path to the JSON file, relative to the project directory
+
+    Returns:
+        JSON with: created (int), with_dependencies (int), file (str) - or error
+    """
+    try:
+        candidate = Path(file_path)
+        if not candidate.is_absolute():
+            candidate = PROJECT_DIR / candidate
+        resolved = candidate.resolve()
+
+        if not resolved.is_relative_to(PROJECT_DIR):
+            return json.dumps({"error": f"File must be inside the project directory: {file_path}"})
+        if not resolved.is_file():
+            return json.dumps({"error": f"File not found: {file_path}"})
+        if resolved.stat().st_size > MAX_IMPORT_FILE_BYTES:
+            return json.dumps({"error": f"File is too large to import (max {MAX_IMPORT_FILE_BYTES} bytes)"})
+
+        try:
+            data = json.loads(resolved.read_text(encoding="utf-8"))
+        except (UnicodeDecodeError, json.JSONDecodeError) as e:
+            return json.dumps({"error": f"File is not valid JSON: {e}"})
+
+        features = data.get("features") if isinstance(data, dict) else data
+        if not isinstance(features, list) or not features:
+            return json.dumps({
+                "error": "Expected a non-empty JSON array of features, or an object with a 'features' array"
+            })
+        for i, item in enumerate(features):
+            if not isinstance(item, dict):
+                return json.dumps({"error": f"Feature at index {i} is not a JSON object"})
+
+        result = json.loads(feature_create_bulk(features))
+        if "error" not in result:
+            result["file"] = resolved.relative_to(PROJECT_DIR).as_posix()
+        return json.dumps(result)
     except Exception as e:
         return json.dumps({"error": str(e)})
 

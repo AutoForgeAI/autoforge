@@ -241,6 +241,7 @@ MCP tools available to the agent:
 - `feature_clear_in_progress` - Clear in-progress status
 - `feature_create_bulk` - Initialize all features (used by initializer)
 - `feature_create` - Create a single feature
+- `feature_import_file` - Import features from a JSON file inside the project (used by assistant/expand chats)
 - `feature_add_dependency` - Add dependency between features (with cycle detection)
 - `feature_remove_dependency` - Remove a dependency
 - `feature_set_dependencies` - Set all dependencies for a feature at once

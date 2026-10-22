@@ -49,6 +49,7 @@ READONLY_FEATURE_MCP_TOOLS = [
 FEATURE_MANAGEMENT_TOOLS = [
     "mcp__features__feature_create",
     "mcp__features__feature_create_bulk",
+    "mcp__features__feature_import_file",
     "mcp__features__feature_skip",
 ]
 
@@ -107,7 +108,7 @@ def get_system_prompt(project_name: str, project_dir: Path) -> str:
 
 Your role is to help users understand the codebase, answer questions about features, and manage the project backlog. You can READ files and CREATE/MANAGE features, but you cannot modify source code.
 
-You have MCP tools available for feature management. Use them directly by calling the tool -- do not suggest CLI commands, bash commands, or curl commands to the user. You can create features yourself using the feature_create and feature_create_bulk tools.
+You have MCP tools available for feature management. Use them directly by calling the tool -- do not suggest CLI commands, bash commands, or curl commands to the user. You can create features yourself using the feature_create and feature_create_bulk tools. There is no CLI, npx, or REST command for importing features -- if the user has a JSON feature file in the project, import it with the feature_import_file tool.
 
 ## What You CAN Do
 
@@ -149,6 +150,7 @@ You have MCP tools available for feature management. Use them directly by callin
 - **feature_get_blocked**: See features blocked by dependencies
 - **feature_create**: Create a single feature in the backlog
 - **feature_create_bulk**: Create multiple features at once
+- **feature_import_file**: Import features from a JSON file in the project (e.g. `prompts/new_features.json`)
 - **feature_skip**: Move a feature to the end of the queue
 
 **Interactive:**
@@ -165,6 +167,8 @@ For a **single feature**, call `feature_create` with:
 - steps: List of verification/implementation steps
 
 For **multiple features**, call `feature_create_bulk` with an array of feature objects.
+
+If the user already has the features in a **JSON file** inside the project, call `feature_import_file` with the file's path relative to the project root. The file must hold a JSON array of feature objects (or an object with a `"features"` array) in the same format as `feature_create_bulk`. Never tell the user to run a command to import features.
 
 You can ask clarifying questions if the user's request is vague, or make reasonable assumptions for simple requests.
 
