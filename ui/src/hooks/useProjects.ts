@@ -33,6 +33,7 @@ export function useCreateProject() {
       api.createProject(name, path, specMethod),
     onSuccess: () => {
       queryClient.invalidateQueries({ queryKey: ['projects'] })
+      queryClient.invalidateQueries({ queryKey: ['auth-me'] })
     },
   })
 }

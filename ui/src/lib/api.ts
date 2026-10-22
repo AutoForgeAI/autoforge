@@ -33,9 +33,13 @@ import type {
   ScheduleUpdate,
   ScheduleListResponse,
   NextRunResponse,
+  AuthMe,
 } from './types'
 
 const API_BASE = '/api'
+
+/** Fired when the API answers 401 (session missing or expired). */
+export const UNAUTHORIZED_EVENT = 'autoforge:unauthorized'
 
 async function fetchJSON<T>(url: string, options?: RequestInit): Promise<T> {
   const response = await fetch(`${API_BASE}${url}`, {
@@ -45,6 +49,10 @@ async function fetchJSON<T>(url: string, options?: RequestInit): Promise<T> {
       ...options?.headers,
     },
   })
+
+  if (response.status === 401) {
+    window.dispatchEvent(new Event(UNAUTHORIZED_EVENT))
+  }
 
   if (!response.ok) {
     const error = await response.json().catch(() => ({ detail: 'Unknown error' }))
@@ -57,6 +65,24 @@ async function fetchJSON<T>(url: string, options?: RequestInit): Promise<T> {
   }
 
   return response.json()
+}
+
+// ============================================================================
+// Auth API
+// ============================================================================
+
+export async function getAuthMe(): Promise<AuthMe> {
+  return fetchJSON('/auth/me')
+}
+
+export async function logout(): Promise<{ logout_url: string | null }> {
+  return fetchJSON('/auth/logout', { method: 'POST' })
+}
+
+/** URL that starts the sign-in flow and returns to the current page afterwards. */
+export function loginUrl(): string {
+  const next = window.location.pathname + window.location.search + window.location.hash
+  return `${API_BASE}/auth/login?next=${encodeURIComponent(next)}`
 }
 
 // ============================================================================

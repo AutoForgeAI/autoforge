@@ -12,8 +12,9 @@ import sys
 from pathlib import Path
 from typing import Any, Callable
 
-from fastapi import APIRouter, HTTPException
+from fastapi import APIRouter, HTTPException, Request
 
+from ..auth.middleware import can_read_project
 from ..schemas import (
     ProjectCreate,
     ProjectDetail,
@@ -117,8 +118,8 @@ def get_project_stats(project_dir: Path) -> ProjectStats:
 
 
 @router.get("", response_model=list[ProjectSummary])
-async def list_projects():
-    """List all registered projects."""
+async def list_projects(request: Request):
+    """List all registered projects the caller may see."""
     _init_imports()
     assert _check_spec_exists is not None  # guaranteed by _init_imports()
     (_, _, _, list_registered_projects, validate_project_path,
@@ -128,6 +129,9 @@ async def list_projects():
     result = []
 
     for name, info in projects.items():
+        if not can_read_project(request.scope, name):
+            continue
+
         project_dir = Path(info["path"])
 
         # Skip if path no longer exists

@@ -728,3 +728,26 @@ export interface NextRunResponse {
   is_currently_running: boolean
   active_schedule_count: number
 }
+
+// ============================================================================
+// Auth Types
+// ============================================================================
+
+export type ProjectRole = 'none' | 'readonly' | 'developer'
+
+export interface AuthUserInfo {
+  sub: string
+  name: string
+  email: string | null
+  username: string | null
+  groups: string[]
+}
+
+export interface AuthMe {
+  enabled: boolean
+  authenticated: boolean
+  provider_name: string | null
+  user: AuthUserInfo | null
+  is_admin: boolean
+  project_roles: Record<string, ProjectRole>
+}

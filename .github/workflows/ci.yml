@@ -20,6 +20,8 @@ jobs:
         run: ruff check .
       - name: Run security tests
         run: python test_security.py
+      - name: Run auth tests
+        run: python -m pytest test_auth.py -q
 
   ui:
     runs-on: ubuntu-latest

@@ -15,10 +15,12 @@ import {
   BookOpen,
   PanelLeftClose,
   PanelLeftOpen,
+  LogOut,
 } from 'lucide-react'
 import { Button } from '@/components/ui/button'
 import { Tooltip, TooltipTrigger, TooltipContent } from '@/components/ui/tooltip'
 import { cn } from '@/lib/utils'
+import { useAuthMe, useLogout } from '@/hooks/useAuth'
 
 /**
  * Collapsible left sidebar for view navigation.
@@ -42,6 +44,10 @@ export function Sidebar() {
     wsState,
     setIsSpecCreating,
   } = useAppContext()
+
+  const { data: authMe } = useAuthMe()
+  const logout = useLogout()
+  const authUser = authMe?.enabled ? authMe.user : null
 
   const browserCount = wsState.browserScreenshots.size
   const logCount = wsState.logs.length
@@ -231,6 +237,16 @@ export function Sidebar() {
             collapsed={sidebarCollapsed}
             onClick={() => window.open('https://autoforge.cc', '_blank')}
           />
+
+          {/* Signed-in user (only when server auth is enabled) */}
+          {authUser && (
+            <UtilityButton
+              icon={LogOut}
+              label={`Sign out ${authUser.name}${authMe?.is_admin ? ' (admin)' : ''}`}
+              collapsed={sidebarCollapsed}
+              onClick={() => logout.mutate()}
+            />
+          )}
 
           {/* Collapse / expand toggle */}
           <div className={cn('mt-1 pt-1', !sidebarCollapsed && 'border-t border-sidebar-border/40')}>

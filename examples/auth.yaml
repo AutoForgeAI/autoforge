@@ -1,0 +1,55 @@
+# AutoForge Web UI roles
+# ======================
+#
+# Copy to ~/.autoforge/auth.yaml (or point AUTOFORGE_AUTH_CONFIG at it) and
+# enable sign-in with AUTOFORGE_AUTH_MODE=oidc (see .env.example).
+# The file is re-read automatically when it changes; no restart needed.
+# If it is missing or invalid, signed-in users get no access (fail closed).
+#
+# Roles
+#   admin      Everything: create/delete projects, global settings, the
+#              server folder browser, and developer on every project.
+#   developer  Per project: start/stop agents, edit features and prompts,
+#              terminal, dev server, spec/expand/assistant chats.
+#   readonly   Per project: view progress, features, logs and conversations.
+#
+# Matching
+#   users:  matched case-insensitively against the email,
+#           preferred_username or sub claim.
+#   groups: matched against the claims in AUTOFORGE_OIDC_GROUP_CLAIMS
+#           (default "groups,roles").
+#           - Entra ID: app role values (recommended) from the "roles" claim,
+#             or group object IDs from the "groups" claim.
+#           - Authentik: group names from the "groups" claim.
+#
+# A user's role on a project is the highest role granted by any entry.
+
+version: 1
+
+admins:
+  users:
+    - alice@example.com
+  groups:
+    - autoforge-admins
+
+# Role for signed-in users on projects not granted below: none | readonly | developer
+default_role: none
+
+projects:
+  # Glob patterns are allowed; "*" matches every project.
+  "*":
+    readonly:
+      groups:
+        - engineering
+
+  my-app:
+    developer:
+      users:
+        - bob@example.com
+      groups:
+        - my-app-devs
+
+  "client-*":
+    developer:
+      groups:
+        - client-team

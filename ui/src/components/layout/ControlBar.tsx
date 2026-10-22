@@ -1,10 +1,11 @@
 import { useAppContext } from '@/contexts/AppContext'
 import { AgentControl } from '../AgentControl'
 import { DevServerControl } from '../DevServerControl'
-import { RotateCcw } from 'lucide-react'
+import { Eye, RotateCcw } from 'lucide-react'
 import { Button } from '@/components/ui/button'
 import { Badge } from '@/components/ui/badge'
 import { Tooltip, TooltipTrigger, TooltipContent } from '@/components/ui/tooltip'
+import { usePermissions } from '@/hooks/useAuth'
 
 /**
  * Compact horizontal control bar at the top of the content area.
@@ -19,6 +20,23 @@ export function ControlBar() {
     settings,
     setShowResetModal,
   } = useAppContext()
+  const { canWrite } = usePermissions(selectedProject)
+
+  if (!canWrite) {
+    return (
+      <div className="sticky top-0 z-20 w-full flex items-center gap-3 bg-card/80 backdrop-blur-md border-b border-border px-4 py-2 shrink-0">
+        <Tooltip>
+          <TooltipTrigger asChild>
+            <Badge variant="outline" className="h-8 gap-1.5 px-3 text-xs">
+              <Eye size={14} />
+              Read-only
+            </Badge>
+          </TooltipTrigger>
+          <TooltipContent>You can view this project but not change it</TooltipContent>
+        </Tooltip>
+      </div>
+    )
+  }
 
   return (
     <div className="sticky top-0 z-20 w-full flex items-center gap-3 bg-card/80 backdrop-blur-md border-b border-border px-4 py-2 shrink-0">

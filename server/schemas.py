@@ -717,3 +717,32 @@ class NextRunResponse(BaseModel):
     next_end: datetime | None  # UTC (latest end if overlapping)
     is_currently_running: bool
     active_schedule_count: int
+
+
+# ============================================================================
+# Auth Schemas
+# ============================================================================
+
+class AuthUserInfo(BaseModel):
+    """Signed-in user as reported by /api/auth/me."""
+    sub: str
+    name: str
+    email: str | None = None
+    username: str | None = None
+    groups: list[str] = Field(default_factory=list)
+
+
+class AuthMeResponse(BaseModel):
+    """Auth status of the caller."""
+    enabled: bool
+    authenticated: bool
+    provider_name: str | None = None
+    user: AuthUserInfo | None = None
+    is_admin: bool = False
+    # Role per registered project: "none" | "readonly" | "developer"
+    project_roles: dict[str, str] = Field(default_factory=dict)
+
+
+class LogoutResponse(BaseModel):
+    """Result of POST /api/auth/logout."""
+    logout_url: str | None = None

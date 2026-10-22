@@ -40,9 +40,11 @@ from fastapi.middleware.cors import CORSMiddleware
 from fastapi.responses import FileResponse
 from fastapi.staticfiles import StaticFiles
 
+from .auth import AuthMiddleware, get_auth_settings
 from .routers import (
     agent_router,
     assistant_chat_router,
+    auth_router,
     devserver_router,
     expand_project_router,
     features_router,
@@ -127,12 +129,20 @@ if ALLOW_REMOTE:
         "Only use this in trusted network environments."
     )
 
+# Optional OIDC authentication (AUTOFORGE_AUTH_MODE=oidc). Loaded here so an
+# invalid configuration stops the server instead of running unprotected.
+AUTH_SETTINGS = get_auth_settings()
+if AUTH_SETTINGS.enabled:
+    logger.info("Authentication enabled (OIDC issuer: %s)", AUTH_SETTINGS.issuer)
+
 # CORS - allow all origins when remote access is enabled, otherwise localhost only
 if ALLOW_REMOTE:
     app.add_middleware(
         CORSMiddleware,
         allow_origins=["*"],  # Allow all origins for remote access
-        allow_credentials=True,
+        # With auth on, never let other origins make credentialed requests:
+        # the UI is same-origin and does not need CORS.
+        allow_credentials=not AUTH_SETTINGS.enabled,
         allow_methods=["*"],
         allow_headers=["*"],
     )
@@ -162,6 +172,10 @@ else:
 # Registered unconditionally so it applies even when AUTOFORGE_ALLOW_REMOTE=1.
 app.add_middleware(WebSocketOriginMiddleware, allow_remote=ALLOW_REMOTE)
 
+# Session + role checks for every API and WebSocket route (no-op when auth is
+# disabled). Pure ASGI so it also covers WebSocket handshakes.
+app.add_middleware(AuthMiddleware, settings=AUTH_SETTINGS)
+
 if not ALLOW_REMOTE:
     @app.middleware("http")
     async def require_localhost(request: Request, call_next):
@@ -179,6 +193,7 @@ if not ALLOW_REMOTE:
 # Include Routers
 # ============================================================================
 
+app.include_router(auth_router)
 app.include_router(projects_router)
 app.include_router(features_router)
 app.include_router(agent_router)

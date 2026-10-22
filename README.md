@@ -332,6 +332,57 @@ When test progress increases, the agent sends:
 }
 ```
 
+### Web UI Authentication (OIDC) and Roles
+
+By default the web UI has no login and only accepts connections from localhost. If you expose it on your network (`--host 0.0.0.0`), you can require sign-in through any OpenID Connect provider, such as **Microsoft Entra ID**, **Authentik** or **Keycloak**, and give people per-project roles.
+
+| Role | Scope | Can |
+|---|---|---|
+| `admin` | global | Everything: create/delete projects, global settings, server folder browser |
+| `developer` | per project | Start/stop agents, edit features and prompts, terminal, dev server, chats |
+| `readonly` | per project | View progress, features, logs and past conversations |
+
+**1. Register AutoForge with your provider** as a web application (authorization code flow) with the redirect URI `https://<your-host>/api/auth/callback`.
+
+- *Entra ID:* App registrations > New registration > Web platform. Create a client secret. For roles, define **App roles** (e.g. `autoforge-admins`, `my-app-devs`) and assign users/groups to them; they arrive in the `roles` claim.
+- *Authentik:* Create an OAuth2/OpenID provider + application (confidential client). The default `profile` scope includes the user's group names in the `groups` claim.
+
+**2. Configure `.env`:**
+
+```bash
+AUTOFORGE_AUTH_MODE=oidc
+# Entra ID: https://login.microsoftonline.com/<tenant-id>/v2.0
+# Authentik: https://authentik.example.com/application/o/<app-slug>/
+AUTOFORGE_OIDC_ISSUER=https://login.microsoftonline.com/<tenant-id>/v2.0
+AUTOFORGE_OIDC_CLIENT_ID=<application-id>
+AUTOFORGE_OIDC_CLIENT_SECRET=<client-secret>
+AUTOFORGE_OIDC_REDIRECT_URI=https://autoforge.example.com/api/auth/callback
+AUTOFORGE_OIDC_PROVIDER_NAME=Microsoft   # label on the sign-in button
+```
+
+Optional: `AUTOFORGE_OIDC_SCOPES` (default `openid profile email`), `AUTOFORGE_OIDC_GROUP_CLAIMS` (default `groups,roles`), `AUTOFORGE_SESSION_TTL_HOURS` (default 12), `AUTOFORGE_AUTH_CONFIG` (roles file path), `AUTOFORGE_COOKIE_SECURE`, `AUTOFORGE_AUTH_TRUSTED_ORIGINS` (e.g. `http://localhost:5173` when using the Vite dev server).
+
+**3. Assign roles** in `~/.autoforge/auth.yaml` (copy [`examples/auth.yaml`](examples/auth.yaml)). The file is reloaded automatically when it changes:
+
+```yaml
+version: 1
+admins:
+  users: [alice@example.com]
+  groups: [autoforge-admins]
+default_role: none          # role on projects not listed below
+projects:
+  "*":
+    readonly: { groups: [engineering] }
+  my-app:
+    developer: { users: [bob@example.com], groups: [my-app-devs] }
+```
+
+Notes:
+- The server refuses to start if `AUTOFORGE_AUTH_MODE=oidc` is set without an issuer and client ID. If the roles file is missing or invalid, signed-in users get no access until it is fixed.
+- Sessions are stored in server memory, so everyone signs in again after a restart.
+- Serve AutoForge over HTTPS (e.g. behind a reverse proxy) when it is reachable from other machines, so session cookies are not sent in clear text.
+- Auth protects the web UI and its API. The agents themselves still run as the OS user that started the server.
+
 ### Alternative API Providers (GLM, Ollama, Kimi, Custom)
 
 Alternative providers are configured via the **Settings UI** (gear icon > API Provider). Select your provider, set the base URL, auth token, and model directly in the UI — no `.env` changes needed.

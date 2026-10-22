@@ -202,6 +202,16 @@ The FastAPI server provides REST and WebSocket endpoints for the UI:
 - `devserver.py` - Dev server control (start/stop) and config
 - `schedules.py` - CRUD for time-based agent scheduling
 - `settings.py` - Global settings management (model selection, YOLO, batch size, headless browser)
+- `auth.py` - OIDC login/callback/logout and `/api/auth/me` (role per project)
+
+**Auth** (`server/auth/`, optional, enabled with `AUTOFORGE_AUTH_MODE=oidc`):
+- `config.py` - Settings from `AUTOFORGE_AUTH_*` / `AUTOFORGE_OIDC_*` env vars (server refuses to start if invalid)
+- `oidc.py` - Authorization code flow + PKCE, ID token verification (PyJWT/JWKS), works with Entra ID, Authentik, Keycloak
+- `session.py` - In-memory server-side sessions (`autoforge_session` cookie)
+- `roles.py` - `~/.autoforge/auth.yaml` role assignments (admin global; developer/readonly per project, glob patterns), hot-reloaded
+- `policy.py` - Single table mapping method + path to required access; unknown `/api` and `/ws` routes require admin
+- `middleware.py` - Pure-ASGI `AuthMiddleware` enforcing the policy on HTTP and WebSocket, plus same-origin checks for state-changing requests
+- When adding a router, add its paths to `policy.py` (and tests in `test_auth.py`)
 
 **Services** (`server/services/`):
 - `process_manager.py` - Agent process lifecycle management
