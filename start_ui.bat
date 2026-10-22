@@ -20,6 +20,8 @@ where python >nul 2>&1
 if %ERRORLEVEL% neq 0 (
     echo ERROR: Python not found in PATH
     echo Please install Python from https://python.org
+    echo When installing, check "Add python.exe to PATH" ^(or "Add Python to
+    echo environment variables" under Advanced Options^), then open a new terminal.
     pause
     exit /b 1
 )

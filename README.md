@@ -24,6 +24,8 @@ A long-running autonomous coding agent powered by the Claude Agent SDK. This too
 - **Python 3.11+** - Auto-detected on first run ([download](https://www.python.org/downloads/))
 - **Claude Code CLI** - Install and authenticate (see below)
 
+> **Windows users: make sure Python is on your PATH.** The standalone installer from python.org does **not** add Python to your PATH by default. When installing, check **"Add python.exe to PATH"** on the first screen (or, under **Customize installation → Advanced Options**, check **"Add Python to environment variables"**). Without this, AutoForge's start-up sequence cannot find Python. After installing, open a **new** terminal and run `python --version` to confirm it prints 3.11 or later. See [Troubleshooting](#troubleshooting) if it doesn't.
+
 ### Claude Code CLI (Required)
 
 **macOS / Linux:**
@@ -385,8 +387,15 @@ This is normal. The initializer agent is generating detailed test cases, which t
 **"Command blocked by security hook"**
 The agent tried to run a command not in the allowlist. This is the security system working as intended. If needed, add the command to `ALLOWED_COMMANDS` in `security.py`.
 
-**"Python 3.11+ required but not found"**
+**"Python 3.11+ required but not found"** / **"Python not found in PATH"**
 Install Python 3.11 or later from [python.org](https://www.python.org/downloads/). Make sure `python3` (or `python` on Windows) is on your PATH.
+
+On Windows, the standalone python.org installer leaves Python off the PATH unless you opt in:
+1. Re-run the installer and choose **Modify** (or uninstall and reinstall).
+2. Check **"Add Python to environment variables"** under **Advanced Options** (on a fresh install, check **"Add python.exe to PATH"** on the first screen).
+3. Close and reopen your terminal, then run `python --version` — it should print 3.11 or later.
+
+If `python` opens the Microsoft Store or prints nothing, the Windows Store alias is shadowing the real interpreter. Disable it under **Settings → Apps → Advanced app settings → App execution aliases** (turn off `python.exe` and `python3.exe`). Alternatively, if you installed via npm, point the `autoforge` command at a specific interpreter with the `AUTOFORGE_PYTHON` environment variable (e.g. `set AUTOFORGE_PYTHON=C:\Python313\python.exe`).
 
 **"Python venv module not available"**
 On Debian/Ubuntu, the venv module is packaged separately. Install it with `sudo apt install python3.XX-venv` (replace `XX` with your Python minor version, e.g., `python3.12-venv`).
