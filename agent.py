@@ -37,6 +37,7 @@ from prompts import (
     get_initializer_prompt,
     get_single_feature_prompt,
     get_testing_prompt,
+    with_file_editing_rules,
 )
 from rate_limit_utils import (
     calculate_error_backoff,
@@ -48,6 +49,25 @@ from rate_limit_utils import (
 
 # Configuration
 AUTO_CONTINUE_DELAY_SECONDS = 3
+
+# Abort a session after this many consecutive Write/Edit "file state" errors
+# (stale or missing Read) without a single successful write in between.
+# Prevents an agent from burning tokens all night retrying the same edit (#30).
+MAX_CONSECUTIVE_FILE_STATE_ERRORS = 6
+
+FILE_WRITE_TOOLS = frozenset({"Write", "Edit", "MultiEdit", "NotebookEdit"})
+
+_FILE_STATE_ERROR_PATTERNS = (
+    "file has not been read yet",
+    "file has been unexpectedly modified",
+    "file has been modified since read",
+)
+
+
+def is_file_state_error(error_text: str) -> bool:
+    """Return True if a tool error is Claude Code's stale/missing-read guard."""
+    lowered = error_text.lower()
+    return any(pattern in lowered for pattern in _FILE_STATE_ERROR_PATTERNS)
 
 
 async def run_agent_session(
@@ -82,6 +102,10 @@ async def run_agent_session(
         response_text = ""
         max_parse_retries = 50
         parse_retries = 0
+        # Track Write/Edit calls so repeated stale-read errors can be detected
+        write_tool_ids: set[str] = set()
+        consecutive_file_state_errors = 0
+        stuck_on_file_state = False
         while True:
             try:
                 async for msg in client.receive_response():
@@ -97,6 +121,9 @@ async def run_agent_session(
                                 print(block.text, end="", flush=True)
                             elif block_type == "ToolUseBlock" and hasattr(block, "name"):
                                 print(f"\n[Tool: {block.name}]", flush=True)
+                                tool_use_id = getattr(block, "id", None)
+                                if block.name in FILE_WRITE_TOOLS and tool_use_id:
+                                    write_tool_ids.add(tool_use_id)
                                 if hasattr(block, "input"):
                                     input_str = str(block.input)
                                     if len(input_str) > 200:
@@ -112,6 +139,7 @@ async def run_agent_session(
                             if block_type == "ToolResultBlock":
                                 result_content = getattr(block, "content", "")
                                 is_error = getattr(block, "is_error", False)
+                                is_write_result = getattr(block, "tool_use_id", None) in write_tool_ids
 
                                 # Check if command was blocked by security hook
                                 if "blocked" in str(result_content).lower():
@@ -120,9 +148,17 @@ async def run_agent_session(
                                     # Show errors (truncated)
                                     error_str = str(result_content)[:500]
                                     print(f"   [Error] {error_str}", flush=True)
+                                    if is_file_state_error(str(result_content)):
+                                        consecutive_file_state_errors += 1
                                 else:
                                     # Tool succeeded - just show brief confirmation
                                     print("   [Done]", flush=True)
+                                    if is_write_result:
+                                        consecutive_file_state_errors = 0
+
+                        if consecutive_file_state_errors >= MAX_CONSECUTIVE_FILE_STATE_ERRORS:
+                            stuck_on_file_state = True
+                            break
 
                 break  # Normal completion
             except Exception as inner_exc:
@@ -134,6 +170,21 @@ async def run_agent_session(
                     print(f"Ignoring unrecognized message from Claude CLI: {inner_exc}")
                     continue
                 raise  # Re-raise to outer except
+
+        if stuck_on_file_state:
+            message_text = (
+                f"Aborting session: {consecutive_file_state_errors} consecutive Write/Edit errors "
+                "('File has not been read yet' / 'File has been unexpectedly modified') with no "
+                "successful write in between. A dev server, formatter or another process may be "
+                "rewriting the file. Starting a fresh session instead of burning tokens."
+            )
+            print(f"\n[STUCK] {message_text}", flush=True)
+            try:
+                await client.interrupt()
+            except Exception as interrupt_exc:
+                print(f"   (interrupt failed: {interrupt_exc})", flush=True)
+            print("\n" + "-" * 70 + "\n")
+            return "error", message_text
 
         print("\n" + "-" * 70 + "\n")
         return "continue", response_text
@@ -288,6 +339,8 @@ async def run_autonomous_agent(
         else:
             # General coding prompt (legacy path)
             prompt = get_coding_prompt(project_dir, yolo_mode=yolo_mode)
+
+        prompt = with_file_editing_rules(prompt)
 
         # Run session with async context manager
         # Wrap in try/except to handle MCP server startup failures gracefully

@@ -69,6 +69,49 @@ def load_prompt(name: str, project_dir: Path | None = None) -> str:
     )
 
 
+# Guidance appended to every agent prompt so that Claude Code's file-state
+# guards ("File has not been read yet", "File has been unexpectedly modified")
+# don't send the agent into a token-burning retry loop (issue #30).
+# Appended at runtime (rather than baked into the templates) so it also
+# reaches existing projects whose prompts were copied from older templates.
+FILE_EDITING_RULES_MARKER = "## FILE EDITING RULES"
+
+FILE_EDITING_RULES = f"""\
+---
+
+{FILE_EDITING_RULES_MARKER}
+
+The Write and Edit tools refuse to touch a file unless you have viewed its
+CURRENT contents with the **Read tool**. Follow these rules to avoid wasting
+tokens on repeated tool errors:
+
+- **Always use the Read tool** on an existing file before Write or Edit.
+  `cat`, `head`, `tail` or `grep` via Bash do NOT count as reading the file.
+- **Edit immediately after Read.** Don't run commands (builds, formatters,
+  `npm install`, dev-server restarts) between the Read and the Edit -- they
+  may rewrite the file and invalidate your read.
+- **"File has not been read yet"** -> Read the file with the Read tool, then retry once.
+- **"File has been unexpectedly modified"** -> Something else (a dev server,
+  formatter, code generator, or another agent) changed the file. Read it again
+  and retry the edit right away. If the SAME error happens twice in a row for
+  the same file, STOP retrying that approach:
+  1. Stop whatever process keeps rewriting the file (e.g. a watcher or
+     formatter), or
+  2. Make the change in a NEW file instead (e.g. a new component module) and
+     import it, or
+  3. Move on and note the problem in `claude-progress.txt`.
+- Never loop on the same failing tool call. Two identical failures in a row
+  mean you must change strategy.
+"""
+
+
+def with_file_editing_rules(prompt: str) -> str:
+    """Append the file-editing rules to a prompt unless it already has them."""
+    if FILE_EDITING_RULES_MARKER in prompt:
+        return prompt
+    return prompt.rstrip("\n") + "\n\n" + FILE_EDITING_RULES
+
+
 def get_initializer_prompt(project_dir: Path | None = None) -> str:
     """Load the initializer prompt (project-specific if available)."""
     return load_prompt("initializer_prompt", project_dir)
