@@ -386,7 +386,7 @@ This is normal. The initializer agent is generating detailed test cases, which t
 The agent tried to run a command not in the allowlist. This is the security system working as intended. If needed, add the command to `ALLOWED_COMMANDS` in `security.py`.
 
 **"Python 3.11+ required but not found"**
-Install Python 3.11 or later from [python.org](https://www.python.org/downloads/). Make sure `python3` (or `python` on Windows) is on your PATH.
+Install Python 3.11 or later from [python.org](https://www.python.org/downloads/). Make sure `python3` (or `python` on Windows) is on your PATH. If Python is installed but still not detected (e.g. it lives in an unusual location), set `AUTOFORGE_PYTHON` to the interpreter path: `export AUTOFORGE_PYTHON=/path/to/python3` (macOS/Linux) or `$env:AUTOFORGE_PYTHON = "C:\path\to\python.exe"` (PowerShell).
 
 **"Python venv module not available"**
 On Debian/Ubuntu, the venv module is packaged separately. Install it with `sudo apt install python3.XX-venv` (replace `XX` with your Python minor version, e.g., `python3.12-venv`).
