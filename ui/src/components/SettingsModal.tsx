@@ -23,7 +23,7 @@ interface SettingsModalProps {
 const PROVIDER_INFO_TEXT: Record<string, string> = {
   claude: 'Default provider. Uses Claude CLI credentials. API key auth is recommended.',
   kimi: 'Get an API key at kimi.com',
-  glm: 'Get an API key at open.bigmodel.cn',
+  glm: 'Get an API key at z.ai (international) or open.bigmodel.cn (China — set Base URL to https://open.bigmodel.cn/api/anthropic). Any GLM model ID can be entered below.',
   ollama: 'Run models locally. Install from ollama.com',
   custom: 'Connect to any OpenAI-compatible API endpoint.',
 }
@@ -116,8 +116,8 @@ export function SettingsModal({ isOpen, onClose }: SettingsModalProps) {
   const currentProviderInfo: ProviderInfo | undefined = providers.find(p => p.id === currentProvider)
   const isAlternativeProvider = currentProvider !== 'claude'
   const showAuthField = isAlternativeProvider && currentProviderInfo?.requires_auth
-  const showBaseUrlField = currentProvider === 'custom' || currentProvider === 'azure'
-  const showCustomModelInput = currentProvider === 'custom' || currentProvider === 'ollama'
+  const showBaseUrlField = currentProvider === 'custom' || currentProvider === 'azure' || currentProvider === 'glm'
+  const showCustomModelInput = currentProvider === 'custom' || currentProvider === 'ollama' || currentProvider === 'glm'
 
   return (
     <Dialog open={isOpen} onOpenChange={(open) => !open && onClose()}>
@@ -332,7 +332,11 @@ export function SettingsModal({ isOpen, onClose }: SettingsModalProps) {
                         type="text"
                         value={customBaseUrlInput}
                         onChange={(e) => setCustomBaseUrlInput(e.target.value)}
-                        placeholder={currentProvider === 'azure' ? 'https://your-resource.services.ai.azure.com/anthropic' : 'https://api.example.com/v1'}
+                        placeholder={
+                          currentProvider === 'azure' ? 'https://your-resource.services.ai.azure.com/anthropic'
+                          : currentProvider === 'glm' ? 'https://api.z.ai/api/anthropic'
+                          : 'https://api.example.com/v1'
+                        }
                         className="flex-1 py-1.5 px-3 text-sm border rounded-md bg-background"
                       />
                       <Button
@@ -370,7 +374,7 @@ export function SettingsModal({ isOpen, onClose }: SettingsModalProps) {
                   ))}
                 </div>
               )}
-              {/* Custom model input for Ollama/Custom */}
+              {/* Custom model input for Ollama/Custom/GLM */}
               {showCustomModelInput && (
                 <div className="flex gap-2 pt-1">
                   <input

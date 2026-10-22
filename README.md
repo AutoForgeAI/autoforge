@@ -338,6 +338,14 @@ Alternative providers are configured via the **Settings UI** (gear icon > API Pr
 
 Available providers: **Claude** (default), **GLM** (Zhipu AI), **Ollama** (local models), **Kimi** (Moonshot), **Custom**
 
+For GLM 4.x / GLM 5 (Zhipu AI / Z.ai):
+1. Get an API key at [z.ai](https://z.ai) (international) or [open.bigmodel.cn](https://open.bigmodel.cn) (mainland China).
+2. In Settings, select **GLM** and paste the key.
+3. Pick a model (GLM 5, GLM 4.7, GLM 4.6, GLM 4.5 Air) or type any other GLM model ID (e.g. `glm-4.5`).
+4. Mainland China accounts: change the Base URL to `https://open.bigmodel.cn/api/anthropic` (default is `https://api.z.ai/api/anthropic`).
+
+A 50-minute request timeout (`API_TIMEOUT_MS=3000000`, as recommended by Z.ai) is applied automatically for GLM so long planning turns don't time out.
+
 For Ollama, install [Ollama v0.14.0+](https://ollama.com), run `ollama serve`, and pull a coding model (e.g., `ollama pull qwen3-coder`). Then select "Ollama" in the Settings UI.
 
 ### Using Vertex AI
