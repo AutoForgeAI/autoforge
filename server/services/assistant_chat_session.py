@@ -7,6 +7,7 @@ The assistant can answer questions about the codebase and features
 but cannot modify any files.
 """
 
+import asyncio
 import json
 import logging
 import os
@@ -208,6 +209,24 @@ class AssistantChatSession:
         self._client_entered: bool = False
         self.created_at = datetime.now()
         self._history_loaded: bool = False  # Track if we've loaded history for resumed conversations
+        # Serializes responses so a resumed client can't query Claude while a
+        # previous response (possibly from a closed WebSocket) is still streaming
+        self._response_lock = asyncio.Lock()
+
+    @property
+    def is_ready(self) -> bool:
+        """Whether the Claude client has been started and is usable."""
+        return self.client is not None and self._client_entered
+
+    @property
+    def is_responding(self) -> bool:
+        """Whether a response is currently being generated."""
+        return self._response_lock.locked()
+
+    async def wait_until_idle(self) -> None:
+        """Wait for any in-flight response to finish (and be persisted)."""
+        async with self._response_lock:
+            pass
 
     async def close(self) -> None:
         """Clean up resources and close the Claude client."""
@@ -371,6 +390,14 @@ class AssistantChatSession:
             yield {"type": "error", "content": "No conversation ID set."}
             return
 
+        async with self._response_lock:
+            async for chunk in self._send_message_locked(user_message):
+                yield chunk
+
+    async def _send_message_locked(self, user_message: str) -> AsyncGenerator[dict, None]:
+        """Body of send_message(); caller must hold _response_lock."""
+        assert self.conversation_id is not None
+
         # Store user message in database
         add_message(self.project_dir, self.conversation_id, "user", user_message)
 
@@ -420,7 +447,8 @@ class AssistantChatSession:
 
         full_response = ""
 
-        # Stream the response
+        # Stream the response. The response is persisted in the finally block so
+        # that even an interrupted or failed response isn't lost from history.
         try:
             async for msg in safe_receive_response(self.client, logger):
                 msg_type = type(msg).__name__
@@ -461,10 +489,9 @@ class AssistantChatSession:
                 yield {"type": "error", "content": "Rate limited. Please try again later."}
                 return
             raise
-
-        # Store the complete response in the database
-        if full_response and self.conversation_id:
-            add_message(self.project_dir, self.conversation_id, "assistant", full_response)
+        finally:
+            if full_response and self.conversation_id:
+                add_message(self.project_dir, self.conversation_id, "assistant", full_response)
 
     def get_conversation_id(self) -> Optional[int]:
         """Get the current conversation ID."""
@@ -509,6 +536,31 @@ async def create_session(
             logger.warning(f"Error closing old session for {project_name}: {e}")
 
     return session
+
+
+async def get_or_create_session(
+    project_name: str,
+    project_dir: Path,
+    conversation_id: Optional[int] = None
+) -> tuple[AssistantChatSession, bool]:
+    """
+    Reuse the active session when resuming the same conversation, else create one.
+
+    Reusing keeps the Claude client (and its context) alive across WebSocket
+    reconnects, e.g. when the assistant panel is closed and reopened, so an
+    in-flight response isn't killed.
+
+    Returns:
+        (session, reused) - reused is True if an existing session was returned
+    """
+    if conversation_id is not None:
+        with _sessions_lock:
+            existing = _sessions.get(project_name)
+        if existing and existing.conversation_id == conversation_id and existing.is_ready:
+            return existing, True
+
+    session = await create_session(project_name, project_dir, conversation_id=conversation_id)
+    return session, False
 
 
 async def remove_session(project_name: str) -> None:

@@ -571,6 +571,16 @@ export interface AssistantChatPongMessage {
   type: 'pong'
 }
 
+// Sent when resuming a conversation whose previous response is still generating
+export interface AssistantChatResponseInProgressMessage {
+  type: 'response_in_progress'
+}
+
+// Sent once that in-flight response has finished and been saved to history
+export interface AssistantChatHistoryUpdatedMessage {
+  type: 'history_updated'
+}
+
 export type AssistantChatServerMessage =
   | AssistantChatTextMessage
   | AssistantChatToolCallMessage
@@ -579,6 +589,8 @@ export type AssistantChatServerMessage =
   | AssistantChatErrorMessage
   | AssistantChatConversationCreatedMessage
   | AssistantChatPongMessage
+  | AssistantChatResponseInProgressMessage
+  | AssistantChatHistoryUpdatedMessage
 
 // ============================================================================
 // Expand Chat Types

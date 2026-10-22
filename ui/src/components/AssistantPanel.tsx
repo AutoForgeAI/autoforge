@@ -54,10 +54,29 @@ export function AssistantPanel({ projectName, isOpen, onClose }: AssistantPanelP
   )
 
   // Fetch conversation details when we have an ID
-  const { data: conversationDetail, isLoading: isLoadingConversation, error: conversationError } = useConversation(
-    projectName,
-    conversationId
-  )
+  const {
+    data: conversationDetail,
+    isLoading: isLoadingConversationQuery,
+    error: conversationError,
+    refetch: refetchConversation,
+  } = useConversation(projectName, conversationId)
+
+  // The chat unmounts while the panel is closed, so messages exchanged since the
+  // last fetch (or a response that finished in the background) are missing from
+  // the cached conversation. Refetch on every open before resuming the chat.
+  const [wasOpen, setWasOpen] = useState(isOpen)
+  const [isRefreshingOnOpen, setIsRefreshingOnOpen] = useState(false)
+  if (isOpen !== wasOpen) {
+    setWasOpen(isOpen)
+    if (isOpen && conversationId) {
+      setIsRefreshingOnOpen(true)
+    }
+  }
+  useEffect(() => {
+    if (!isRefreshingOnOpen) return
+    refetchConversation().finally(() => setIsRefreshingOnOpen(false))
+  }, [isRefreshingOnOpen, refetchConversation])
+  const isLoadingConversation = isLoadingConversationQuery || isRefreshingOnOpen
 
   // Clear stored conversation ID if it no longer exists (404 error)
   useEffect(() => {

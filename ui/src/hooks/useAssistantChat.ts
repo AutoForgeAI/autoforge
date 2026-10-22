@@ -3,6 +3,7 @@
  */
 
 import { useState, useCallback, useRef, useEffect } from "react";
+import { useQueryClient } from "@tanstack/react-query";
 import type { ChatMessage, AssistantChatServerMessage, SpecQuestion } from "../lib/types";
 
 type ConnectionStatus = "disconnected" | "connecting" | "connected" | "error";
@@ -39,6 +40,7 @@ export function useAssistantChat({
     useState<ConnectionStatus>("disconnected");
   const [conversationId, setConversationId] = useState<number | null>(null);
   const [currentQuestions, setCurrentQuestions] = useState<SpecQuestion[] | null>(null);
+  const queryClient = useQueryClient();
 
   const wsRef = useRef<WebSocket | null>(null);
   const currentAssistantMessageRef = useRef<string | null>(null);
@@ -51,6 +53,8 @@ export function useAssistantChat({
   // Clean up on unmount
   useEffect(() => {
     return () => {
+      // Prevent onclose from scheduling a reconnect after unmount
+      reconnectAttempts.current = maxReconnectAttempts;
       if (pingIntervalRef.current) {
         clearInterval(pingIntervalRef.current);
       }
@@ -269,6 +273,20 @@ export function useAssistantChat({
             break;
           }
 
+          case "response_in_progress": {
+            // A response started before the panel was closed is still being
+            // generated server-side; keep the input locked until it finishes
+            setIsLoading(true);
+            break;
+          }
+
+          case "history_updated": {
+            // That response is now saved - reload the conversation from the DB
+            queryClient.invalidateQueries({ queryKey: ["conversation", projectName] });
+            queryClient.invalidateQueries({ queryKey: ["conversations", projectName] });
+            break;
+          }
+
           case "pong": {
             // Keep-alive response, nothing to do
             break;
@@ -278,7 +296,7 @@ export function useAssistantChat({
         console.error("Failed to parse WebSocket message:", e);
       }
     };
-  }, [projectName, onError]);
+  }, [projectName, onError, queryClient]);
 
   const start = useCallback(
     (existingConversationId?: number | null) => {
