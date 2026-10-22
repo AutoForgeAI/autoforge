@@ -35,6 +35,7 @@ from sqlalchemy import text
 
 from api.database import Feature, create_database
 from api.dependency_resolver import are_dependencies_satisfied, compute_scheduling_scores
+from api.roadmap import get_configured_maturity_order, ready_sort_key
 from progress import has_features
 from server.utils.process_utils import kill_process_tree
 
@@ -180,6 +181,8 @@ class ParallelOrchestrator:
         self.testing_agent_ratio = min(max(testing_agent_ratio, 0), 3)  # Clamp 0-3
         self.testing_batch_size = min(max(testing_batch_size, 1), 15)  # Clamp 1-15
         self.batch_size = min(max(batch_size, 1), 15)  # Clamp 1-15
+        # Maturity tag scheduling order (global setting, read once per run)
+        self.maturity_order = get_configured_maturity_order()
         self.on_output = on_output
         self.on_status = on_status
 
@@ -425,7 +428,7 @@ class ParallelOrchestrator:
 
                 for cid in candidate_ids:
                     cf = feature_map.get(cid)
-                    if not cf or cf.get("passes") or cf.get("in_progress"):
+                    if not cf or cf.get("passes") or cf.get("in_progress") or cf.get("backlog"):
                         continue
                     # Check if ALL deps are satisfied by simulated passing set
                     deps = cf.get("dependencies") or []
@@ -496,6 +499,9 @@ class ParallelOrchestrator:
         for fd in feature_dicts:
             if not fd.get("in_progress") or fd.get("passes"):
                 continue
+            # Never resume Backlog features (not committed / not ready)
+            if fd.get("backlog"):
+                continue
             # Skip if blocked for human input
             if fd.get("needs_human_input"):
                 continue
@@ -507,10 +513,10 @@ class ParallelOrchestrator:
                 continue
             resumable.append(fd)
 
-        # Sort by scheduling score (higher = first), then priority, then id
+        # Sort by maturity tag, then scheduling score (higher = first), then priority, then id
         if scheduling_scores is None:
             scheduling_scores = compute_scheduling_scores(feature_dicts)
-        resumable.sort(key=lambda f: (-scheduling_scores.get(f["id"], 0), f["priority"], f["id"]))
+        resumable.sort(key=ready_sort_key(scheduling_scores, self.maturity_order))
         return resumable
 
     def get_ready_features(
@@ -543,10 +549,17 @@ class ParallelOrchestrator:
                 running_ids.update(batch_ids)
 
         ready = []
-        skipped_reasons = {"passes": 0, "in_progress": 0, "running": 0, "failed": 0, "deps": 0, "needs_human_input": 0}
+        skipped_reasons = {
+            "passes": 0, "in_progress": 0, "running": 0, "failed": 0, "deps": 0,
+            "needs_human_input": 0, "backlog": 0,
+        }
         for fd in feature_dicts:
             if fd.get("passes"):
                 skipped_reasons["passes"] += 1
+                continue
+            # Guardrail: only Pending work is build-ready, never Backlog
+            if fd.get("backlog"):
+                skipped_reasons["backlog"] += 1
                 continue
             if fd.get("needs_human_input"):
                 skipped_reasons["needs_human_input"] += 1
@@ -568,10 +581,10 @@ class ParallelOrchestrator:
             else:
                 skipped_reasons["deps"] += 1
 
-        # Sort by scheduling score (higher = first), then priority, then id
+        # Sort by maturity tag, then scheduling score (higher = first), then priority, then id
         if scheduling_scores is None:
             scheduling_scores = compute_scheduling_scores(feature_dicts)
-        ready.sort(key=lambda f: (-scheduling_scores.get(f["id"], 0), f["priority"], f["id"]))
+        ready.sort(key=ready_sort_key(scheduling_scores, self.maturity_order))
 
         # Summary counts for logging
         passing = skipped_reasons["passes"]
@@ -616,6 +629,8 @@ class ParallelOrchestrator:
             if fd.get("passes"):
                 passing_count += 1
                 continue  # Completed successfully
+            if fd.get("backlog"):
+                continue  # Not committed - doesn't keep the run alive
             if self._failure_counts.get(fd["id"], 0) >= MAX_FEATURE_RETRIES:
                 failed_count += 1
                 continue  # Permanently failed, count as "done"
@@ -731,6 +746,8 @@ class ParallelOrchestrator:
                 return False, "Feature not found"
             if feature.passes:
                 return False, "Feature already complete"
+            if feature.backlog:
+                return False, "Feature is in the Backlog (not ready)"
 
             if resume:
                 # Resuming: feature should already be in_progress
@@ -793,6 +810,8 @@ class ParallelOrchestrator:
                     return False, f"Feature {fid} not found"
                 if feature.passes:
                     return False, f"Feature {fid} already complete"
+                if feature.backlog:
+                    return False, f"Feature {fid} is in the Backlog (not ready)"
                 if not resume:
                     if feature.in_progress:
                         return False, f"Feature {fid} already in progress"

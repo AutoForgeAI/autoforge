@@ -26,6 +26,7 @@ export function DashboardView() {
     features.in_progress.length === 0 &&
     features.done.length === 0 &&
     (features.needs_human_input?.length || 0) === 0 &&
+    (features.backlog?.length || 0) === 0 &&
     wsState.agentStatus === 'running'
 
   return (

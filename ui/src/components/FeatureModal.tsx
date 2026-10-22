@@ -1,8 +1,11 @@
 import { useState } from 'react'
-import { X, CheckCircle2, Circle, SkipForward, Trash2, Loader2, AlertCircle, Pencil, Link2, AlertTriangle, UserCircle } from 'lucide-react'
+import { X, CheckCircle2, Circle, SkipForward, Trash2, Loader2, AlertCircle, Pencil, Link2, AlertTriangle, UserCircle, Archive } from 'lucide-react'
 import { useSkipFeature, useDeleteFeature, useFeatures, useResolveHumanInput } from '../hooks/useProjects'
 import { EditFeatureForm } from './EditFeatureForm'
 import { HumanInputForm } from './HumanInputForm'
+import { MaturityBadge } from './MaturityBadge'
+import { SpecReviewPanel } from './SpecReviewPanel'
+import { allFeaturesOf } from '../lib/maturity'
 import type { Feature } from '../lib/types'
 import {
   Dialog,
@@ -42,7 +45,7 @@ interface FeatureModalProps {
   onClose: () => void
 }
 
-export function FeatureModal({ feature, projectName, onClose }: FeatureModalProps) {
+export function FeatureModal({ feature: initialFeature, projectName, onClose }: FeatureModalProps) {
   const [error, setError] = useState<string | null>(null)
   const [showDeleteConfirm, setShowDeleteConfirm] = useState(false)
   const [showEdit, setShowEdit] = useState(false)
@@ -55,11 +58,12 @@ export function FeatureModal({ feature, projectName, onClose }: FeatureModalProp
 
   // Build a map of feature ID to feature for looking up dependency names
   const featureMap = new Map<number, Feature>()
-  if (allFeatures) {
-    ;[...allFeatures.pending, ...allFeatures.in_progress, ...allFeatures.done, ...(allFeatures.needs_human_input || [])].forEach(f => {
-      featureMap.set(f.id, f)
-    })
-  }
+  allFeaturesOf(allFeatures).forEach(f => {
+    featureMap.set(f.id, f)
+  })
+
+  // Prefer the freshest copy so spec review / backlog changes show immediately
+  const feature = featureMap.get(initialFeature.id) ?? initialFeature
 
   // Get dependency features
   const dependencies = (feature.dependencies || [])
@@ -112,6 +116,7 @@ export function FeatureModal({ feature, projectName, onClose }: FeatureModalProp
             <Badge className={`${getCategoryColor(feature.category)} text-white`}>
               {feature.category}
             </Badge>
+            <MaturityBadge maturity={feature.maturity} showUnreviewed={!feature.passes} />
           </div>
           <DialogTitle className="text-xl mt-2">{feature.name}</DialogTitle>
         </DialogHeader>
@@ -143,6 +148,11 @@ export function FeatureModal({ feature, projectName, onClose }: FeatureModalProp
               <>
                 <CheckCircle2 size={24} className="text-primary" />
                 <span className="font-semibold text-primary">COMPLETE</span>
+              </>
+            ) : feature.backlog ? (
+              <>
+                <Archive size={24} className="text-muted-foreground" />
+                <span className="font-semibold text-muted-foreground">BACKLOG</span>
               </>
             ) : feature.needs_human_input ? (
               <>
@@ -199,6 +209,26 @@ export function FeatureModal({ feature, projectName, onClose }: FeatureModalProp
             </h3>
             <p className="text-foreground">{feature.description}</p>
           </div>
+
+          {/* Spec review notes (read-only for completed features) */}
+          {feature.passes && feature.spec_notes && (
+            <div>
+              <h3 className="font-semibold mb-2 text-sm uppercase tracking-wide text-muted-foreground">
+                Spec Notes
+              </h3>
+              <p className="text-foreground whitespace-pre-wrap">{feature.spec_notes}</p>
+            </div>
+          )}
+
+          {/* Spec review, ready checks and Backlog/Pending controls */}
+          {!feature.passes && (
+            <SpecReviewPanel
+              key={`${feature.id}-${feature.maturity ?? ''}-${feature.spec_notes ?? ''}`}
+              feature={feature}
+              projectName={projectName}
+              onError={setError}
+            />
+          )}
 
           {/* Blocked By Warning */}
           {blockingDeps.length > 0 && (

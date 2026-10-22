@@ -66,6 +66,14 @@ class Feature(Base):
     human_input_request = Column(JSON, nullable=True, default=None)   # Agent's structured request
     human_input_response = Column(JSON, nullable=True, default=None)  # Human's response
 
+    # Backlog / spec roadmapping
+    # backlog=True: not committed / not ready - never handed to coding agents
+    backlog = Column(Boolean, nullable=False, default=False, index=True)
+    # Maturity tag from spec review: "alpha" | "limited_beta" | "beta" (NULL = not reviewed)
+    maturity = Column(String(20), nullable=True, default=None)
+    # Spec review notes: rollout constraints, risks, must-not-break areas
+    spec_notes = Column(Text, nullable=True, default=None)
+
     def to_dict(self) -> dict:
         """Convert feature to dictionary for JSON serialization."""
         return {
@@ -84,6 +92,10 @@ class Feature(Base):
             "needs_human_input": self.needs_human_input if self.needs_human_input is not None else False,
             "human_input_request": self.human_input_request,
             "human_input_response": self.human_input_response,
+            # Backlog / spec roadmapping fields
+            "backlog": self.backlog if self.backlog is not None else False,
+            "maturity": self.maturity,
+            "spec_notes": self.spec_notes,
         }
 
     def get_dependencies_safe(self) -> list[int]:
@@ -326,6 +338,22 @@ def _migrate_add_human_input_columns(engine) -> None:
         conn.commit()
 
 
+def _migrate_add_roadmap_columns(engine) -> None:
+    """Add backlog / maturity / spec_notes columns to existing databases."""
+    with engine.connect() as conn:
+        result = conn.execute(text("PRAGMA table_info(features)"))
+        columns = [row[1] for row in result.fetchall()]
+
+        if "backlog" not in columns:
+            conn.execute(text("ALTER TABLE features ADD COLUMN backlog BOOLEAN DEFAULT 0"))
+        if "maturity" not in columns:
+            conn.execute(text("ALTER TABLE features ADD COLUMN maturity VARCHAR(20) DEFAULT NULL"))
+        if "spec_notes" not in columns:
+            conn.execute(text("ALTER TABLE features ADD COLUMN spec_notes TEXT DEFAULT NULL"))
+        conn.execute(text("UPDATE features SET backlog = 0 WHERE backlog IS NULL"))
+        conn.commit()
+
+
 def _migrate_add_schedules_tables(engine) -> None:
     """Create schedules and schedule_overrides tables if they don't exist."""
     from sqlalchemy import inspect
@@ -450,6 +478,7 @@ def create_database(project_dir: Path) -> tuple:
     _migrate_add_dependencies_column(engine)
     _migrate_add_testing_columns(engine)
     _migrate_add_human_input_columns(engine)
+    _migrate_add_roadmap_columns(engine)
 
     # Migrate to add schedules tables
     _migrate_add_schedules_tables(engine)

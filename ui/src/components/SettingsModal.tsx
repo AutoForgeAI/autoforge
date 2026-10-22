@@ -2,7 +2,8 @@ import { useState } from 'react'
 import { Loader2, AlertCircle, AlertTriangle, Check, Moon, Sun, Eye, EyeOff, ShieldCheck } from 'lucide-react'
 import { useSettings, useUpdateSettings, useAvailableModels, useAvailableProviders } from '../hooks/useProjects'
 import { useTheme, THEMES } from '../hooks/useTheme'
-import type { EffortLevel, ProviderInfo } from '../lib/types'
+import type { EffortLevel, Maturity, ProviderInfo } from '../lib/types'
+import { MaturityOrderSetting } from './MaturityOrderSetting'
 import {
   Dialog,
   DialogContent,
@@ -67,6 +68,12 @@ export function SettingsModal({ isOpen, onClose }: SettingsModalProps) {
   const handleTestingBatchSizeChange = (size: number) => {
     if (!updateSettings.isPending) {
       updateSettings.mutate({ testing_batch_size: size })
+    }
+  }
+
+  const handleMaturityOrderChange = (order: Maturity[]) => {
+    if (!updateSettings.isPending) {
+      updateSettings.mutate({ maturity_order: order })
     }
   }
 
@@ -489,6 +496,12 @@ export function SettingsModal({ isOpen, onClose }: SettingsModalProps) {
                 disabled={isSaving}
               />
             </div>
+
+            <MaturityOrderSetting
+              order={settings.maturity_order}
+              disabled={isSaving}
+              onChange={handleMaturityOrderChange}
+            />
 
             {/* Update Error */}
             {updateSettings.isError && (

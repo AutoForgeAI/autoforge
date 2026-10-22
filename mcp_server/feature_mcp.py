@@ -48,6 +48,7 @@ from api.dependency_resolver import (
     would_create_circular_dependency,
 )
 from api.migration import migrate_json_to_sqlite
+from api.roadmap import get_configured_maturity_order, ready_sort_key
 
 # Configuration from environment
 PROJECT_DIR = Path(os.environ.get("PROJECT_DIR", ".")).resolve()
@@ -405,11 +406,13 @@ def feature_mark_in_progress(
     """
     session = get_session()
     try:
-        # Atomic claim: only succeeds if feature is not already claimed, passing, or blocked for human input
+        # Atomic claim: only succeeds if feature is not already claimed, passing,
+        # blocked for human input, or parked in the Backlog
         result = session.execute(text("""
             UPDATE features
             SET in_progress = 1
             WHERE id = :id AND passes = 0 AND in_progress = 0 AND needs_human_input = 0
+              AND COALESCE(backlog, 0) = 0
         """), {"id": feature_id})
         session.commit()
 
@@ -424,6 +427,8 @@ def feature_mark_in_progress(
                 return json.dumps({"error": f"Feature with ID {feature_id} is already in-progress"})
             if getattr(feature, 'needs_human_input', False):
                 return json.dumps({"error": f"Feature with ID {feature_id} is blocked waiting for human input"})
+            if feature.backlog:
+                return json.dumps({"error": f"Feature with ID {feature_id} is in the Backlog (not ready to build)"})
             return json.dumps({"error": "Failed to mark feature in-progress for unknown reason"})
 
         # Fetch the claimed feature
@@ -464,11 +469,16 @@ def feature_claim_and_get(
         if getattr(feature, 'needs_human_input', False):
             return json.dumps({"error": f"Feature with ID {feature_id} is blocked waiting for human input"})
 
-        # Try atomic claim: only succeeds if not already claimed and not blocked for human input
+        if feature.backlog:
+            return json.dumps({"error": f"Feature with ID {feature_id} is in the Backlog (not ready to build)"})
+
+        # Try atomic claim: only succeeds if not already claimed, not blocked for human input,
+        # and not in the Backlog
         result = session.execute(text("""
             UPDATE features
             SET in_progress = 1
             WHERE id = :id AND passes = 0 AND in_progress = 0 AND needs_human_input = 0
+              AND COALESCE(backlog, 0) = 0
         """), {"id": feature_id})
         session.commit()
 
@@ -797,7 +807,9 @@ def feature_get_ready(
     """Get all features ready to start (dependencies satisfied, not in progress).
 
     Useful for parallel execution - returns multiple features that can run simultaneously.
-    A feature is ready if it is not passing, not in progress, and all dependencies are passing.
+    A feature is ready if it is not passing, not in progress, not in the Backlog,
+    and all dependencies are passing. Results are ordered by maturity tag
+    (configured order, default beta > limited_beta > alpha), then scheduling score.
 
     Args:
         limit: Maximum number of features to return (1-50, default 10)
@@ -817,13 +829,15 @@ def feature_get_ready(
                 continue
             if getattr(f, 'needs_human_input', False):
                 continue
+            if f.backlog:
+                continue  # Backlog = not committed / not ready
             deps = f.dependencies or []
             if all(dep_id in passing_ids for dep_id in deps):
                 ready.append(f.to_dict())
 
-        # Sort by scheduling score (higher = first), then priority, then id
+        # Sort by maturity tag, then scheduling score (higher = first), then priority, then id
         scores = compute_scheduling_scores(all_dicts)
-        ready.sort(key=lambda f: (-scores.get(f["id"], 0), f["priority"], f["id"]))
+        ready.sort(key=ready_sort_key(scores, get_configured_maturity_order()))
 
         return json.dumps({
             "features": ready[:limit],

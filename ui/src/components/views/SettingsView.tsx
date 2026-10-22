@@ -10,7 +10,8 @@ import { useState } from 'react'
 import { Loader2, AlertCircle, AlertTriangle, Check, Moon, Sun, Eye, EyeOff, ShieldCheck, Settings } from 'lucide-react'
 import { useSettings, useUpdateSettings, useAvailableModels, useAvailableProviders } from '@/hooks/useProjects'
 import { useTheme, THEMES } from '@/hooks/useTheme'
-import type { EffortLevel, ProviderInfo } from '@/lib/types'
+import type { EffortLevel, Maturity, ProviderInfo } from '@/lib/types'
+import { MaturityOrderSetting } from '@/components/MaturityOrderSetting'
 import { Switch } from '@/components/ui/switch'
 import { Slider } from '@/components/ui/slider'
 import { Label } from '@/components/ui/label'
@@ -65,6 +66,12 @@ export function SettingsView() {
   const handleTestingBatchSizeChange = (size: number) => {
     if (!updateSettings.isPending) {
       updateSettings.mutate({ testing_batch_size: size })
+    }
+  }
+
+  const handleMaturityOrderChange = (order: Maturity[]) => {
+    if (!updateSettings.isPending) {
+      updateSettings.mutate({ maturity_order: order })
     }
   }
 
@@ -504,6 +511,13 @@ export function SettingsView() {
                     disabled={isSaving}
                   />
                 </div>
+
+                {/* Maturity Priority */}
+                <MaturityOrderSetting
+                  order={settings.maturity_order}
+                  disabled={isSaving}
+                  onChange={handleMaturityOrderChange}
+                />
               </CardContent>
             </Card>
 

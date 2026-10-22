@@ -10,6 +10,8 @@ import heapq
 from collections import deque
 from typing import TypedDict
 
+from api.roadmap import DEFAULT_MATURITY_ORDER, ready_sort_key
+
 # Security: Prevent DoS via excessive dependencies
 MAX_DEPENDENCIES_PER_FEATURE = 20
 MAX_DEPENDENCY_DEPTH = 50  # Prevent stack overflow in cycle detection
@@ -352,34 +354,40 @@ def compute_scheduling_scores(features: list[dict]) -> dict[int, float]:
     return scores
 
 
-def get_ready_features(features: list[dict], limit: int = 10) -> list[dict]:
+def get_ready_features(
+    features: list[dict],
+    limit: int = 10,
+    maturity_order: list[str] | tuple[str, ...] = DEFAULT_MATURITY_ORDER,
+) -> list[dict]:
     """Get features that are ready to be worked on.
 
     A feature is ready if:
     - It is not passing
     - It is not in progress
+    - It is not in the Backlog
     - All its dependencies are satisfied
 
     Args:
         features: List of all feature dicts
         limit: Maximum number of features to return
+        maturity_order: Maturity tags in scheduling order (first = highest)
 
     Returns:
-        List of ready features, sorted by priority
+        List of ready features, sorted by maturity tag then scheduling score
     """
     passing_ids = {f["id"] for f in features if f.get("passes")}
 
     ready = []
     for f in features:
-        if f.get("passes") or f.get("in_progress"):
+        if f.get("passes") or f.get("in_progress") or f.get("backlog"):
             continue
         deps = f.get("dependencies") or []
         if all(dep_id in passing_ids for dep_id in deps):
             ready.append(f)
 
-    # Sort by scheduling score (higher = first), then priority, then id
+    # Sort by maturity tag, then scheduling score (higher = first), then priority, then id
     scores = compute_scheduling_scores(features)
-    ready.sort(key=lambda f: (-scores.get(f["id"], 0), f.get("priority", 999), f["id"]))
+    ready.sort(key=ready_sort_key(scores, maturity_order))
 
     return ready[:limit]
 

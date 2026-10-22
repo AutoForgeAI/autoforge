@@ -4,7 +4,7 @@
 
 import { useQuery, useMutation, useQueryClient } from '@tanstack/react-query'
 import * as api from '../lib/api'
-import type { DevServerConfig, FeatureCreate, FeatureUpdate, ModelsResponse, ProjectSettingsUpdate, ProvidersResponse, Settings, SettingsUpdate } from '../lib/types'
+import type { DevServerConfig, FeatureCreate, FeatureUpdate, Maturity, ModelsResponse, ProjectSettingsUpdate, ProvidersResponse, Settings, SettingsUpdate } from '../lib/types'
 
 // ============================================================================
 // Projects
@@ -127,6 +127,41 @@ export function useUpdateFeature(projectName: string) {
   return useMutation({
     mutationFn: ({ featureId, update }: { featureId: number; update: FeatureUpdate }) =>
       api.updateFeature(projectName, featureId, update),
+    onSuccess: () => {
+      queryClient.invalidateQueries({ queryKey: ['features', projectName] })
+    },
+  })
+}
+
+export function useReviewFeatureSpec(projectName: string) {
+  const queryClient = useQueryClient()
+
+  return useMutation({
+    mutationFn: ({ featureId, maturity, notes }: { featureId: number; maturity: Maturity; notes?: string | null }) =>
+      api.reviewFeatureSpec(projectName, featureId, { maturity, notes }),
+    onSuccess: () => {
+      queryClient.invalidateQueries({ queryKey: ['features', projectName] })
+    },
+  })
+}
+
+export function useMoveFeatureToBacklog(projectName: string) {
+  const queryClient = useQueryClient()
+
+  return useMutation({
+    mutationFn: (featureId: number) => api.moveFeatureToBacklog(projectName, featureId),
+    onSuccess: () => {
+      queryClient.invalidateQueries({ queryKey: ['features', projectName] })
+    },
+  })
+}
+
+export function usePromoteFeature(projectName: string) {
+  const queryClient = useQueryClient()
+
+  return useMutation({
+    mutationFn: ({ featureId, force = false }: { featureId: number; force?: boolean }) =>
+      api.promoteFeature(projectName, featureId, force),
     onSuccess: () => {
       queryClient.invalidateQueries({ queryKey: ['features', projectName] })
     },

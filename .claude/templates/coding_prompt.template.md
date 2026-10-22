@@ -59,6 +59,8 @@ Use the feature_mark_in_progress tool with feature_id={your_assigned_id}
 
 If you get "already in-progress" error, that's OK - continue with implementation.
 
+If the feature has a `maturity` tag (`alpha`, `limited_beta`, `beta`) or `spec_notes`, treat them as the spec review outcome: `alpha` means minimal scope (feature-flag it if the notes ask), `limited_beta` means respect the rollout guardrails in the notes, `beta` means the full quality bar. Never break the "must-not-break" areas listed in `spec_notes`.
+
 Focus on completing one feature perfectly in this session. It's ok if you only complete one feature, as more sessions will follow.
 
 #### When to Skip a Feature (EXTREMELY RARE)

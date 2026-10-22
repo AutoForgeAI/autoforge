@@ -1,6 +1,8 @@
 import { useState, useId } from 'react'
 import { X, Plus, Trash2, Loader2, AlertCircle } from 'lucide-react'
 import { useCreateFeature } from '../hooks/useProjects'
+import type { Maturity } from '../lib/types'
+import { MATURITY_DESCRIPTIONS, MATURITY_LABELS, MATURITY_LEVELS } from '../lib/maturity'
 import {
   Dialog,
   DialogContent,
@@ -13,6 +15,7 @@ import { Input } from '@/components/ui/input'
 import { Textarea } from '@/components/ui/textarea'
 import { Label } from '@/components/ui/label'
 import { Alert, AlertDescription } from '@/components/ui/alert'
+import { Checkbox } from '@/components/ui/checkbox'
 
 interface Step {
   id: string
@@ -33,6 +36,8 @@ export function AddFeatureForm({ projectName, onClose }: AddFeatureFormProps) {
   const [steps, setSteps] = useState<Step[]>([{ id: `${formId}-step-0`, value: '' }])
   const [error, setError] = useState<string | null>(null)
   const [stepCounter, setStepCounter] = useState(1)
+  const [maturity, setMaturity] = useState<Maturity | null>(null)
+  const [addToBacklog, setAddToBacklog] = useState(false)
 
   const createFeature = useCreateFeature(projectName)
 
@@ -67,6 +72,8 @@ export function AddFeatureForm({ projectName, onClose }: AddFeatureFormProps) {
         description: description.trim(),
         steps: filteredSteps,
         priority: priority ? parseInt(priority, 10) : undefined,
+        maturity,
+        backlog: addToBacklog,
       })
       onClose()
     } catch (err) {
@@ -192,6 +199,42 @@ export function AddFeatureForm({ projectName, onClose }: AddFeatureFormProps) {
               <Plus size={16} />
               Add Step
             </Button>
+          </div>
+
+          {/* Maturity tag (spec review) */}
+          <div className="space-y-2">
+            <Label>Maturity Tag (Optional)</Label>
+            <div className="flex flex-wrap gap-2" role="radiogroup" aria-label="Maturity tag">
+              {MATURITY_LEVELS.map(level => (
+                <Button
+                  key={level}
+                  type="button"
+                  size="sm"
+                  role="radio"
+                  aria-checked={maturity === level}
+                  variant={maturity === level ? 'default' : 'outline'}
+                  onClick={() => setMaturity(maturity === level ? null : level)}
+                  title={MATURITY_DESCRIPTIONS[level]}
+                >
+                  {MATURITY_LABELS[level]}
+                </Button>
+              ))}
+            </div>
+          </div>
+
+          {/* Backlog */}
+          <div className="flex items-start gap-2">
+            <Checkbox
+              id={`${formId}-backlog`}
+              checked={addToBacklog}
+              onCheckedChange={(checked) => setAddToBacklog(checked === true)}
+            />
+            <div className="space-y-1">
+              <Label htmlFor={`${formId}-backlog`}>Add to Backlog (not ready)</Label>
+              <p className="text-xs text-muted-foreground">
+                Backlog items are never picked up by agents until promoted to Pending.
+              </p>
+            </div>
           </div>
 
           {/* Actions */}

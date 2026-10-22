@@ -21,6 +21,7 @@ mimetypes.add_type("text/javascript", ".js", True)
 if str(ROOT_DIR) not in sys.path:
     sys.path.insert(0, str(ROOT_DIR))
 
+from api.roadmap import MATURITY_ORDER_SETTING, parse_maturity_order
 from registry import (
     API_PROVIDERS,
     AVAILABLE_MODELS,
@@ -122,6 +123,7 @@ async def get_settings():
         api_base_url=all_settings.get("api_base_url"),
         api_has_auth_token=bool(all_settings.get("api_auth_token")),
         api_model=all_settings.get("api_model"),
+        maturity_order=parse_maturity_order(all_settings.get(MATURITY_ORDER_SETTING)),
     )
 
 
@@ -174,6 +176,9 @@ async def update_settings(update: SettingsUpdate):
     if update.api_model is not None:
         set_setting("api_model", update.api_model)
 
+    if update.maturity_order is not None:
+        set_setting(MATURITY_ORDER_SETTING, ",".join(update.maturity_order))
+
     # Return updated settings
     all_settings = get_all_settings()
     api_provider = all_settings.get("api_provider", "claude")
@@ -194,4 +199,5 @@ async def update_settings(update: SettingsUpdate):
         api_base_url=all_settings.get("api_base_url"),
         api_has_auth_token=bool(all_settings.get("api_auth_token")),
         api_model=all_settings.get("api_model"),
+        maturity_order=parse_maturity_order(all_settings.get(MATURITY_ORDER_SETTING)),
     )

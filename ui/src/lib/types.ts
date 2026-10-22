@@ -95,10 +95,25 @@ export interface Feature {
   needs_human_input?: boolean
   human_input_request?: HumanInputRequest | null
   human_input_response?: HumanInputResponseData | null
+  backlog?: boolean                 // Not committed / not ready - excluded from agent queue
+  maturity?: Maturity | null        // Spec review maturity tag
+  spec_notes?: string | null        // Rollout constraints, risks, must-not-break areas
+  readiness?: ReadinessCheck[]      // Computed by API: Backlog -> Pending ready checks
+  ready?: boolean                   // Computed by API: all ready checks pass
+}
+
+// Spec roadmapping maturity tags
+export type Maturity = 'alpha' | 'limited_beta' | 'beta'
+
+export interface ReadinessCheck {
+  id: string
+  label: string
+  passed: boolean
+  detail?: string | null
 }
 
 // Status type for graph nodes
-export type FeatureStatus = 'pending' | 'in_progress' | 'done' | 'blocked' | 'needs_human_input'
+export type FeatureStatus = 'pending' | 'in_progress' | 'done' | 'blocked' | 'needs_human_input' | 'backlog'
 
 // Graph visualization types
 export interface GraphNode {
@@ -108,6 +123,7 @@ export interface GraphNode {
   status: FeatureStatus
   priority: number
   dependencies: number[]
+  maturity?: Maturity | null
 }
 
 export interface GraphEdge {
@@ -125,6 +141,7 @@ export interface FeatureListResponse {
   in_progress: Feature[]
   done: Feature[]
   needs_human_input: Feature[]
+  backlog?: Feature[]
 }
 
 export interface FeatureCreate {
@@ -134,6 +151,9 @@ export interface FeatureCreate {
   steps: string[]
   priority?: number
   dependencies?: number[]
+  backlog?: boolean
+  maturity?: Maturity | null
+  spec_notes?: string | null
 }
 
 export interface FeatureUpdate {
@@ -143,6 +163,8 @@ export interface FeatureUpdate {
   steps?: string[]
   priority?: number
   dependencies?: number[]
+  maturity?: Maturity | null
+  spec_notes?: string | null
 }
 
 // Agent types
@@ -658,6 +680,7 @@ export interface Settings {
   api_base_url: string | null
   api_has_auth_token: boolean
   api_model: string | null
+  maturity_order?: Maturity[]  // Scheduling order, first = highest
 }
 
 export interface SettingsUpdate {
@@ -671,6 +694,7 @@ export interface SettingsUpdate {
   api_base_url?: string
   api_auth_token?: string
   api_model?: string
+  maturity_order?: Maturity[]
 }
 
 export interface ProjectSettingsUpdate {
