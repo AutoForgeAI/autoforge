@@ -194,10 +194,10 @@ autoforge/
 │   │   └── lib/                 # API client and types
 │   ├── package.json
 │   └── vite.config.ts
-├── .claude/
-│   ├── commands/
-│   │   └── create-spec.md       # /create-spec slash command
-│   ├── skills/                  # Claude Code skills
+├── .claude/                     # See "Claude Code Skills, Commands & Agents" below
+│   ├── agents/                  # Subagents for developing AutoForge itself
+│   ├── commands/                # Slash commands (/create-spec, /expand-project, ...)
+│   ├── skills/                  # Claude Code skills (playwright-cli, gsd-to-autoforge-spec, ...)
 │   └── templates/               # Prompt templates
 ├── requirements.txt             # Python dependencies (development)
 ├── requirements-prod.txt        # Python dependencies (npm install)
@@ -368,6 +368,49 @@ Use the `/create-spec` command when creating a new project, or manually edit the
 ### Modifying Allowed Commands
 
 Edit `security.py` to add or remove commands from `ALLOWED_COMMANDS`.
+
+---
+
+## Claude Code Skills, Commands & Agents
+
+The repository's `.claude/` folder contains Claude Code skills, slash commands, and subagents. **You do not need to copy any of them into `~/.claude` to use AutoForge.**
+
+| Item | Used by | Do I need to install it? |
+|------|---------|--------------------------|
+| `commands/create-spec.md`, `commands/expand-project.md` | AutoForge's spec-creation and "expand project" chats | No - AutoForge reads them from its own install directory |
+| `templates/` | Initializer, coding, and testing agents | No - copied into each project's `.autoforge/prompts/` |
+| `skills/playwright-cli/` | Coding/testing agents (browser automation) | No - copied into each project's `.claude/skills/` automatically |
+| `agents/`, `commands/check-code.md`, `commands/checkpoint.md`, `commands/review-pr.md`, `skills/frontend-design/` | You, when working on the AutoForge source code | No - available automatically when you run `claude` inside the AutoForge repository |
+| `skills/gsd-to-autoforge-spec/`, `commands/gsd-to-autoforge-spec.md` | You, when onboarding an **existing** codebase | **Yes** - make it available to Claude Code in that project (see below) |
+
+Claude Code only discovers project-level items from the `.claude/` folder of the directory it is started in, plus your personal `~/.claude/`. So anything you want to use interactively *outside* the AutoForge repository must be copied or symlinked into one of those places.
+
+### Using the GSD-to-AutoForge converter on an existing project
+
+The `gsd-to-autoforge-spec` skill turns a GSD ("Get Shit Done") codebase map (`.planning/codebase/*.md`) into `.autoforge/prompts/app_spec.txt`. To use it in your existing project:
+
+1. **Make the skill available.** Copy or symlink the whole skill folder (it includes a `references/` subfolder) into either your personal skills directory (all projects) or the target project's `.claude/skills/` (that project only):
+
+   ```bash
+   # Locate AutoForge: the source checkout, or the npm install directory
+   AUTOFORGE_DIR="$(npm root -g)/autoforge-ai"   # or e.g. ~/code/autoforge
+
+   # Option A: available in every project
+   mkdir -p ~/.claude/skills
+   ln -s "$AUTOFORGE_DIR/.claude/skills/gsd-to-autoforge-spec" ~/.claude/skills/
+
+   # Option B: only for one project
+   mkdir -p /path/to/my-project/.claude/skills
+   cp -r "$AUTOFORGE_DIR/.claude/skills/gsd-to-autoforge-spec" /path/to/my-project/.claude/skills/
+   ```
+
+   On Windows, use `xcopy /E /I` (or `mklink /D` from an elevated prompt) instead of `cp -r` / `ln -s`, targeting `%USERPROFILE%\.claude\skills\`.
+
+2. **Map the codebase.** Start `claude` in your project and run `/gsd:map-codebase` (requires GSD to be installed).
+3. **Convert.** In the same session, ask Claude to *"convert to autoforge"*, or invoke the skill directly with `/gsd-to-autoforge-spec`. Restart Claude Code first if the skill was added while it was running.
+4. **Run AutoForge.** Register the project folder in AutoForge (UI: create/select project and point it at the existing folder) and start the agent. It will pick up the generated `.autoforge/prompts/app_spec.txt`.
+
+The same approach works for any other item in `.claude/` you want to reuse elsewhere, e.g. symlink `.claude/agents/code-review.md` into `~/.claude/agents/` or `.claude/skills/frontend-design/` into `~/.claude/skills/`. Note that the `/gsd-to-autoforge-spec` *command* file references the skill by a project-relative path, so if you copy the command, copy the skill into the same project's `.claude/` too - or just install the skill, which is enough on its own.
 
 ---
 
