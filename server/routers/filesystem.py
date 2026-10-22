@@ -96,53 +96,87 @@ HIDDEN_PATTERNS = [
 
 
 @functools.lru_cache(maxsize=1)
-def get_blocked_paths() -> frozenset[Path]:
+def get_system_blocked_paths() -> frozenset[Path]:
     """
-    Get the set of blocked paths for the current platform.
+    Get the platform-specific system directories that should not be browsed.
 
-    Cached because the platform and home directory do not change at runtime,
-    and this function is called once per directory entry in list_directory().
+    Cached because the platform does not change at runtime, and this function
+    is called once per directory entry in list_directory().
+    """
+    if sys.platform == "win32":
+        system_paths = WINDOWS_BLOCKED
+    elif sys.platform == "darwin":
+        system_paths = MACOS_BLOCKED
+    else:  # Linux
+        system_paths = LINUX_BLOCKED
+    return frozenset(Path(p).resolve() for p in system_paths)
+
+
+@functools.lru_cache(maxsize=1)
+def get_sensitive_blocked_paths() -> frozenset[Path]:
+    """
+    Get the credential directories inside the home directory (~/.ssh, ~/.aws, ...).
+
+    These are blocked everywhere, including inside the user's own home directory.
     """
     home = Path.home()
-    blocked = set()
+    return frozenset((home / rel).resolve() for rel in UNIVERSAL_BLOCKED_RELATIVE)
 
-    # Add platform-specific blocked paths
-    if sys.platform == "win32":
-        for p in WINDOWS_BLOCKED:
-            blocked.add(Path(p).resolve())
-    elif sys.platform == "darwin":
-        for p in MACOS_BLOCKED:
-            blocked.add(Path(p).resolve())
-    else:  # Linux
-        for p in LINUX_BLOCKED:
-            blocked.add(Path(p).resolve())
 
-    # Add universal blocked paths (relative to home)
-    for rel in UNIVERSAL_BLOCKED_RELATIVE:
-        blocked.add((home / rel).resolve())
+@functools.lru_cache(maxsize=1)
+def get_browsable_home() -> Path | None:
+    """
+    Get the resolved home directory, or None if it cannot be used safely.
 
-    return frozenset(blocked)
+    A home directory that is the filesystem root (e.g. HOME=/) would exempt
+    everything from the system blocklist, so it is ignored.
+    """
+    try:
+        home = Path.home().resolve()
+    except (OSError, RuntimeError, ValueError):
+        return None
+    if home == home.parent:
+        return None
+    return home
+
+
+def _is_within(path: Path, base: Path) -> bool:
+    """Return True if path is base or is located inside base."""
+    try:
+        path.relative_to(base)
+        return True
+    except ValueError:
+        return False
 
 
 def is_path_blocked(path: Path) -> bool:
-    """Check if a path is in the blocked list."""
+    """
+    Check if a path is in the blocked list.
+
+    The user's own home directory is always browsable, even when it lives
+    under a blocked system directory. This happens when the server runs as
+    root (home is /root, the default in WSL) or on systems that keep homes
+    under /var (e.g. /var/home/<user> on Fedora Silverblue). Sensitive
+    credential directories inside home (~/.ssh, ~/.aws, ...) stay blocked.
+    """
     try:
         resolved = path.resolve()
     except (OSError, ValueError):
         return True  # Can't resolve = blocked
 
-    blocked_paths = get_blocked_paths()
-
-    # Check if path is exactly a blocked path or inside one
-    for blocked in blocked_paths:
-        try:
-            resolved.relative_to(blocked)
+    # Credential directories are blocked unconditionally
+    for blocked in get_sensitive_blocked_paths():
+        if _is_within(resolved, blocked):
             return True
-        except ValueError:
-            pass
 
-        # Also check if blocked is inside path (for parent directories)
-        if resolved == blocked:
+    # The user's home directory overrides the system blocklist
+    home = get_browsable_home()
+    if home is not None and _is_within(resolved, home):
+        return False
+
+    # Check if path is exactly a blocked system path or inside one
+    for blocked in get_system_blocked_paths():
+        if _is_within(resolved, blocked):
             return True
 
     return False
