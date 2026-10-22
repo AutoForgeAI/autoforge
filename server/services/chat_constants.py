@@ -32,7 +32,7 @@ if _root_str not in sys.path:
 # Re-exported here so existing ``from .chat_constants import API_ENV_VARS``
 # imports continue to work unchanged.
 # -------------------------------------------------------------------
-from env_constants import API_ENV_VARS  # noqa: E402, F401
+from env_constants import API_ENV_VARS, find_claude_cli  # noqa: E402, F401
 from rate_limit_utils import is_rate_limit_error, parse_retry_after  # noqa: E402, F401
 
 from ..schemas import FileAttachment

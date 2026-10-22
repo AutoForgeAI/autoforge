@@ -326,9 +326,12 @@ export async function healthCheck(): Promise<{ status: string }> {
 // Filesystem API
 // ============================================================================
 
-export async function listDirectory(path?: string): Promise<DirectoryListResponse> {
-  const params = path ? `?path=${encodeURIComponent(path)}` : ''
-  return fetchJSON(`/filesystem/list${params}`)
+export async function listDirectory(path?: string, showHidden = false): Promise<DirectoryListResponse> {
+  const params = new URLSearchParams()
+  if (path) params.set('path', path)
+  if (showHidden) params.set('show_hidden', 'true')
+  const query = params.toString()
+  return fetchJSON(`/filesystem/list${query ? `?${query}` : ''}`)
 }
 
 export async function createDirectory(fullPath: string): Promise<{ success: boolean; path: string }> {

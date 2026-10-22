@@ -9,7 +9,6 @@ Uses the create-spec.md skill to guide users through app spec creation.
 import json
 import logging
 import os
-import shutil
 import threading
 from datetime import datetime
 from pathlib import Path
@@ -24,6 +23,7 @@ from .chat_constants import (
     ROOT_DIR,
     build_attachment_content_blocks,
     check_rate_limit_error,
+    find_claude_cli,
     format_client_init_error,
     make_multimodal_message,
     safe_receive_response,
@@ -145,7 +145,7 @@ class SpecChatSession:
         # Create Claude SDK client with limited tools for spec creation
         # Use Opus for best quality spec generation
         # Use system Claude CLI to avoid bundled Bun runtime crash (exit code 3) on Windows
-        system_cli = shutil.which("claude")
+        system_cli = find_claude_cli()
 
         # Build environment overrides for API configuration
         from registry import DEFAULT_MODEL, get_effective_sdk_env, get_effort_setting

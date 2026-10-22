@@ -177,6 +177,21 @@ def matches_blocked_pattern(name: str) -> bool:
     return False
 
 
+def normalize_input_path(path_str: str) -> str:
+    """
+    Clean up a user-supplied path (typed or pasted into the UI).
+
+    Strips surrounding whitespace and quotes (Windows Explorer's "Copy as path"
+    wraps paths in double quotes) and expands a leading ``~``.
+    """
+    path_str = path_str.strip()
+    if len(path_str) >= 2 and path_str[0] == path_str[-1] and path_str[0] in ('"', "'"):
+        path_str = path_str[1:-1].strip()
+    if path_str.startswith("~"):
+        path_str = os.path.expanduser(path_str)
+    return path_str
+
+
 def is_unc_path(path_str: str) -> bool:
     """Check if path is a Windows UNC path (network share)."""
     return path_str.startswith("\\\\") or path_str.startswith("//")
@@ -197,6 +212,9 @@ async def list_directory(
     Returns directories only (for folder selection).
     On Windows, includes available drives.
     """
+    if path is not None:
+        path = normalize_input_path(path)
+
     # Default to home directory
     if path is None or path == "":
         target = Path.home()
@@ -364,6 +382,8 @@ async def validate_path(path: str = Query(..., description="Path to validate")):
 
     Used to check a path before creating a project there.
     """
+    path = normalize_input_path(path)
+
     # Security: Block UNC paths
     if is_unc_path(path):
         return PathValidationResponse(

@@ -6,7 +6,7 @@
  */
 
 import { useState, useEffect } from 'react'
-import { useQuery } from '@tanstack/react-query'
+import { useQuery, useQueryClient } from '@tanstack/react-query'
 import {
   Folder,
   FolderOpen,
@@ -16,6 +16,7 @@ import {
   AlertCircle,
   FolderPlus,
   ArrowLeft,
+  CornerDownLeft,
 } from 'lucide-react'
 import * as api from '../lib/api'
 import { isSubmitEnter } from '../lib/keyboard'
@@ -23,6 +24,8 @@ import type { DirectoryEntry, DriveInfo } from '../lib/types'
 import { Button } from '@/components/ui/button'
 import { Input } from '@/components/ui/input'
 import { Card, CardContent } from '@/components/ui/card'
+import { Checkbox } from '@/components/ui/checkbox'
+import { Label } from '@/components/ui/label'
 
 interface FolderBrowserProps {
   onSelect: (path: string) => void
@@ -36,6 +39,11 @@ export function FolderBrowser({ onSelect, onCancel, initialPath }: FolderBrowser
   const [isCreatingFolder, setIsCreatingFolder] = useState(false)
   const [newFolderName, setNewFolderName] = useState('')
   const [createError, setCreateError] = useState<string | null>(null)
+  const [showHidden, setShowHidden] = useState(false)
+  const [pathInput, setPathInput] = useState(initialPath ?? '')
+  const [pathError, setPathError] = useState<string | null>(null)
+  const [isGoingToPath, setIsGoingToPath] = useState(false)
+  const queryClient = useQueryClient()
 
   // Fetch directory listing
   const {
@@ -44,14 +52,15 @@ export function FolderBrowser({ onSelect, onCancel, initialPath }: FolderBrowser
     error,
     refetch,
   } = useQuery({
-    queryKey: ['filesystem', 'list', currentPath],
-    queryFn: () => api.listDirectory(currentPath),
+    queryKey: ['filesystem', 'list', currentPath, showHidden],
+    queryFn: () => api.listDirectory(currentPath, showHidden),
   })
 
-  // Update selected path when directory changes
+  // Update selected path and path input when directory changes
   useEffect(() => {
     if (directoryData?.current_path) {
       setSelectedPath(directoryData.current_path)
+      setPathInput(directoryData.current_path)
     }
   }, [directoryData?.current_path])
 
@@ -61,6 +70,28 @@ export function FolderBrowser({ onSelect, onCancel, initialPath }: FolderBrowser
     setIsCreatingFolder(false)
     setNewFolderName('')
     setCreateError(null)
+    setPathError(null)
+  }
+
+  // Navigate to a typed or pasted path. The path is validated by fetching its
+  // listing first so a bad path shows an inline error instead of replacing the
+  // current listing.
+  const handleGoToPath = async () => {
+    const target = pathInput.trim()
+    if (!target) return
+    setIsGoingToPath(true)
+    setPathError(null)
+    try {
+      const data = await queryClient.fetchQuery({
+        queryKey: ['filesystem', 'list', target, showHidden],
+        queryFn: () => api.listDirectory(target, showHidden),
+      })
+      handleNavigate(data.current_path)
+    } catch (err) {
+      setPathError(err instanceof Error ? err.message : 'Could not open this path')
+    } finally {
+      setIsGoingToPath(false)
+    }
   }
 
   const handleNavigateUp = () => {
@@ -149,6 +180,43 @@ export function FolderBrowser({ onSelect, onCancel, initialPath }: FolderBrowser
           <span className="font-semibold">Select Project Folder</span>
         </div>
 
+        {/* Path input - type or paste a full path */}
+        <div className="flex items-center gap-2 mb-2">
+          <Input
+            type="text"
+            value={pathInput}
+            onChange={(e) => {
+              setPathInput(e.target.value)
+              setPathError(null)
+            }}
+            onKeyDown={(e) => {
+              if (isSubmitEnter(e, false)) {
+                e.preventDefault()
+                handleGoToPath()
+              }
+            }}
+            placeholder="Type or paste a folder path"
+            aria-label="Folder path"
+            aria-invalid={pathError ? true : undefined}
+            className="flex-1 font-mono text-sm"
+            spellCheck={false}
+            autoComplete="off"
+          />
+          <Button
+            variant="outline"
+            size="sm"
+            onClick={handleGoToPath}
+            disabled={!pathInput.trim() || isGoingToPath}
+            title="Go to path"
+          >
+            {isGoingToPath ? <Loader2 size={14} className="animate-spin" /> : <CornerDownLeft size={14} />}
+            Go
+          </Button>
+        </div>
+        {pathError && (
+          <p className="text-sm text-destructive mb-2">{pathError}</p>
+        )}
+
         {/* Breadcrumb navigation */}
         <div className="flex items-center gap-1 flex-wrap text-sm">
           {directoryData?.parent_path && (
@@ -175,6 +243,17 @@ export function FolderBrowser({ onSelect, onCancel, initialPath }: FolderBrowser
               </Button>
             </div>
           ))}
+
+          <div className="ml-auto flex items-center gap-2">
+            <Checkbox
+              id="folder-browser-show-hidden"
+              checked={showHidden}
+              onCheckedChange={(checked) => setShowHidden(checked === true)}
+            />
+            <Label htmlFor="folder-browser-show-hidden" className="text-xs text-muted-foreground cursor-pointer">
+              Show hidden
+            </Label>
+          </div>
         </div>
       </div>
 
@@ -238,7 +317,7 @@ export function FolderBrowser({ onSelect, onCancel, initialPath }: FolderBrowser
                     ) : (
                       <Folder size={18} className="text-muted-foreground flex-shrink-0" />
                     )}
-                    <span className="truncate flex-1">{entry.name}</span>
+                    <span className={`truncate flex-1 ${entry.is_hidden ? 'text-muted-foreground' : ''}`}>{entry.name}</span>
                     {entry.has_children && (
                       <ChevronRight size={14} className="ml-auto text-muted-foreground flex-shrink-0" />
                     )}

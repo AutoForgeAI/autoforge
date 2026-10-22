@@ -56,7 +56,7 @@ from .routers import (
 )
 from .schemas import SetupStatus
 from .services.assistant_chat_session import cleanup_all_sessions as cleanup_assistant_sessions
-from .services.chat_constants import ROOT_DIR
+from .services.chat_constants import ROOT_DIR, find_claude_cli
 from .services.dev_server_manager import (
     cleanup_all_devservers,
     cleanup_orphaned_devserver_locks,
@@ -217,7 +217,7 @@ async def health_check():
 async def setup_status():
     """Check system setup status."""
     # Check for Claude CLI
-    claude_cli = shutil.which("claude") is not None
+    claude_cli = find_claude_cli() is not None
 
     # Check for CLI configuration directory
     # Note: CLI no longer stores credentials in ~/.claude/.credentials.json
