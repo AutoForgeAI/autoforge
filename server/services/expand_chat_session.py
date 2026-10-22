@@ -30,6 +30,7 @@ from .chat_constants import (
     format_client_init_error,
     make_multimodal_message,
     safe_receive_response,
+    write_mcp_config_file,
 )
 
 # Load environment variables from .env file if present
@@ -73,7 +74,7 @@ class ExpandChatSession:
         self._client_entered: bool = False
         self.features_created: int = 0
         self.created_feature_ids: list[int] = []
-        self._settings_file: Optional[Path] = None
+        self._temp_files: list[Path] = []
         self._query_lock = asyncio.Lock()
 
     async def close(self) -> None:
@@ -87,12 +88,13 @@ class ExpandChatSession:
                 self._client_entered = False
                 self.client = None
 
-        # Clean up temporary settings file
-        if self._settings_file and self._settings_file.exists():
+        # Clean up temporary settings, prompt and MCP config files
+        for temp_file in self._temp_files:
             try:
-                self._settings_file.unlink()
+                temp_file.unlink(missing_ok=True)
             except Exception as e:
-                logger.warning(f"Error removing settings file: {e}")
+                logger.warning(f"Error removing temp file {temp_file}: {e}")
+        self._temp_files = []
 
     async def start(self) -> AsyncGenerator[dict, None]:
         """
@@ -151,16 +153,29 @@ class ExpandChatSession:
                 "deny": ["Write", "Edit", "MultiEdit", "NotebookEdit", "Bash"],
             },
         }
-        from autoforge_paths import get_expand_settings_path
-        settings_file = get_expand_settings_path(self.project_dir, uuid.uuid4().hex)
+        from autoforge_paths import (
+            get_expand_mcp_config_path,
+            get_expand_prompt_path,
+            get_expand_settings_path,
+        )
+        session_uuid = uuid.uuid4().hex
+        settings_file = get_expand_settings_path(self.project_dir, session_uuid)
         settings_file.parent.mkdir(parents=True, exist_ok=True)
-        self._settings_file = settings_file
+        self._temp_files.append(settings_file)
         with open(settings_file, "w", encoding="utf-8") as f:
             json.dump(security_settings, f, indent=2)
 
         # Replace $ARGUMENTS with absolute project path
         project_path = str(self.project_dir.resolve())
         system_prompt = skill_content.replace("$ARGUMENTS", project_path)
+
+        # Write the system prompt to a file and pass it via --system-prompt-file.
+        # Passing it inline overflows the Windows cmd.exe command line limit
+        # (8191 chars) and fails with "The command line is too long."
+        prompt_file = get_expand_prompt_path(self.project_dir, session_uuid)
+        self._temp_files.append(prompt_file)
+        with open(prompt_file, "w", encoding="utf-8") as f:
+            f.write(system_prompt)
 
         # Build environment overrides for API configuration
         from registry import DEFAULT_MODEL, get_effective_sdk_env, get_effort_setting
@@ -181,6 +196,9 @@ class ExpandChatSession:
                 },
             },
         }
+        mcp_config_path = get_expand_mcp_config_path(self.project_dir, session_uuid)
+        self._temp_files.append(mcp_config_path)
+        mcp_config_file = write_mcp_config_file(mcp_config_path, mcp_servers)
 
         # Create Claude SDK client
         try:
@@ -189,7 +207,7 @@ class ExpandChatSession:
                     model=model,
                     effort=effort,  # type: ignore[arg-type]  # SDK 0.1.61 Literal omits "xhigh"
                     cli_path=system_cli,
-                    system_prompt=system_prompt,
+                    system_prompt={"type": "file", "path": str(prompt_file.resolve())},
                     allowed_tools=[
                         "Read",
                         "Glob",
@@ -199,7 +217,7 @@ class ExpandChatSession:
                         *EXPAND_FEATURE_TOOLS,
                     ],
                     disallowed_tools=["Write", "Edit", "MultiEdit", "NotebookEdit", "Bash"],
-                    mcp_servers=mcp_servers,  # type: ignore[arg-type]  # SDK accepts dict config at runtime
+                    mcp_servers=mcp_config_file,
                     permission_mode="bypassPermissions",
                     max_turns=100,
                     cwd=str(self.project_dir.resolve()),

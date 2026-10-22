@@ -43,6 +43,9 @@ assistant.db-shm
 .claude_settings.json
 .claude_assistant_settings.json
 .claude_settings.expand.*.json
+.claude_assistant_mcp.json
+.expand_prompt.*.md
+.expand_mcp.*.json
 .progress_cache
 .migration_version
 """
@@ -176,6 +179,21 @@ def get_expand_settings_path(project_dir: Path, uuid_hex: str) -> Path:
     These files are short-lived and always stored in ``.autoforge/``.
     """
     return project_dir / ".autoforge" / f".claude_settings.expand.{uuid_hex}.json"
+
+
+def get_expand_prompt_path(project_dir: Path, uuid_hex: str) -> Path:
+    """Return the path for an ephemeral expand-session system prompt file."""
+    return project_dir / ".autoforge" / f".expand_prompt.{uuid_hex}.md"
+
+
+def get_expand_mcp_config_path(project_dir: Path, uuid_hex: str) -> Path:
+    """Return the path for an ephemeral expand-session MCP config file."""
+    return project_dir / ".autoforge" / f".expand_mcp.{uuid_hex}.json"
+
+
+def get_claude_assistant_mcp_config_path(project_dir: Path) -> Path:
+    """Return the path for the assistant chat's MCP config file."""
+    return project_dir / ".autoforge" / ".claude_assistant_mcp.json"
 
 
 # ---------------------------------------------------------------------------

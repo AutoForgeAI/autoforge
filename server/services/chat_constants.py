@@ -9,6 +9,7 @@ project root and is re-exported here for convenience so that existing
 imports (``from .chat_constants import API_ENV_VARS``) continue to work.
 """
 
+import json
 import logging
 import sys
 from pathlib import Path
@@ -43,6 +44,20 @@ from ..utils.document_extraction import (
 )
 
 logger = logging.getLogger(__name__)
+
+
+def write_mcp_config_file(path: Path, mcp_servers: dict[str, Any]) -> str:
+    """Write an MCP server config to a JSON file and return its absolute path.
+
+    Passing the file path to ``ClaudeAgentOptions(mcp_servers=...)`` keeps the
+    JSON off the CLI command line. On Windows the Claude CLI is usually a
+    ``claude.cmd`` shim run through cmd.exe, which rejects command lines over
+    8191 characters with "The command line is too long."
+    """
+    path.parent.mkdir(parents=True, exist_ok=True)
+    with open(path, "w", encoding="utf-8") as f:
+        json.dump({"mcpServers": mcp_servers}, f, indent=2)
+    return str(path.resolve())
 
 
 def check_rate_limit_error(exc: Exception) -> tuple[bool, int | None]:

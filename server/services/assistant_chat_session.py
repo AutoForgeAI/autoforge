@@ -30,6 +30,7 @@ from .chat_constants import (
     check_rate_limit_error,
     format_client_init_error,
     safe_receive_response,
+    write_mcp_config_file,
 )
 
 # Load environment variables from .env file if present
@@ -275,6 +276,12 @@ class AssistantChatSession:
                 },
             },
         }
+        # Pass the MCP config as a file path rather than inline JSON to keep the
+        # CLI command line short (Windows cmd.exe limit is 8191 characters)
+        from autoforge_paths import get_claude_assistant_mcp_config_path
+        mcp_config_file = write_mcp_config_file(
+            get_claude_assistant_mcp_config_path(self.project_dir), mcp_servers
+        )
 
         # Get system prompt with project context
         system_prompt = get_system_prompt(self.project_name, self.project_dir)
@@ -309,7 +316,7 @@ class AssistantChatSession:
                     setting_sources=["project"],
                     allowed_tools=[*READONLY_BUILTIN_TOOLS, *ASSISTANT_FEATURE_TOOLS],
                     disallowed_tools=DISALLOWED_ASSISTANT_TOOLS,
-                    mcp_servers=mcp_servers,  # type: ignore[arg-type]  # SDK accepts dict config at runtime
+                    mcp_servers=mcp_config_file,
                     permission_mode="bypassPermissions",
                     max_turns=100,
                     cwd=str(self.project_dir.resolve()),
