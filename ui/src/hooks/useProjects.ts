@@ -121,6 +121,28 @@ export function useSkipFeature(projectName: string) {
   })
 }
 
+export function useMarkFeaturePassing(projectName: string) {
+  const queryClient = useQueryClient()
+
+  return useMutation({
+    mutationFn: (featureId: number) => api.markFeaturePassing(projectName, featureId),
+    onSuccess: () => {
+      queryClient.invalidateQueries({ queryKey: ['features', projectName] })
+    },
+  })
+}
+
+export function useReopenFeature(projectName: string) {
+  const queryClient = useQueryClient()
+
+  return useMutation({
+    mutationFn: (featureId: number) => api.reopenFeature(projectName, featureId),
+    onSuccess: () => {
+      queryClient.invalidateQueries({ queryKey: ['features', projectName] })
+    },
+  })
+}
+
 export function useUpdateFeature(projectName: string) {
   const queryClient = useQueryClient()
 

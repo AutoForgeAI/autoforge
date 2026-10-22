@@ -160,6 +160,18 @@ export async function skipFeature(projectName: string, featureId: number): Promi
   })
 }
 
+export async function markFeaturePassing(projectName: string, featureId: number): Promise<Feature> {
+  return fetchJSON(`/projects/${encodeURIComponent(projectName)}/features/${featureId}/mark-passing`, {
+    method: 'POST',
+  })
+}
+
+export async function reopenFeature(projectName: string, featureId: number): Promise<Feature> {
+  return fetchJSON(`/projects/${encodeURIComponent(projectName)}/features/${featureId}/reopen`, {
+    method: 'POST',
+  })
+}
+
 export async function updateFeature(
   projectName: string,
   featureId: number,

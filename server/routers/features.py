@@ -574,6 +574,60 @@ async def skip_feature(project_name: str, feature_id: int):
         raise HTTPException(status_code=500, detail="Failed to skip feature")
 
 
+def _set_feature_status(project_name: str, feature_id: int, passes: bool) -> FeatureResponse:
+    """Manually set a feature's passing status, clearing any in-progress/human-input state."""
+    project_name = validate_project_name(project_name)
+    project_dir = _get_project_path(project_name)
+
+    if not project_dir:
+        raise HTTPException(status_code=404, detail=f"Project '{project_name}' not found in registry")
+
+    if not project_dir.exists():
+        raise HTTPException(status_code=404, detail="Project directory not found")
+
+    _, Feature = _get_db_classes()
+
+    try:
+        with get_db_session(project_dir) as session:
+            feature = session.query(Feature).filter(Feature.id == feature_id).first()
+
+            if not feature:
+                raise HTTPException(status_code=404, detail=f"Feature {feature_id} not found")
+
+            feature.passes = passes
+            feature.in_progress = False
+            feature.needs_human_input = False
+
+            session.commit()
+            session.refresh(feature)
+
+            all_features = session.query(Feature).all()
+            passing_ids = {f.id for f in all_features if f.passes}
+
+            return feature_to_response(feature, passing_ids)
+    except HTTPException:
+        raise
+    except Exception:
+        logger.exception("Failed to update feature status")
+        raise HTTPException(status_code=500, detail="Failed to update feature status")
+
+
+@router.post("/{feature_id}/mark-passing", response_model=FeatureResponse)
+async def mark_feature_passing(project_name: str, feature_id: int):
+    """Manually mark a feature as passing.
+
+    Used when a human has verified a feature the agent could not test itself
+    (e.g. native mobile apps that need a device or simulator).
+    """
+    return _set_feature_status(project_name, feature_id, passes=True)
+
+
+@router.post("/{feature_id}/reopen", response_model=FeatureResponse)
+async def reopen_feature(project_name: str, feature_id: int):
+    """Return a feature to the pending queue so agents will work on it again."""
+    return _set_feature_status(project_name, feature_id, passes=False)
+
+
 @router.post("/{feature_id}/resolve-human-input", response_model=FeatureResponse)
 async def resolve_human_input(project_name: str, feature_id: int, response: HumanInputResponse):
     """Resolve a human input request for a feature.

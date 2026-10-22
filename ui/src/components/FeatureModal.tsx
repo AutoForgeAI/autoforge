@@ -1,6 +1,6 @@
 import { useState } from 'react'
-import { X, CheckCircle2, Circle, SkipForward, Trash2, Loader2, AlertCircle, Pencil, Link2, AlertTriangle, UserCircle } from 'lucide-react'
-import { useSkipFeature, useDeleteFeature, useFeatures, useResolveHumanInput } from '../hooks/useProjects'
+import { X, CheckCircle2, Circle, SkipForward, Trash2, Loader2, AlertCircle, Pencil, Link2, AlertTriangle, UserCircle, CircleCheckBig, RotateCcw } from 'lucide-react'
+import { useSkipFeature, useDeleteFeature, useFeatures, useResolveHumanInput, useMarkFeaturePassing, useReopenFeature } from '../hooks/useProjects'
 import { EditFeatureForm } from './EditFeatureForm'
 import { HumanInputForm } from './HumanInputForm'
 import type { Feature } from '../lib/types'
@@ -52,6 +52,9 @@ export function FeatureModal({ feature, projectName, onClose }: FeatureModalProp
   const { data: allFeatures } = useFeatures(projectName)
 
   const resolveHumanInput = useResolveHumanInput(projectName)
+  const markPassing = useMarkFeaturePassing(projectName)
+  const reopenFeature = useReopenFeature(projectName)
+  const isMutating = skipFeature.isPending || markPassing.isPending || reopenFeature.isPending
 
   // Build a map of feature ID to feature for looking up dependency names
   const featureMap = new Map<number, Feature>()
@@ -78,6 +81,26 @@ export function FeatureModal({ feature, projectName, onClose }: FeatureModalProp
       onClose()
     } catch (err) {
       setError(err instanceof Error ? err.message : 'Failed to skip feature')
+    }
+  }
+
+  const handleMarkPassing = async () => {
+    setError(null)
+    try {
+      await markPassing.mutateAsync(feature.id)
+      onClose()
+    } catch (err) {
+      setError(err instanceof Error ? err.message : 'Failed to mark feature as passing')
+    }
+  }
+
+  const handleReopen = async () => {
+    setError(null)
+    try {
+      await reopenFeature.mutateAsync(feature.id)
+      onClose()
+    } catch (err) {
+      setError(err instanceof Error ? err.message : 'Failed to reopen feature')
     }
   }
 
@@ -305,16 +328,32 @@ export function FeatureModal({ feature, projectName, onClose }: FeatureModalProp
                 <div className="flex gap-3 w-full">
                   <Button
                     onClick={() => setShowEdit(true)}
-                    disabled={skipFeature.isPending}
+                    disabled={isMutating}
                     className="flex-1"
                   >
                     <Pencil size={18} />
                     Edit
                   </Button>
                   <Button
+                    variant="outline"
+                    onClick={handleMarkPassing}
+                    disabled={isMutating}
+                    className="flex-1"
+                    title="Mark as passing after verifying it yourself (e.g. features the agent cannot test)"
+                  >
+                    {markPassing.isPending ? (
+                      <Loader2 size={18} className="animate-spin" />
+                    ) : (
+                      <>
+                        <CircleCheckBig size={18} />
+                        Mark as Passing
+                      </>
+                    )}
+                  </Button>
+                  <Button
                     variant="secondary"
                     onClick={handleSkip}
-                    disabled={skipFeature.isPending}
+                    disabled={isMutating}
                     className="flex-1"
                   >
                     {skipFeature.isPending ? (
@@ -330,12 +369,35 @@ export function FeatureModal({ feature, projectName, onClose }: FeatureModalProp
                     variant="destructive"
                     size="icon"
                     onClick={() => setShowDeleteConfirm(true)}
-                    disabled={skipFeature.isPending}
+                    disabled={isMutating}
                   >
                     <Trash2 size={18} />
                   </Button>
                 </div>
               )}
+            </DialogFooter>
+          </>
+        )}
+        {feature.passes && (
+          <>
+            <Separator />
+            <DialogFooter className="p-4 bg-muted/50">
+              <Button
+                variant="secondary"
+                onClick={handleReopen}
+                disabled={isMutating}
+                className="w-full"
+                title="Move back to Pending so agents will work on it again"
+              >
+                {reopenFeature.isPending ? (
+                  <Loader2 size={18} className="animate-spin" />
+                ) : (
+                  <>
+                    <RotateCcw size={18} />
+                    Reopen
+                  </>
+                )}
+              </Button>
             </DialogFooter>
           </>
         )}
