@@ -158,18 +158,19 @@ async def update_settings(update: SettingsUpdate):
         if update.api_provider != old_provider:
             provider = API_PROVIDERS.get(update.api_provider)
             if provider:
-                # Auto-set base URL from provider definition
-                if provider.get("base_url"):
-                    set_setting("api_base_url", provider["base_url"])
+                # Reset base URL to the provider's default so a URL from the previous
+                # provider (e.g. Kimi Code vs Moonshot Platform) is never reused with
+                # the new provider's key, which surfaces as an opaque 401.
+                set_setting("api_base_url", provider.get("base_url") or "")
                 # Auto-set model to provider's default
                 if provider.get("default_model") and update.api_model is None:
                     set_setting("api_model", provider["default_model"])
 
     if update.api_base_url is not None:
-        set_setting("api_base_url", update.api_base_url)
+        set_setting("api_base_url", update.api_base_url.strip())
 
     if update.api_auth_token is not None:
-        set_setting("api_auth_token", update.api_auth_token)
+        set_setting("api_auth_token", update.api_auth_token.strip())
 
     if update.api_model is not None:
         set_setting("api_model", update.api_model)

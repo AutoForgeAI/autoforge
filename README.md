@@ -336,7 +336,9 @@ When test progress increases, the agent sends:
 
 Alternative providers are configured via the **Settings UI** (gear icon > API Provider). Select your provider, set the base URL, auth token, and model directly in the UI — no `.env` changes needed.
 
-Available providers: **Claude** (default), **GLM** (Zhipu AI), **Ollama** (local models), **Kimi** (Moonshot), **Custom**
+Available providers: **Claude** (default), **GLM** (Zhipu AI), **Ollama** (local models), **Kimi Code** (kimi.com subscription), **Moonshot Platform** (Kimi K2.5 via platform.moonshot.ai), **Custom**
+
+Kimi keys come in two kinds that are not interchangeable: Kimi Code subscription keys (`sk-kimi-...`, from kimi.com) only work with the **Kimi Code** provider, and pay-as-you-go keys from platform.moonshot.ai only work with **Moonshot Platform**. Using the wrong one returns `401 authentication_error`. Mainland China users of the platform API can set the base URL to `https://api.moonshot.cn/anthropic`.
 
 For Ollama, install [Ollama v0.14.0+](https://ollama.com), run `ollama serve`, and pull a coding model (e.g., `ollama pull qwen3-coder`). Then select "Ollama" in the Settings UI.
 

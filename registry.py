@@ -785,12 +785,27 @@ API_PROVIDERS: dict[str, dict[str, Any]] = {
         ],
         "default_model": "claude-opus-4-7",
     },
+    # Kimi Code subscription (keys created at kimi.com, usually prefixed "sk-kimi-").
+    # Platform keys from platform.moonshot.ai are rejected here with a 401; use "moonshot".
     "kimi": {
-        "name": "Kimi K2.5 (Moonshot)",
+        "name": "Kimi Code (kimi.com subscription)",
         "base_url": "https://api.kimi.com/coding/",
         "requires_auth": True,
         "auth_env_var": "ANTHROPIC_API_KEY",
         "models": [{"id": "kimi-k2.5", "name": "Kimi K2.5"}],
+        "default_model": "kimi-k2.5",
+    },
+    # Moonshot open platform (pay-as-you-go keys from platform.moonshot.ai).
+    # Users in mainland China can override the base URL with https://api.moonshot.cn/anthropic.
+    "moonshot": {
+        "name": "Moonshot Platform (Kimi K2.5 API)",
+        "base_url": "https://api.moonshot.ai/anthropic",
+        "requires_auth": True,
+        "auth_env_var": "ANTHROPIC_AUTH_TOKEN",
+        "models": [
+            {"id": "kimi-k2.5", "name": "Kimi K2.5"},
+            {"id": "kimi-k2-turbo-preview", "name": "Kimi K2 Turbo"},
+        ],
         "default_model": "kimi-k2.5",
     },
     "glm": {
@@ -875,8 +890,8 @@ def get_effective_sdk_env() -> dict[str, str]:
     sdk_env = {}
 
     # Explicitly clear credentials that could leak from the server process env.
-    # For providers using ANTHROPIC_AUTH_TOKEN (GLM, Custom), clear ANTHROPIC_API_KEY.
-    # For providers using ANTHROPIC_API_KEY (Kimi), clear ANTHROPIC_AUTH_TOKEN.
+    # For providers using ANTHROPIC_AUTH_TOKEN (GLM, Moonshot, Custom), clear ANTHROPIC_API_KEY.
+    # For providers using ANTHROPIC_API_KEY (Kimi Code, Azure), clear ANTHROPIC_AUTH_TOKEN.
     # This prevents the Claude CLI from using the wrong credentials.
     auth_env_var = provider.get("auth_env_var", "ANTHROPIC_AUTH_TOKEN")
     if auth_env_var == "ANTHROPIC_AUTH_TOKEN":
@@ -890,12 +905,13 @@ def get_effective_sdk_env() -> dict[str, str]:
     sdk_env["ANTHROPIC_VERTEX_PROJECT_ID"] = ""
 
     # Base URL
-    base_url = all_settings.get("api_base_url") or provider.get("base_url")
+    base_url = (all_settings.get("api_base_url") or "").strip() or provider.get("base_url")
     if base_url:
         sdk_env["ANTHROPIC_BASE_URL"] = base_url
 
     # Auth token
-    auth_token = all_settings.get("api_auth_token")
+    # Strip stray whitespace/newlines from pasted keys; they cause opaque 401s.
+    auth_token = (all_settings.get("api_auth_token") or "").strip()
     if auth_token:
         sdk_env[auth_env_var] = auth_token
 

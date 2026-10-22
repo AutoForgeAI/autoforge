@@ -20,7 +20,8 @@ import { Card, CardContent, CardHeader, CardTitle } from '@/components/ui/card'
 
 const PROVIDER_INFO_TEXT: Record<string, string> = {
   claude: 'Default provider. Uses Claude CLI credentials. API key auth is recommended.',
-  kimi: 'Get an API key at kimi.com',
+  kimi: 'For Kimi Code subscription keys (sk-kimi-...) from kimi.com. Using a platform.moonshot.ai key? Pick "Moonshot Platform" instead.',
+  moonshot: 'For pay-as-you-go keys from platform.moonshot.ai. In mainland China, set the base URL to https://api.moonshot.cn/anthropic.',
   glm: 'Get an API key at open.bigmodel.cn',
   ollama: 'Run models locally. Install from ollama.com',
   custom: 'Connect to any OpenAI-compatible API endpoint.',
