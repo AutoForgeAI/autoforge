@@ -34,6 +34,82 @@ load_dotenv()
 
 logger = logging.getLogger(__name__)
 
+# Standalone markdown transcript of the spec creation conversation,
+# written next to app_spec.txt so users can refer back to it later.
+SPEC_SUMMARY_FILENAME = "spec_input_summary.md"
+
+
+def render_spec_input_summary(
+    project_name: str,
+    messages: list[dict],
+    started_at: datetime,
+) -> str:
+    """
+    Render the spec creation conversation as markdown.
+
+    The first user message is surfaced as the initial prompt; the rest of the
+    exchange (Claude's questions and suggested options, the user's answers and
+    follow-ups) is listed in order. Consecutive assistant text blocks are merged
+    into a single turn.
+    """
+    # Merge consecutive assistant chunks into turns
+    turns: list[dict] = []
+    for msg in messages:
+        role = msg.get("role")
+        content = str(msg.get("content", "")).strip()
+        if role == "assistant" and turns and turns[-1]["role"] == "assistant":
+            if content:
+                turns[-1]["content"] += "\n\n" + content
+            continue
+        turns.append({
+            "role": role,
+            "content": content,
+            "attachments": msg.get("attachments") or [],
+        })
+    turns = [t for t in turns if t["content"] or t["attachments"]]
+
+    lines = [
+        f"# Spec Creation Conversation: {project_name}",
+        "",
+        f"- Started: {started_at.strftime('%Y-%m-%d %H:%M:%S')}",
+        f"- Last updated: {datetime.now().strftime('%Y-%m-%d %H:%M:%S')}",
+        "",
+        "This file records the conversation used to create `app_spec.txt`: "
+        "the initial prompt, the questions and suggested options, and the answers given.",
+        "",
+    ]
+
+    def _user_block(turn: dict) -> list[str]:
+        block = []
+        if turn["content"]:
+            block.extend(["> " + line if line else ">" for line in turn["content"].splitlines()])
+        if turn["attachments"]:
+            if block:
+                block.append(">")
+            block.append("> _Attachments: " + ", ".join(turn["attachments"]) + "_")
+        return block
+
+    first_user = next((i for i, t in enumerate(turns) if t["role"] == "user"), None)
+
+    lines.extend(["## Initial Prompt", ""])
+    if first_user is None:
+        lines.extend(["_No user input recorded._", ""])
+    else:
+        lines.extend(_user_block(turns[first_user]))
+        lines.append("")
+
+    lines.extend(["## Conversation", ""])
+    for i, turn in enumerate(turns):
+        if turn["role"] == "assistant":
+            lines.extend(["### Claude", "", turn["content"], ""])
+        elif turn["role"] == "user":
+            heading = "### You (initial prompt)" if i == first_user else "### You"
+            lines.extend([heading, ""])
+            lines.extend(_user_block(turn))
+            lines.append("")
+
+    return "\n".join(lines).rstrip() + "\n"
+
 
 class SpecChatSession:
     """
@@ -234,12 +310,17 @@ class SpecChatSession:
             "role": "user",
             "content": user_message,
             "has_attachments": bool(attachments),
+            "attachments": [a.filename for a in attachments] if attachments else [],
             "timestamp": datetime.now().isoformat()
         })
 
         try:
             async for chunk in self._query_claude(user_message, attachments):
                 yield chunk
+            # Persist the conversation once the spec exists (and keep it current
+            # if the user continues refining the spec afterwards)
+            if self.complete:
+                self._write_spec_input_summary()
             # Signal that the response is complete (for UI to hide loading indicator)
             yield {"type": "response_done"}
         except Exception as e:
@@ -429,6 +510,24 @@ class SpecChatSession:
                 yield {"type": "error", "content": "Rate limited. Please try again later."}
                 return
             raise
+
+    def _write_spec_input_summary(self) -> Optional[Path]:
+        """Write the conversation transcript to prompts/spec_input_summary.md."""
+        from autoforge_paths import get_prompts_dir
+        try:
+            prompts_dir = get_prompts_dir(self.project_dir)
+            prompts_dir.mkdir(parents=True, exist_ok=True)
+            summary_path = prompts_dir / SPEC_SUMMARY_FILENAME
+            summary_path.write_text(
+                render_spec_input_summary(self.project_name, self.messages, self.created_at),
+                encoding="utf-8",
+            )
+            logger.info(f"Wrote spec conversation summary to {summary_path}")
+            return summary_path
+        except OSError as e:
+            # Never fail spec creation because the transcript couldn't be saved
+            logger.warning(f"Failed to write {SPEC_SUMMARY_FILENAME}: {e}")
+            return None
 
     def is_complete(self) -> bool:
         """Check if spec creation is complete."""
