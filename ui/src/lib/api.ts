@@ -192,6 +192,17 @@ export async function resolveHumanInput(
   })
 }
 
+export async function submitManualTest(
+  projectName: string,
+  featureId: number,
+  verdict: { result: 'pass' | 'fail'; feedback?: string }
+): Promise<Feature> {
+  return fetchJSON(`/projects/${encodeURIComponent(projectName)}/features/${featureId}/manual-test`, {
+    method: 'POST',
+    body: JSON.stringify(verdict),
+  })
+}
+
 // ============================================================================
 // Dependency Graph API
 // ============================================================================

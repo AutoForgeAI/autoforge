@@ -252,7 +252,8 @@ export function AppProvider({ children }: { children: ReactNode }) {
       (features?.pending.length ?? 0) +
       (features?.in_progress.length ?? 0) +
       (features?.done.length ?? 0) +
-      (features?.needs_human_input?.length ?? 0)
+      (features?.needs_human_input?.length ?? 0) +
+      (features?.needs_manual_testing?.length ?? 0)
     const passing = features?.done.length ?? 0
     const percentage = total > 0 ? Math.round((passing / total) * 100 * 10) / 10 : 0
 
@@ -274,6 +275,7 @@ export function AppProvider({ children }: { children: ReactNode }) {
       ...(features?.in_progress ?? []),
       ...(features?.done ?? []),
       ...(features?.needs_human_input ?? []),
+      ...(features?.needs_manual_testing ?? []),
     ]
     const feature = allFeatures.find(f => f.id === nodeId)
     if (feature) setSelectedFeature(feature)
@@ -372,7 +374,8 @@ export function AppProvider({ children }: { children: ReactNode }) {
         (features.pending.length +
           features.in_progress.length +
           features.done.length +
-          (features.needs_human_input?.length || 0)) > 0
+          (features.needs_human_input?.length || 0) +
+          (features.needs_manual_testing?.length || 0)) > 0
       ) {
         e.preventDefault()
         setShowExpandProject(true)

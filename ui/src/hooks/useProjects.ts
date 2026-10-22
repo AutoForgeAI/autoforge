@@ -145,6 +145,19 @@ export function useResolveHumanInput(projectName: string) {
   })
 }
 
+export function useSubmitManualTest(projectName: string) {
+  const queryClient = useQueryClient()
+
+  return useMutation({
+    mutationFn: ({ featureId, result, feedback }: { featureId: number; result: 'pass' | 'fail'; feedback?: string }) =>
+      api.submitManualTest(projectName, featureId, { result, feedback }),
+    onSuccess: () => {
+      queryClient.invalidateQueries({ queryKey: ['features', projectName] })
+      queryClient.invalidateQueries({ queryKey: ['dependencyGraph', projectName] })
+    },
+  })
+}
+
 // ============================================================================
 // Agent
 // ============================================================================

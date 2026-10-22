@@ -66,6 +66,11 @@ class Feature(Base):
     human_input_request = Column(JSON, nullable=True, default=None)   # Agent's structured request
     human_input_response = Column(JSON, nullable=True, default=None)  # Human's response
 
+    # Manual testing: agent finished the code but cannot verify it (e.g. native/mobile apps).
+    # The feature waits in a "Manual Testing" lane until a human marks it passed or failed.
+    needs_manual_testing = Column(Boolean, nullable=False, default=False, index=True)
+    manual_testing_notes = Column(Text, nullable=True, default=None)  # What the human should test
+
     def to_dict(self) -> dict:
         """Convert feature to dictionary for JSON serialization."""
         return {
@@ -84,6 +89,9 @@ class Feature(Base):
             "needs_human_input": self.needs_human_input if self.needs_human_input is not None else False,
             "human_input_request": self.human_input_request,
             "human_input_response": self.human_input_response,
+            # Manual testing fields
+            "needs_manual_testing": self.needs_manual_testing if self.needs_manual_testing is not None else False,
+            "manual_testing_notes": self.manual_testing_notes,
         }
 
     def get_dependencies_safe(self) -> list[int]:
@@ -326,6 +334,19 @@ def _migrate_add_human_input_columns(engine) -> None:
         conn.commit()
 
 
+def _migrate_add_manual_testing_columns(engine) -> None:
+    """Add manual testing columns to existing databases that don't have them."""
+    with engine.connect() as conn:
+        result = conn.execute(text("PRAGMA table_info(features)"))
+        columns = [row[1] for row in result.fetchall()]
+
+        if "needs_manual_testing" not in columns:
+            conn.execute(text("ALTER TABLE features ADD COLUMN needs_manual_testing BOOLEAN DEFAULT 0"))
+        if "manual_testing_notes" not in columns:
+            conn.execute(text("ALTER TABLE features ADD COLUMN manual_testing_notes TEXT DEFAULT NULL"))
+        conn.commit()
+
+
 def _migrate_add_schedules_tables(engine) -> None:
     """Create schedules and schedule_overrides tables if they don't exist."""
     from sqlalchemy import inspect
@@ -450,6 +471,7 @@ def create_database(project_dir: Path) -> tuple:
     _migrate_add_dependencies_column(engine)
     _migrate_add_testing_columns(engine)
     _migrate_add_human_input_columns(engine)
+    _migrate_add_manual_testing_columns(engine)
 
     # Migrate to add schedules tables
     _migrate_add_schedules_tables(engine)

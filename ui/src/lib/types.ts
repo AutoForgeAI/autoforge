@@ -95,10 +95,12 @@ export interface Feature {
   needs_human_input?: boolean
   human_input_request?: HumanInputRequest | null
   human_input_response?: HumanInputResponseData | null
+  needs_manual_testing?: boolean     // Code complete, waiting for a human to test it
+  manual_testing_notes?: string | null
 }
 
 // Status type for graph nodes
-export type FeatureStatus = 'pending' | 'in_progress' | 'done' | 'blocked' | 'needs_human_input'
+export type FeatureStatus = 'pending' | 'in_progress' | 'done' | 'blocked' | 'needs_human_input' | 'needs_manual_testing'
 
 // Graph visualization types
 export interface GraphNode {
@@ -125,6 +127,7 @@ export interface FeatureListResponse {
   in_progress: Feature[]
   done: Feature[]
   needs_human_input: Feature[]
+  needs_manual_testing?: Feature[]
 }
 
 export interface FeatureCreate {

@@ -138,6 +138,7 @@ function isAllComplete(features: FeatureListResponse | undefined): boolean {
     features.pending.length === 0 &&
     features.in_progress.length === 0 &&
     (features.needs_human_input?.length || 0) === 0 &&
+    (features.needs_manual_testing?.length || 0) === 0 &&
     features.done.length > 0
   )
 }

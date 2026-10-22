@@ -13,15 +13,19 @@ interface KanbanBoardProps {
 }
 
 export function KanbanBoard({ features, onFeatureClick, onAddFeature, onExpandProject, activeAgents = [], onCreateSpec, hasSpec = true }: KanbanBoardProps) {
-  const hasFeatures = features && (features.pending.length + features.in_progress.length + features.done.length + (features.needs_human_input?.length || 0)) > 0
+  const hasFeatures = features && (features.pending.length + features.in_progress.length + features.done.length + (features.needs_human_input?.length || 0) + (features.needs_manual_testing?.length || 0)) > 0
 
   // Combine all features for dependency status calculation
   const allFeatures = features
-    ? [...features.pending, ...features.in_progress, ...features.done, ...(features.needs_human_input || [])]
+    ? [...features.pending, ...features.in_progress, ...features.done, ...(features.needs_human_input || []), ...(features.needs_manual_testing || [])]
     : []
 
   const needsInputCount = features?.needs_human_input?.length || 0
   const showNeedsInput = needsInputCount > 0
+  const manualTestingCount = features?.needs_manual_testing?.length || 0
+  const showManualTesting = manualTestingCount > 0
+  const columnCount = 3 + (showNeedsInput ? 1 : 0) + (showManualTesting ? 1 : 0)
+  const gridCols = columnCount === 5 ? 'md:grid-cols-5' : columnCount === 4 ? 'md:grid-cols-4' : 'md:grid-cols-3'
 
   if (!features) {
     return (
@@ -43,7 +47,7 @@ export function KanbanBoard({ features, onFeatureClick, onAddFeature, onExpandPr
   }
 
   return (
-    <div className={`grid grid-cols-1 ${showNeedsInput ? 'md:grid-cols-4' : 'md:grid-cols-3'} gap-6`}>
+    <div className={`grid grid-cols-1 ${gridCols} gap-6`}>
       <KanbanColumn
         title="Pending"
         count={features.pending.length}
@@ -75,6 +79,17 @@ export function KanbanBoard({ features, onFeatureClick, onAddFeature, onExpandPr
           allFeatures={allFeatures}
           activeAgents={activeAgents}
           color="human_input"
+          onFeatureClick={onFeatureClick}
+        />
+      )}
+      {showManualTesting && (
+        <KanbanColumn
+          title="Manual Testing"
+          count={manualTestingCount}
+          features={features.needs_manual_testing || []}
+          allFeatures={allFeatures}
+          activeAgents={activeAgents}
+          color="manual_testing"
           onFeatureClick={onFeatureClick}
         />
       )}

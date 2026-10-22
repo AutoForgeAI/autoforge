@@ -159,6 +159,7 @@ CODING_AGENT_TOOLS = [
     "mcp__features__feature_mark_failing",
     "mcp__features__feature_skip",
     "mcp__features__feature_clear_in_progress",
+    "mcp__features__feature_mark_needs_manual_testing",
 ]
 
 TESTING_AGENT_TOOLS = [

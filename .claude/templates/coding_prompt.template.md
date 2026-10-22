@@ -156,6 +156,17 @@ Use the feature_mark_passing tool with feature_id=42
 
 **ONLY MARK A FEATURE AS PASSING AFTER VERIFICATION WITH BROWSER AUTOMATION.**
 
+**If the code is complete but you cannot verify it in this environment** (e.g. a native
+iOS/Android app that needs Xcode, a simulator or a device), do NOT leave the feature
+in limbo. Hand it off to a human instead:
+
+```
+Use the feature_mark_needs_manual_testing tool with feature_id=42 and notes="<steps the human should follow and what to check>"
+```
+
+The feature then appears in the "Manual Testing" lane of the UI for a human to mark
+passed or failed. Never use this to skip testing you are able to do yourself.
+
 ### STEP 7: COMMIT YOUR PROGRESS
 
 Make a descriptive git commit.
@@ -240,6 +251,9 @@ feature_skip with feature_id={id}
 
 # 7. Clear in-progress status (when abandoning a feature)
 feature_clear_in_progress with feature_id={id}
+
+# 8. Hand off a code-complete feature you cannot verify (e.g. native mobile app)
+feature_mark_needs_manual_testing with feature_id={id} and notes="<what to test>"
 ```
 
 ### RULES:

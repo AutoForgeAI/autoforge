@@ -15,7 +15,7 @@ import {
   Handle,
 } from '@xyflow/react'
 import dagre from 'dagre'
-import { CheckCircle2, Circle, Loader2, AlertTriangle, RefreshCw, UserCircle } from 'lucide-react'
+import { CheckCircle2, Circle, Loader2, AlertTriangle, RefreshCw, UserCircle, ClipboardCheck } from 'lucide-react'
 import type { DependencyGraph as DependencyGraphData, GraphNode, ActiveAgent, AgentMascot, AgentState } from '../lib/types'
 import { AgentAvatar } from './AgentAvatar'
 import { Button } from '@/components/ui/button'
@@ -99,6 +99,7 @@ function FeatureNode({ data }: { data: GraphNode & { onClick?: () => void; agent
     done: 'bg-green-100 border-green-300 dark:bg-green-900/30 dark:border-green-700',
     blocked: 'bg-red-50 border-red-300 dark:bg-red-900/20 dark:border-red-700',
     needs_human_input: 'bg-amber-100 border-amber-300 dark:bg-amber-900/30 dark:border-amber-700',
+    needs_manual_testing: 'bg-violet-100 border-violet-300 dark:bg-violet-900/30 dark:border-violet-700',
   }
 
   const textColors: Record<string, string> = {
@@ -107,6 +108,7 @@ function FeatureNode({ data }: { data: GraphNode & { onClick?: () => void; agent
     done: 'text-green-900 dark:text-green-100',
     blocked: 'text-red-900 dark:text-red-100',
     needs_human_input: 'text-amber-900 dark:text-amber-100',
+    needs_manual_testing: 'text-violet-900 dark:text-violet-100',
   }
 
   const StatusIcon = () => {
@@ -119,6 +121,8 @@ function FeatureNode({ data }: { data: GraphNode & { onClick?: () => void; agent
         return <AlertTriangle size={16} className="text-destructive" />
       case 'needs_human_input':
         return <UserCircle size={16} className={textColors[data.status]} />
+      case 'needs_manual_testing':
+        return <ClipboardCheck size={16} className={textColors[data.status]} />
       default:
         return <Circle size={16} className={textColors[data.status]} />
     }
@@ -329,6 +333,8 @@ function DependencyGraphInner({ graphData, onNodeClick, activeAgents = [] }: Dep
         return '#ef4444' // red-500
       case 'needs_human_input':
         return '#f59e0b' // amber-500
+      case 'needs_manual_testing':
+        return '#8b5cf6' // violet-500
       default:
         return '#eab308' // yellow-500
     }

@@ -24,6 +24,7 @@ from ..schemas import (
     FeatureResponse,
     FeatureUpdate,
     HumanInputResponse,
+    ManualTestResult,
 )
 from ..utils.project_helpers import get_project_path as _get_project_path
 from ..utils.validation import validate_project_name
@@ -71,6 +72,11 @@ def get_db_session(project_dir: Path):
         session.close()
 
 
+def _satisfied_ids(features) -> set[int]:
+    """IDs of features that satisfy dependencies: passing, or code-complete awaiting manual testing."""
+    return {f.id for f in features if f.passes or getattr(f, 'needs_manual_testing', False)}
+
+
 def feature_to_response(f, passing_ids: set[int] | None = None) -> FeatureResponse:
     """Convert a Feature model to a FeatureResponse.
 
@@ -108,6 +114,8 @@ def feature_to_response(f, passing_ids: set[int] | None = None) -> FeatureRespon
         needs_human_input=getattr(f, 'needs_human_input', False) or False,
         human_input_request=getattr(f, 'human_input_request', None),
         human_input_response=getattr(f, 'human_input_response', None),
+        needs_manual_testing=getattr(f, 'needs_manual_testing', False) or False,
+        manual_testing_notes=getattr(f, 'manual_testing_notes', None),
     )
 
 
@@ -120,6 +128,8 @@ async def list_features(project_name: str):
     - pending: passes=False, not currently being worked on
     - in_progress: features currently being worked on (tracked via agent output)
     - done: passes=True
+    - needs_human_input: blocked waiting for structured input from a human
+    - needs_manual_testing: code complete, waiting for a human to test it
     """
     project_name = validate_project_name(project_name)
     project_dir = _get_project_path(project_name)
@@ -142,12 +152,13 @@ async def list_features(project_name: str):
             all_features = session.query(Feature).order_by(Feature.priority).all()
 
             # Compute passing IDs for blocked status calculation
-            passing_ids = {f.id for f in all_features if f.passes}
+            passing_ids = _satisfied_ids(all_features)
 
             pending = []
             in_progress = []
             done = []
             needs_human_input_list = []
+            needs_manual_testing_list = []
 
             for f in all_features:
                 feature_response = feature_to_response(f, passing_ids)
@@ -155,6 +166,8 @@ async def list_features(project_name: str):
                     done.append(feature_response)
                 elif getattr(f, 'needs_human_input', False):
                     needs_human_input_list.append(feature_response)
+                elif getattr(f, 'needs_manual_testing', False):
+                    needs_manual_testing_list.append(feature_response)
                 elif f.in_progress:
                     in_progress.append(feature_response)
                 else:
@@ -165,6 +178,7 @@ async def list_features(project_name: str):
                 in_progress=in_progress,
                 done=done,
                 needs_human_input=needs_human_input_list,
+                needs_manual_testing=needs_manual_testing_list,
             )
     except HTTPException:
         raise
@@ -340,7 +354,7 @@ async def get_dependency_graph(project_name: str):
     try:
         with get_db_session(project_dir) as session:
             all_features = session.query(Feature).all()
-            passing_ids = {f.id for f in all_features if f.passes}
+            passing_ids = _satisfied_ids(all_features)
 
             nodes = []
             edges = []
@@ -349,11 +363,15 @@ async def get_dependency_graph(project_name: str):
                 deps = f.dependencies or []
                 blocking = [d for d in deps if d not in passing_ids]
 
-                status: Literal["pending", "in_progress", "done", "blocked", "needs_human_input"]
+                status: Literal[
+                    "pending", "in_progress", "done", "blocked", "needs_human_input", "needs_manual_testing"
+                ]
                 if f.passes:
                     status = "done"
                 elif getattr(f, 'needs_human_input', False):
                     status = "needs_human_input"
+                elif getattr(f, 'needs_manual_testing', False):
+                    status = "needs_manual_testing"
                 elif blocking:
                     status = "blocked"
                 elif f.in_progress:
@@ -473,7 +491,7 @@ async def update_feature(project_name: str, feature_id: int, update: FeatureUpda
 
             # Compute passing IDs for response
             all_features = session.query(Feature).all()
-            passing_ids = {f.id for f in all_features if f.passes}
+            passing_ids = _satisfied_ids(all_features)
 
             return feature_to_response(feature, passing_ids)
     except HTTPException:
@@ -629,7 +647,7 @@ async def resolve_human_input(project_name: str, feature_id: int, response: Huma
 
             # Compute passing IDs for response
             all_features = session.query(Feature).all()
-            passing_ids = {f.id for f in all_features if f.passes}
+            passing_ids = _satisfied_ids(all_features)
 
             return feature_to_response(feature, passing_ids)
     except HTTPException:
@@ -637,6 +655,72 @@ async def resolve_human_input(project_name: str, feature_id: int, response: Huma
     except Exception:
         logger.exception("Failed to resolve human input")
         raise HTTPException(status_code=500, detail="Failed to resolve human input")
+
+
+@router.post("/{feature_id}/manual-test", response_model=FeatureResponse)
+async def submit_manual_test(project_name: str, feature_id: int, verdict: ManualTestResult):
+    """Record a human's manual testing verdict for a feature.
+
+    - "pass": marks the feature as passing. Allowed for features awaiting manual
+      testing and for any other unfinished feature that no agent is working on,
+      so humans can sign off work the agent could not verify itself.
+    - "fail": only for features awaiting manual testing. Returns the feature to
+      the pending queue with the tester's feedback in manual_testing_notes so the
+      next agent that picks it up knows what to fix.
+    """
+    project_name = validate_project_name(project_name)
+    project_dir = _get_project_path(project_name)
+
+    if not project_dir:
+        raise HTTPException(status_code=404, detail=f"Project '{project_name}' not found in registry")
+
+    if not project_dir.exists():
+        raise HTTPException(status_code=404, detail="Project directory not found")
+
+    _, Feature = _get_db_classes()
+
+    try:
+        with get_db_session(project_dir) as session:
+            feature = session.query(Feature).filter(Feature.id == feature_id).first()
+
+            if not feature:
+                raise HTTPException(status_code=404, detail=f"Feature {feature_id} not found")
+
+            if feature.passes:
+                raise HTTPException(status_code=400, detail="Feature is already passing")
+
+            awaiting_manual_test = bool(getattr(feature, 'needs_manual_testing', False))
+
+            if verdict.result == "pass":
+                if feature.in_progress and not awaiting_manual_test:
+                    raise HTTPException(
+                        status_code=409,
+                        detail="Feature is currently being worked on by an agent"
+                    )
+                feature.passes = True
+                feature.in_progress = False
+                feature.needs_manual_testing = False
+            else:
+                if not awaiting_manual_test:
+                    raise HTTPException(status_code=400, detail="Feature is not awaiting manual testing")
+                feedback = (verdict.feedback or "").strip()
+                feature.needs_manual_testing = False
+                feature.in_progress = False
+                feature.manual_testing_notes = (
+                    f"Manual testing FAILED. Tester feedback: {feedback}" if feedback
+                    else "Manual testing FAILED (no feedback provided)."
+                )
+
+            session.commit()
+            session.refresh(feature)
+
+            all_features = session.query(Feature).all()
+            return feature_to_response(feature, _satisfied_ids(all_features))
+    except HTTPException:
+        raise
+    except Exception:
+        logger.exception("Failed to record manual test result")
+        raise HTTPException(status_code=500, detail="Failed to record manual test result")
 
 
 # ============================================================================

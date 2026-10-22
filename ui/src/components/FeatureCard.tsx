@@ -1,4 +1,4 @@
-import { CheckCircle2, Circle, Loader2, MessageCircle, UserCircle } from 'lucide-react'
+import { CheckCircle2, Circle, ClipboardCheck, Loader2, MessageCircle, UserCircle } from 'lucide-react'
 import type { Feature, ActiveAgent } from '../lib/types'
 import { DependencyBadge } from './DependencyBadge'
 import { AgentAvatar } from './AgentAvatar'
@@ -46,7 +46,8 @@ export function FeatureCard({ feature, onClick, isInProgress, allFeatures = [], 
         ${isInProgress ? 'animate-pulse' : ''}
         ${feature.passes ? 'border-primary/50' : ''}
         ${feature.needs_human_input ? 'border-amber-500/50' : ''}
-        ${isBlocked && !feature.passes && !feature.needs_human_input ? 'border-destructive/50 opacity-80' : ''}
+        ${feature.needs_manual_testing ? 'border-violet-500/50' : ''}
+        ${isBlocked && !feature.passes && !feature.needs_human_input && !feature.needs_manual_testing ? 'border-destructive/50 opacity-80' : ''}
         ${hasActiveAgent ? 'ring-2 ring-primary ring-offset-2' : ''}
       `}
     >
@@ -110,6 +111,11 @@ export function FeatureCard({ feature, onClick, isInProgress, allFeatures = [], 
             <>
               <UserCircle size={16} className="text-amber-500" />
               <span className="text-amber-500 font-medium">Needs Your Input</span>
+            </>
+          ) : feature.needs_manual_testing ? (
+            <>
+              <ClipboardCheck size={16} className="text-violet-500" />
+              <span className="text-violet-500 font-medium">Ready for Manual Testing</span>
             </>
           ) : isBlocked ? (
             <>

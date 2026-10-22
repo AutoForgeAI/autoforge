@@ -136,6 +136,8 @@ class FeatureResponse(FeatureBase):
     needs_human_input: bool = False
     human_input_request: dict | None = None
     human_input_response: dict | None = None
+    needs_manual_testing: bool = False
+    manual_testing_notes: str | None = None
 
     class Config:
         from_attributes = True
@@ -162,12 +164,19 @@ class HumanInputResponse(BaseModel):
     fields: dict[str, str | bool | list[str]]
 
 
+class ManualTestResult(BaseModel):
+    """Schema for a human's manual testing verdict on a feature."""
+    result: Literal["pass", "fail"]
+    feedback: str | None = Field(default=None, max_length=5000)  # What went wrong (for "fail")
+
+
 class FeatureListResponse(BaseModel):
     """Response containing list of features organized by status."""
     pending: list[FeatureResponse]
     in_progress: list[FeatureResponse]
     done: list[FeatureResponse]
     needs_human_input: list[FeatureResponse] = Field(default_factory=list)
+    needs_manual_testing: list[FeatureResponse] = Field(default_factory=list)
 
 
 class FeatureBulkCreate(BaseModel):
@@ -191,7 +200,7 @@ class DependencyGraphNode(BaseModel):
     id: int
     name: str
     category: str
-    status: Literal["pending", "in_progress", "done", "blocked", "needs_human_input"]
+    status: Literal["pending", "in_progress", "done", "blocked", "needs_human_input", "needs_manual_testing"]
     priority: int
     dependencies: list[int]
 

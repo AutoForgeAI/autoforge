@@ -45,6 +45,7 @@ from api.database import Feature, atomic_transaction, create_database
 from api.dependency_resolver import (
     MAX_DEPENDENCIES_PER_FEATURE,
     compute_scheduling_scores,
+    get_satisfied_ids,
     would_create_circular_dependency,
 )
 from api.migration import migrate_json_to_sqlite
@@ -152,19 +153,22 @@ def feature_get_stats() -> str:
             func.count(Feature.id).label('total'),
             func.sum(case((Feature.passes == True, 1), else_=0)).label('passing'),
             func.sum(case((Feature.in_progress == True, 1), else_=0)).label('in_progress'),
-            func.sum(case((Feature.needs_human_input == True, 1), else_=0)).label('needs_human_input')
+            func.sum(case((Feature.needs_human_input == True, 1), else_=0)).label('needs_human_input'),
+            func.sum(case((Feature.needs_manual_testing == True, 1), else_=0)).label('needs_manual_testing')
         ).first()
 
         total = result.total or 0
         passing = int(result.passing or 0)
         in_progress = int(result.in_progress or 0)
         needs_human_input = int(result.needs_human_input or 0)
+        needs_manual_testing = int(result.needs_manual_testing or 0)
         percentage = round((passing / total) * 100, 1) if total > 0 else 0.0
 
         return json.dumps({
             "passing": passing,
             "in_progress": in_progress,
             "needs_human_input": needs_human_input,
+            "needs_manual_testing": needs_manual_testing,
             "total": total,
             "percentage": percentage
         })
@@ -225,6 +229,7 @@ def feature_get_summary(
             "passes": feature.passes,
             "in_progress": feature.in_progress,
             "needs_human_input": feature.needs_human_input if feature.needs_human_input is not None else False,
+            "needs_manual_testing": bool(feature.needs_manual_testing),
             "dependencies": feature.dependencies or []
         })
     finally:
@@ -251,7 +256,7 @@ def feature_mark_passing(
         # Atomic update with state guard - prevents double-pass in parallel mode
         result = session.execute(text("""
             UPDATE features
-            SET passes = 1, in_progress = 0
+            SET passes = 1, in_progress = 0, needs_manual_testing = 0
             WHERE id = :id AND passes = 0
         """), {"id": feature_id})
         session.commit()
@@ -307,7 +312,7 @@ def feature_mark_failing(
         # Atomic update for parallel safety
         session.execute(text("""
             UPDATE features
-            SET passes = 0, in_progress = 0
+            SET passes = 0, in_progress = 0, needs_manual_testing = 0
             WHERE id = :id
         """), {"id": feature_id})
         session.commit()
@@ -410,6 +415,7 @@ def feature_mark_in_progress(
             UPDATE features
             SET in_progress = 1
             WHERE id = :id AND passes = 0 AND in_progress = 0 AND needs_human_input = 0
+              AND needs_manual_testing = 0
         """), {"id": feature_id})
         session.commit()
 
@@ -424,6 +430,8 @@ def feature_mark_in_progress(
                 return json.dumps({"error": f"Feature with ID {feature_id} is already in-progress"})
             if getattr(feature, 'needs_human_input', False):
                 return json.dumps({"error": f"Feature with ID {feature_id} is blocked waiting for human input"})
+            if getattr(feature, 'needs_manual_testing', False):
+                return json.dumps({"error": f"Feature with ID {feature_id} is awaiting manual testing"})
             return json.dumps({"error": "Failed to mark feature in-progress for unknown reason"})
 
         # Fetch the claimed feature
@@ -464,11 +472,15 @@ def feature_claim_and_get(
         if getattr(feature, 'needs_human_input', False):
             return json.dumps({"error": f"Feature with ID {feature_id} is blocked waiting for human input"})
 
+        if getattr(feature, 'needs_manual_testing', False):
+            return json.dumps({"error": f"Feature with ID {feature_id} is awaiting manual testing"})
+
         # Try atomic claim: only succeeds if not already claimed and not blocked for human input
         result = session.execute(text("""
             UPDATE features
             SET in_progress = 1
             WHERE id = :id AND passes = 0 AND in_progress = 0 AND needs_human_input = 0
+              AND needs_manual_testing = 0
         """), {"id": feature_id})
         session.commit()
 
@@ -808,14 +820,14 @@ def feature_get_ready(
     session = get_session()
     try:
         all_features = session.query(Feature).all()
-        passing_ids = {f.id for f in all_features if f.passes}
+        all_dicts = [f.to_dict() for f in all_features]
+        passing_ids = get_satisfied_ids(all_dicts)
 
         ready = []
-        all_dicts = [f.to_dict() for f in all_features]
         for f in all_features:
             if f.passes or f.in_progress:
                 continue
-            if getattr(f, 'needs_human_input', False):
+            if getattr(f, 'needs_human_input', False) or getattr(f, 'needs_manual_testing', False):
                 continue
             deps = f.dependencies or []
             if all(dep_id in passing_ids for dep_id in deps):
@@ -852,11 +864,11 @@ def feature_get_blocked(
     session = get_session()
     try:
         all_features = session.query(Feature).all()
-        passing_ids = {f.id for f in all_features if f.passes}
+        passing_ids = get_satisfied_ids([f.to_dict() for f in all_features])
 
         blocked = []
         for f in all_features:
-            if f.passes:
+            if f.passes or getattr(f, 'needs_manual_testing', False):
                 continue
             deps = f.dependencies or []
             blocking = [d for d in deps if d not in passing_ids]
@@ -888,7 +900,7 @@ def feature_get_graph() -> str:
     session = get_session()
     try:
         all_features = session.query(Feature).all()
-        passing_ids = {f.id for f in all_features if f.passes}
+        passing_ids = get_satisfied_ids([f.to_dict() for f in all_features])
 
         nodes = []
         edges = []
@@ -901,6 +913,8 @@ def feature_get_graph() -> str:
                 status = "done"
             elif getattr(f, 'needs_human_input', False):
                 status = "needs_human_input"
+            elif getattr(f, 'needs_manual_testing', False):
+                status = "needs_manual_testing"
             elif blocking:
                 status = "blocked"
             elif f.in_progress:
@@ -1103,6 +1117,66 @@ def feature_request_human_input(
     except Exception as e:
         session.rollback()
         return json.dumps({"error": f"Failed to request human input: {str(e)}"})
+    finally:
+        session.close()
+
+
+@mcp.tool()
+def feature_mark_needs_manual_testing(
+    feature_id: Annotated[int, Field(description="The ID of the feature that needs manual testing", ge=1)],
+    notes: Annotated[str, Field(min_length=1, description="What a human should test and why you could not verify it")]
+) -> str:
+    """Hand off a code-complete feature to a human for manual testing.
+
+    Use this ONLY when the implementation is complete but you genuinely cannot
+    verify it in your environment, for example:
+    - Native mobile apps (iOS/Android) that need Xcode, a simulator or a device
+    - Desktop apps, hardware integrations or other targets with no browser UI
+    - Flows that require real third-party services you cannot access
+
+    Do NOT use this to avoid testing something you could verify with browser
+    automation, or for features whose code is not finished.
+
+    The feature leaves in_progress and appears in the "Manual Testing" lane of the
+    UI, where a human marks it passed or failed. Features that depend on it are
+    treated as unblocked so work can continue.
+
+    Args:
+        feature_id: The ID of the feature that needs manual testing
+        notes: Concrete steps the human should follow and what to look for
+
+    Returns:
+        JSON with success confirmation or error message
+    """
+    session = get_session()
+    try:
+        result = session.execute(text("""
+            UPDATE features
+            SET needs_manual_testing = 1,
+                in_progress = 0,
+                manual_testing_notes = :notes
+            WHERE id = :id AND passes = 0
+        """), {"id": feature_id, "notes": notes})
+        session.commit()
+
+        if result.rowcount == 0:
+            feature = session.query(Feature).filter(Feature.id == feature_id).first()
+            if feature is None:
+                return json.dumps({"error": f"Feature with ID {feature_id} not found"})
+            if feature.passes:
+                return json.dumps({"error": f"Feature with ID {feature_id} is already passing"})
+            return json.dumps({"error": "Failed to mark feature for manual testing for unknown reason"})
+
+        feature = session.query(Feature).filter(Feature.id == feature_id).first()
+        return json.dumps({
+            "success": True,
+            "feature_id": feature_id,
+            "name": feature.name,
+            "message": f"Feature '{feature.name}' is now waiting for manual testing"
+        })
+    except Exception as e:
+        session.rollback()
+        return json.dumps({"error": f"Failed to mark feature for manual testing: {str(e)}"})
     finally:
         session.close()
 

@@ -237,6 +237,7 @@ def get_single_feature_prompt(feature_id: int, project_dir: Path | None = None, 
 Work ONLY on this feature. Other agents are handling other features.
 Use `feature_claim_and_get` with ID {feature_id} to claim it and get details.
 If blocked, use `feature_skip` and document the blocker.
+If the code is complete but cannot be verified here, use `feature_mark_needs_manual_testing`.
 
 ---
 
@@ -282,6 +283,8 @@ Process them IN ORDER: {ids_str}
 - Complete each feature fully before starting the next
 - Mark each feature passing individually as you go
 - If blocked on a feature, use `feature_skip` and move to the next one
+- If a feature is code-complete but cannot be verified here (e.g. native mobile app),
+  use `feature_mark_needs_manual_testing` with testing notes instead of leaving it unfinished
 - Other agents are handling other features - focus only on yours
 
 ---

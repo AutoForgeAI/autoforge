@@ -34,7 +34,7 @@ from typing import Any, Callable, Literal
 from sqlalchemy import text
 
 from api.database import Feature, create_database
-from api.dependency_resolver import are_dependencies_satisfied, compute_scheduling_scores
+from api.dependency_resolver import are_dependencies_satisfied, compute_scheduling_scores, get_satisfied_ids
 from progress import has_features
 from server.utils.process_utils import kill_process_tree
 
@@ -496,8 +496,8 @@ class ParallelOrchestrator:
         for fd in feature_dicts:
             if not fd.get("in_progress") or fd.get("passes"):
                 continue
-            # Skip if blocked for human input
-            if fd.get("needs_human_input"):
+            # Skip if blocked for human input or awaiting manual testing
+            if fd.get("needs_human_input") or fd.get("needs_manual_testing"):
                 continue
             # Skip if already running in this orchestrator instance
             if fd["id"] in running_ids:
@@ -533,8 +533,9 @@ class ParallelOrchestrator:
             finally:
                 session.close()
 
-        # Pre-compute passing_ids once to avoid O(n^2) in the loop
-        passing_ids = {fd["id"] for fd in feature_dicts if fd.get("passes")}
+        # Pre-compute satisfied IDs once to avoid O(n^2) in the loop
+        # (passing, or code-complete and awaiting manual testing)
+        passing_ids = get_satisfied_ids(feature_dicts)
 
         # Snapshot running IDs once (include all batch feature IDs)
         with self._lock:
@@ -543,13 +544,17 @@ class ParallelOrchestrator:
                 running_ids.update(batch_ids)
 
         ready = []
-        skipped_reasons = {"passes": 0, "in_progress": 0, "running": 0, "failed": 0, "deps": 0, "needs_human_input": 0}
+        skipped_reasons = {"passes": 0, "in_progress": 0, "running": 0, "failed": 0, "deps": 0, "needs_human_input": 0,
+                           "needs_manual_testing": 0}
         for fd in feature_dicts:
             if fd.get("passes"):
                 skipped_reasons["passes"] += 1
                 continue
             if fd.get("needs_human_input"):
                 skipped_reasons["needs_human_input"] += 1
+                continue
+            if fd.get("needs_manual_testing"):
+                skipped_reasons["needs_manual_testing"] += 1
                 continue
             if fd.get("in_progress"):
                 skipped_reasons["in_progress"] += 1
@@ -611,11 +616,15 @@ class ParallelOrchestrator:
 
         passing_count = 0
         failed_count = 0
+        manual_testing_count = 0
         pending_count = 0
         for fd in feature_dicts:
             if fd.get("passes"):
                 passing_count += 1
                 continue  # Completed successfully
+            if fd.get("needs_manual_testing"):
+                manual_testing_count += 1
+                continue  # Code complete, waiting on a human - nothing left for agents
             if self._failure_counts.get(fd["id"], 0) >= MAX_FEATURE_RETRIES:
                 failed_count += 1
                 continue  # Permanently failed, count as "done"
@@ -624,7 +633,8 @@ class ParallelOrchestrator:
         total = len(feature_dicts)
         is_complete = pending_count == 0
         debug_log.log("COMPLETE_CHECK", f"get_all_complete: {passing_count}/{total} passing, "
-            f"{failed_count} failed, {pending_count} pending -> {is_complete}")
+            f"{failed_count} failed, {manual_testing_count} awaiting manual testing, "
+            f"{pending_count} pending -> {is_complete}")
         return is_complete
 
     def get_passing_count(self, feature_dicts: list[dict] | None = None) -> int:

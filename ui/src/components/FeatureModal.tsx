@@ -1,6 +1,6 @@
 import { useState } from 'react'
-import { X, CheckCircle2, Circle, SkipForward, Trash2, Loader2, AlertCircle, Pencil, Link2, AlertTriangle, UserCircle } from 'lucide-react'
-import { useSkipFeature, useDeleteFeature, useFeatures, useResolveHumanInput } from '../hooks/useProjects'
+import { X, CheckCircle2, Circle, SkipForward, Trash2, Loader2, AlertCircle, Pencil, Link2, AlertTriangle, UserCircle, ClipboardCheck, XCircle } from 'lucide-react'
+import { useSkipFeature, useDeleteFeature, useFeatures, useResolveHumanInput, useSubmitManualTest } from '../hooks/useProjects'
 import { EditFeatureForm } from './EditFeatureForm'
 import { HumanInputForm } from './HumanInputForm'
 import type { Feature } from '../lib/types'
@@ -15,6 +15,7 @@ import { Button } from '@/components/ui/button'
 import { Badge } from '@/components/ui/badge'
 import { Alert, AlertDescription } from '@/components/ui/alert'
 import { Separator } from '@/components/ui/separator'
+import { Textarea } from '@/components/ui/textarea'
 
 // Generate consistent color for category
 function getCategoryColor(category: string): string {
@@ -46,17 +47,21 @@ export function FeatureModal({ feature, projectName, onClose }: FeatureModalProp
   const [error, setError] = useState<string | null>(null)
   const [showDeleteConfirm, setShowDeleteConfirm] = useState(false)
   const [showEdit, setShowEdit] = useState(false)
+  const [showFailFeedback, setShowFailFeedback] = useState(false)
+  const [failFeedback, setFailFeedback] = useState('')
+  const [showPassConfirm, setShowPassConfirm] = useState(false)
 
   const skipFeature = useSkipFeature(projectName)
   const deleteFeature = useDeleteFeature(projectName)
   const { data: allFeatures } = useFeatures(projectName)
 
   const resolveHumanInput = useResolveHumanInput(projectName)
+  const submitManualTest = useSubmitManualTest(projectName)
 
   // Build a map of feature ID to feature for looking up dependency names
   const featureMap = new Map<number, Feature>()
   if (allFeatures) {
-    ;[...allFeatures.pending, ...allFeatures.in_progress, ...allFeatures.done, ...(allFeatures.needs_human_input || [])].forEach(f => {
+    ;[...allFeatures.pending, ...allFeatures.in_progress, ...allFeatures.done, ...(allFeatures.needs_human_input || []), ...(allFeatures.needs_manual_testing || [])].forEach(f => {
       featureMap.set(f.id, f)
     })
   }
@@ -88,6 +93,20 @@ export function FeatureModal({ feature, projectName, onClose }: FeatureModalProp
       onClose()
     } catch (err) {
       setError(err instanceof Error ? err.message : 'Failed to delete feature')
+    }
+  }
+
+  const handleManualTest = async (result: 'pass' | 'fail') => {
+    setError(null)
+    try {
+      await submitManualTest.mutateAsync({
+        featureId: feature.id,
+        result,
+        feedback: result === 'fail' ? failFeedback.trim() || undefined : undefined,
+      })
+      onClose()
+    } catch (err) {
+      setError(err instanceof Error ? err.message : 'Failed to record manual test result')
     }
   }
 
@@ -149,6 +168,16 @@ export function FeatureModal({ feature, projectName, onClose }: FeatureModalProp
                 <UserCircle size={24} className="text-amber-500" />
                 <span className="font-semibold text-amber-500">NEEDS YOUR INPUT</span>
               </>
+            ) : feature.needs_manual_testing ? (
+              <>
+                <ClipboardCheck size={24} className="text-violet-500" />
+                <span className="font-semibold text-violet-500">READY FOR MANUAL TESTING</span>
+              </>
+            ) : feature.in_progress ? (
+              <>
+                <Loader2 size={24} className="text-primary animate-spin" />
+                <span className="font-semibold text-primary">IN PROGRESS</span>
+              </>
             ) : (
               <>
                 <Circle size={24} className="text-muted-foreground" />
@@ -175,6 +204,96 @@ export function FeatureModal({ feature, projectName, onClose }: FeatureModalProp
               }}
               isLoading={resolveHumanInput.isPending}
             />
+          )}
+
+          {/* Manual Testing Request */}
+          {feature.needs_manual_testing && (
+            <Alert className="border-violet-500 bg-violet-50 dark:bg-violet-950/20">
+              <ClipboardCheck className="h-4 w-4 text-violet-600" />
+              <AlertDescription className="space-y-3">
+                <div>
+                  <h4 className="font-semibold mb-1 text-violet-700 dark:text-violet-400">Manual Testing Needed</h4>
+                  <p className="text-sm text-violet-600 dark:text-violet-300">
+                    The agent finished the code but could not verify it in its environment.
+                    Test it yourself using the notes and test steps below, then record the result.
+                  </p>
+                </div>
+                {feature.manual_testing_notes && (
+                  <p className="text-sm whitespace-pre-wrap p-3 rounded-md bg-background border text-foreground">
+                    {feature.manual_testing_notes}
+                  </p>
+                )}
+                {showFailFeedback ? (
+                  <div className="space-y-2">
+                    <Textarea
+                      value={failFeedback}
+                      onChange={(e) => setFailFeedback(e.target.value)}
+                      placeholder="What went wrong? This is passed to the agent so it can fix the feature."
+                      rows={3}
+                      maxLength={5000}
+                      autoFocus
+                    />
+                    <div className="flex gap-2">
+                      <Button
+                        variant="destructive"
+                        onClick={() => handleManualTest('fail')}
+                        disabled={submitManualTest.isPending}
+                        className="flex-1"
+                      >
+                        {submitManualTest.isPending ? <Loader2 size={18} className="animate-spin" /> : 'Send Back to Agent'}
+                      </Button>
+                      <Button
+                        variant="outline"
+                        onClick={() => setShowFailFeedback(false)}
+                        disabled={submitManualTest.isPending}
+                        className="flex-1"
+                      >
+                        Cancel
+                      </Button>
+                    </div>
+                  </div>
+                ) : (
+                  <div className="flex gap-2">
+                    <Button
+                      onClick={() => handleManualTest('pass')}
+                      disabled={submitManualTest.isPending}
+                      className="flex-1"
+                    >
+                      {submitManualTest.isPending ? (
+                        <Loader2 size={18} className="animate-spin" />
+                      ) : (
+                        <>
+                          <CheckCircle2 size={18} />
+                          Mark as Passed
+                        </>
+                      )}
+                    </Button>
+                    <Button
+                      variant="destructive"
+                      onClick={() => setShowFailFeedback(true)}
+                      disabled={submitManualTest.isPending}
+                      className="flex-1"
+                    >
+                      <XCircle size={18} />
+                      Mark as Failed
+                    </Button>
+                  </div>
+                )}
+              </AlertDescription>
+            </Alert>
+          )}
+
+          {/* Previous Manual Testing Feedback (feature was sent back to the agent) */}
+          {!feature.needs_manual_testing && !feature.passes && feature.manual_testing_notes && (
+            <Alert className="border-violet-500 bg-violet-50 dark:bg-violet-950/20">
+              <ClipboardCheck className="h-4 w-4 text-violet-600" />
+              <AlertDescription>
+                <h4 className="font-semibold mb-1 text-violet-700 dark:text-violet-400">Manual Testing Notes</h4>
+                <p className="text-sm whitespace-pre-wrap text-violet-600 dark:text-violet-300">
+                  {feature.manual_testing_notes}
+                </p>
+              </AlertDescription>
+            </Alert>
           )}
 
           {/* Previous Human Input Response */}
@@ -273,7 +392,34 @@ export function FeatureModal({ feature, projectName, onClose }: FeatureModalProp
           <>
             <Separator />
             <DialogFooter className="p-4 bg-muted/50">
-              {showDeleteConfirm ? (
+              {showPassConfirm ? (
+                <div className="w-full space-y-4">
+                  <p className="font-medium text-center">
+                    Mark this feature as passing? Only do this if you have verified it works.
+                  </p>
+                  <div className="flex gap-3">
+                    <Button
+                      onClick={() => handleManualTest('pass')}
+                      disabled={submitManualTest.isPending}
+                      className="flex-1"
+                    >
+                      {submitManualTest.isPending ? (
+                        <Loader2 size={18} className="animate-spin" />
+                      ) : (
+                        'Yes, Mark Passed'
+                      )}
+                    </Button>
+                    <Button
+                      variant="outline"
+                      onClick={() => setShowPassConfirm(false)}
+                      disabled={submitManualTest.isPending}
+                      className="flex-1"
+                    >
+                      Cancel
+                    </Button>
+                  </div>
+                </div>
+              ) : showDeleteConfirm ? (
                 <div className="w-full space-y-4">
                   <p className="font-medium text-center">
                     Are you sure you want to delete this feature?
@@ -326,6 +472,18 @@ export function FeatureModal({ feature, projectName, onClose }: FeatureModalProp
                       </>
                     )}
                   </Button>
+                  {!feature.needs_manual_testing && !feature.in_progress && (
+                    <Button
+                      variant="outline"
+                      onClick={() => setShowPassConfirm(true)}
+                      disabled={skipFeature.isPending}
+                      className="flex-1"
+                      title="Mark as passing after verifying it yourself"
+                    >
+                      <CheckCircle2 size={18} />
+                      Mark Passed
+                    </Button>
+                  )}
                   <Button
                     variant="destructive"
                     size="icon"

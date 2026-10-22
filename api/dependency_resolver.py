@@ -94,6 +94,17 @@ def resolve_dependencies(features: list[dict]) -> DependencyResult:
     }
 
 
+def get_satisfied_ids(features: list[dict]) -> set[int]:
+    """Get IDs of features that satisfy dependencies of other features.
+
+    A feature satisfies dependencies when it is passing, or when its code is
+    complete and only awaiting manual testing by a human. Treating code-complete
+    features as satisfied lets agents keep building on top of them instead of
+    stalling (e.g. mobile apps the agent cannot run).
+    """
+    return {f["id"] for f in features if f.get("passes") or f.get("needs_manual_testing")}
+
+
 def are_dependencies_satisfied(
     feature: dict,
     all_features: list[dict],
@@ -115,7 +126,7 @@ def are_dependencies_satisfied(
     if not deps:
         return True
     if passing_ids is None:
-        passing_ids = {f["id"] for f in all_features if f.get("passes")}
+        passing_ids = get_satisfied_ids(all_features)
     return all(dep_id in passing_ids for dep_id in deps)
 
 
@@ -138,7 +149,7 @@ def get_blocking_dependencies(
     """
     deps = feature.get("dependencies") or []
     if passing_ids is None:
-        passing_ids = {f["id"] for f in all_features if f.get("passes")}
+        passing_ids = get_satisfied_ids(all_features)
     return [dep_id for dep_id in deps if dep_id not in passing_ids]
 
 
@@ -367,11 +378,11 @@ def get_ready_features(features: list[dict], limit: int = 10) -> list[dict]:
     Returns:
         List of ready features, sorted by priority
     """
-    passing_ids = {f["id"] for f in features if f.get("passes")}
+    passing_ids = get_satisfied_ids(features)
 
     ready = []
     for f in features:
-        if f.get("passes") or f.get("in_progress"):
+        if f.get("passes") or f.get("in_progress") or f.get("needs_manual_testing"):
             continue
         deps = f.get("dependencies") or []
         if all(dep_id in passing_ids for dep_id in deps):
@@ -393,11 +404,11 @@ def get_blocked_features(features: list[dict]) -> list[dict]:
     Returns:
         List of blocked features with 'blocked_by' field added
     """
-    passing_ids = {f["id"] for f in features if f.get("passes")}
+    passing_ids = get_satisfied_ids(features)
 
     blocked = []
     for f in features:
-        if f.get("passes"):
+        if f.get("passes") or f.get("needs_manual_testing"):
             continue
         deps = f.get("dependencies") or []
         blocking = [d for d in deps if d not in passing_ids]
@@ -416,7 +427,7 @@ def build_graph_data(features: list[dict]) -> dict:
     Returns:
         Dict with 'nodes' and 'edges' for graph visualization
     """
-    passing_ids = {f["id"] for f in features if f.get("passes")}
+    passing_ids = get_satisfied_ids(features)
 
     nodes = []
     edges = []
@@ -427,6 +438,8 @@ def build_graph_data(features: list[dict]) -> dict:
 
         if f.get("passes"):
             status = "done"
+        elif f.get("needs_manual_testing"):
+            status = "needs_manual_testing"
         elif blocking:
             status = "blocked"
         elif f.get("in_progress"):
