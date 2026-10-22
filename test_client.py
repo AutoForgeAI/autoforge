@@ -18,6 +18,7 @@ from client import (
     EXTRA_READ_PATHS_VAR,
     convert_model_for_vertex,
     get_extra_read_paths,
+    resolve_model_for_endpoint,
 )
 
 
@@ -114,6 +115,55 @@ class TestConvertModelForVertex(unittest.TestCase):
     def test_empty_string_unchanged(self):
         os.environ["CLAUDE_CODE_USE_VERTEX"] = "1"
         self.assertEqual(convert_model_for_vertex(""), "")
+
+
+class TestResolveModelForEndpoint(unittest.TestCase):
+    """Tests for resolve_model_for_endpoint (issue #107)."""
+
+    OLLAMA_ENV = {
+        "ANTHROPIC_BASE_URL": "http://localhost:11434",
+        "ANTHROPIC_DEFAULT_OPUS_MODEL": "qwen2.5-coder",
+        "ANTHROPIC_DEFAULT_SONNET_MODEL": "qwen2.5-coder:7b",
+        "ANTHROPIC_DEFAULT_HAIKU_MODEL": "qwen2.5-coder:1.5b",
+    }
+
+    def test_opus_id_mapped_to_opus_override(self):
+        self.assertEqual(resolve_model_for_endpoint("claude-opus-4-7", self.OLLAMA_ENV), "qwen2.5-coder")
+
+    def test_legacy_opus_id_mapped(self):
+        self.assertEqual(
+            resolve_model_for_endpoint("claude-opus-4-5-20251101", self.OLLAMA_ENV), "qwen2.5-coder"
+        )
+
+    def test_sonnet_id_mapped_to_sonnet_override(self):
+        self.assertEqual(resolve_model_for_endpoint("claude-sonnet-4-6", self.OLLAMA_ENV), "qwen2.5-coder:7b")
+
+    def test_haiku_id_mapped_to_haiku_override(self):
+        self.assertEqual(resolve_model_for_endpoint("claude-haiku-4-5", self.OLLAMA_ENV), "qwen2.5-coder:1.5b")
+
+    def test_non_claude_model_unchanged(self):
+        self.assertEqual(resolve_model_for_endpoint("deepseek-coder-v2", self.OLLAMA_ENV), "deepseek-coder-v2")
+
+    def test_no_base_url_unchanged(self):
+        env = {"ANTHROPIC_DEFAULT_OPUS_MODEL": "claude-opus-4-7"}
+        self.assertEqual(resolve_model_for_endpoint("claude-opus-4-7", env), "claude-opus-4-7")
+        self.assertEqual(resolve_model_for_endpoint("claude-sonnet-4-6", {}), "claude-sonnet-4-6")
+
+    def test_missing_tier_override_unchanged(self):
+        env = {"ANTHROPIC_BASE_URL": "http://localhost:11434", "ANTHROPIC_DEFAULT_OPUS_MODEL": "qwen3-coder"}
+        self.assertEqual(resolve_model_for_endpoint("claude-sonnet-4-6", env), "claude-sonnet-4-6")
+
+    def test_blank_override_unchanged(self):
+        env = {"ANTHROPIC_BASE_URL": "http://localhost:11434", "ANTHROPIC_DEFAULT_OPUS_MODEL": "  "}
+        self.assertEqual(resolve_model_for_endpoint("claude-opus-4-7", env), "claude-opus-4-7")
+
+    def test_vertex_unchanged(self):
+        env = {
+            "ANTHROPIC_BASE_URL": "https://example.com",
+            "CLAUDE_CODE_USE_VERTEX": "1",
+            "ANTHROPIC_DEFAULT_OPUS_MODEL": "claude-opus-4-7@20260101",
+        }
+        self.assertEqual(resolve_model_for_endpoint("claude-opus-4-7", env), "claude-opus-4-7")
 
 
 class TestExtraReadPathsBlocklist(unittest.TestCase):

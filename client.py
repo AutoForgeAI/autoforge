@@ -63,6 +63,44 @@ def convert_model_for_vertex(model: str) -> str:
     return model
 
 
+# Claude model family -> env var the Claude CLI uses to override that tier
+_TIER_OVERRIDE_VARS = (
+    ("opus", "ANTHROPIC_DEFAULT_OPUS_MODEL"),
+    ("sonnet", "ANTHROPIC_DEFAULT_SONNET_MODEL"),
+    ("haiku", "ANTHROPIC_DEFAULT_HAIKU_MODEL"),
+)
+
+
+def resolve_model_for_endpoint(model: str, sdk_env: dict[str, str]) -> str:
+    """
+    Map a full Claude model ID to the configured tier override on custom endpoints.
+
+    The Claude CLI only applies ANTHROPIC_DEFAULT_{OPUS,SONNET,HAIKU}_MODEL to the
+    tier aliases ("opus", "sonnet", "haiku"), not to explicit model IDs. When a
+    custom endpoint (Ollama, GLM, a proxy, ...) is configured via ANTHROPIC_BASE_URL
+    and the selected model is still a Claude ID like "claude-opus-4-7" (e.g. the
+    UI's stored model), the endpoint would receive a model it doesn't serve.
+    In that case use the matching tier override instead.
+
+    Args:
+        model: The selected model ID
+        sdk_env: Environment overrides passed to the Claude CLI
+
+    Returns:
+        The tier override model if one applies, otherwise the model unchanged.
+    """
+    if not sdk_env.get("ANTHROPIC_BASE_URL") or sdk_env.get("CLAUDE_CODE_USE_VERTEX") == "1":
+        return model
+    if not model.startswith("claude-"):
+        return model
+
+    for tier, env_var in _TIER_OVERRIDE_VARS:
+        if tier in model:
+            override = (sdk_env.get(env_var) or "").strip()
+            return override or model
+    return model
+
+
 def get_extra_read_paths() -> list[Path]:
     """
     Get extra read-only paths from EXTRA_READ_PATHS environment variable.
@@ -353,7 +391,7 @@ def create_client(
     is_alternative_api = bool(base_url) or is_vertex
     is_ollama = "localhost:11434" in base_url or "127.0.0.1:11434" in base_url
     is_azure = "services.ai.azure.com" in base_url
-    model = convert_model_for_vertex(model)
+    model = convert_model_for_vertex(resolve_model_for_endpoint(model, sdk_env))
     if sdk_env:
         print(f"   - API overrides: {', '.join(sdk_env.keys())}")
         if is_vertex:
@@ -361,11 +399,11 @@ def create_client(
             region = sdk_env.get("CLOUD_ML_REGION", "unknown")
             print(f"   - Vertex AI Mode: Using GCP project '{project_id}' with model '{model}' in region '{region}'")
         elif is_ollama:
-            print("   - Ollama Mode: Using local models")
+            print(f"   - Ollama Mode: Using local model '{model}'")
         elif is_azure:
             print(f"   - Azure Mode: Using {base_url}")
         elif "ANTHROPIC_BASE_URL" in sdk_env:
-            print(f"   - Alternative API: Using {sdk_env['ANTHROPIC_BASE_URL']}")
+            print(f"   - Alternative API: Using {sdk_env['ANTHROPIC_BASE_URL']} with model '{model}'")
 
     # Create a wrapper for bash_security_hook that passes project_dir via context
     async def bash_hook_with_context(input_data, tool_use_id=None, context=None):
