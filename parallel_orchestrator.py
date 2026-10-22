@@ -27,7 +27,8 @@ import signal
 import subprocess
 import sys
 import threading
-from datetime import datetime, timezone
+import time
+from datetime import datetime, timedelta, timezone
 from pathlib import Path
 from typing import Any, Callable, Literal
 
@@ -36,6 +37,7 @@ from sqlalchemy import text
 from api.database import Feature, create_database
 from api.dependency_resolver import are_dependencies_satisfied, compute_scheduling_scores
 from progress import has_features
+from rate_limit_utils import calculate_rate_limit_backoff, parse_rate_limit_marker
 from server.utils.process_utils import kill_process_tree
 
 logger = logging.getLogger(__name__)
@@ -215,6 +217,13 @@ class ParallelOrchestrator:
 
         # Graceful pause (drain mode) flag
         self._drain_requested = False
+
+        # Rate/usage limit pause: when an agent reports that Claude's limit was hit,
+        # stop spawning ANY agents until this time.monotonic() deadline passes,
+        # instead of respawning sessions that would fail immediately.
+        self._rate_limit_until: float | None = None
+        # Consecutive limit hits with an unknown reset time (drives exponential backoff)
+        self._rate_limit_unknown_hits = 0
 
         # Session tracking for logging/debugging
         self.session_start_time: datetime | None = None
@@ -1142,6 +1151,7 @@ class ParallelOrchestrator:
     ):
         """Read output from subprocess and emit events."""
         current_feature_id = feature_id
+        hit_rate_limit = False
         try:
             if proc.stdout is None:
                 proc.wait()
@@ -1150,6 +1160,10 @@ class ParallelOrchestrator:
                 if abort.is_set():
                     break
                 line = line.rstrip()
+                is_marker, retry_seconds = parse_rate_limit_marker(line)
+                if is_marker:
+                    hit_rate_limit = True
+                    self._note_rate_limit(retry_seconds)
                 # Detect when a batch agent claims a new feature
                 claim_match = self._CLAIM_FEATURE_PATTERN.search(line)
                 if claim_match:
@@ -1169,7 +1183,48 @@ class ParallelOrchestrator:
                 kill_process_tree(proc, timeout=2.0)
             except Exception as e:
                 debug_log.log("CLEANUP", f"Error killing process tree for {agent_type} agent", error=str(e))
+            if not hit_rate_limit and proc.returncode == 0:
+                with self._lock:
+                    self._rate_limit_unknown_hits = 0
             self._on_agent_complete(feature_id, proc.returncode, agent_type, proc)
+
+    def _note_rate_limit(self, retry_seconds: int | None) -> None:
+        """Pause spawning of new agents after an agent hit Claude's rate/usage limit.
+
+        Safe to call from output reader threads. Several agents usually hit the limit
+        at about the same time; the pause is extended, never shortened, and the
+        warning is printed only when a new pause starts.
+        """
+        with self._lock:
+            if retry_seconds is None:
+                retry_seconds = calculate_rate_limit_backoff(self._rate_limit_unknown_hits)
+                self._rate_limit_unknown_hits += 1
+            else:
+                self._rate_limit_unknown_hits = 0
+            now = time.monotonic()
+            already_paused = self._rate_limit_until is not None and self._rate_limit_until > now
+            new_until = now + max(retry_seconds, 1)
+            if already_paused and self._rate_limit_until is not None and self._rate_limit_until >= new_until:
+                return
+            self._rate_limit_until = new_until
+
+        resume_at = (datetime.now() + timedelta(seconds=retry_seconds)).astimezone()
+        verb = "Extending" if already_paused else "Pausing"
+        # CRITICAL: This line is parsed by the server to show a warning in the UI
+        print(
+            f"Claude rate limit reached - {verb} all agents for {retry_seconds}s "
+            f"(until {resume_at.strftime('%Y-%m-%d %H:%M %Z')})",
+            flush=True,
+        )
+        debug_log.log("RATE_LIMIT", f"{verb} agent spawning", retry_seconds=retry_seconds,
+            resume_at=resume_at.isoformat())
+
+    def _rate_limit_remaining(self) -> float:
+        """Seconds left in the current rate-limit pause (0 if not paused)."""
+        with self._lock:
+            if self._rate_limit_until is None:
+                return 0.0
+            return max(self._rate_limit_until - time.monotonic(), 0.0)
 
     def _run_inter_session_cleanup(self):
         """Run lightweight cleanup between agent sessions.
@@ -1547,6 +1602,20 @@ class ParallelOrchestrator:
                         debug_log.log("DRAIN", f"Waiting for agents to finish: coding={coding_count}, testing={testing_count}")
                         await self._wait_for_agent_completion()
                         continue
+
+                # --- Rate/usage limit pause ---
+                # Don't spawn coding OR testing agents while Claude's limit is active;
+                # they would fail immediately and burn retries.
+                if self._rate_limit_until is not None:
+                    remaining = self._rate_limit_remaining()
+                    if remaining > 0:
+                        await self._wait_for_agent_completion(timeout=min(remaining, 60))
+                        continue
+                    with self._lock:
+                        self._rate_limit_until = None
+                    # CRITICAL: This line is parsed by the server to clear the UI warning
+                    print("Rate limit pause over - resuming agents", flush=True)
+                    debug_log.log("RATE_LIMIT", "Pause expired, resuming agent spawning")
 
                 # Maintain testing agents independently (runs every iteration)
                 self._maintain_testing_agents(feature_dicts)

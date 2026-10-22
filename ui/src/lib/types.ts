@@ -244,6 +244,7 @@ export type OrchestratorState =
   | 'complete'
   | 'draining'
   | 'paused'
+  | 'rate_limited'
 
 // Orchestrator event for recent activity
 export interface OrchestratorEvent {
@@ -265,6 +266,7 @@ export interface OrchestratorStatus {
   blockedCount: number
   timestamp: string
   recentEvents: OrchestratorEvent[]
+  rateLimitedUntil?: string | null  // Set while agents are paused by a Claude usage limit
 }
 
 // WebSocket message types
@@ -342,6 +344,7 @@ export interface WSOrchestratorUpdateMessage {
   blockedCount?: number
   featureId?: number
   featureName?: string
+  rateLimitedUntil?: string | null
 }
 
 export interface WSBrowserScreenshotMessage {

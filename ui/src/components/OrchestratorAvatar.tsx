@@ -106,6 +106,7 @@ function getStateAnimation(state: OrchestratorState): string {
     case 'draining':
       return 'animate-thinking'
     case 'paused':
+    case 'rate_limited':
       return ''
     case 'complete':
       return 'animate-celebrate'
@@ -129,6 +130,8 @@ function getStateGlow(state: OrchestratorState): string {
       return 'shadow-[0_0_10px_rgba(251,191,36,0.5)]'
     case 'paused':
       return ''
+    case 'rate_limited':
+      return 'shadow-[0_0_10px_rgba(239,68,68,0.5)]'
     case 'complete':
       return 'shadow-[0_0_20px_rgba(112,224,0,0.6)]'
     default:
@@ -153,6 +156,8 @@ function getStateDescription(state: OrchestratorState): string {
       return 'draining active agents'
     case 'paused':
       return 'paused'
+    case 'rate_limited':
+      return 'paused by Claude usage limit'
     case 'complete':
       return 'all features complete'
     default:

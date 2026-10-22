@@ -6,12 +6,17 @@ functions from rate_limit_utils.py (shared module).
 """
 
 import unittest
+from datetime import datetime, timezone
+from zoneinfo import ZoneInfo
 
 from rate_limit_utils import (
     calculate_error_backoff,
     calculate_rate_limit_backoff,
     clamp_retry_delay,
+    format_rate_limit_marker,
     is_rate_limit_error,
+    parse_limit_reset,
+    parse_rate_limit_marker,
     parse_retry_after,
 )
 
@@ -156,6 +161,91 @@ class TestFalsePositives(unittest.TestCase):
         assert is_rate_limit_error("Server is overloaded") is True
         assert is_rate_limit_error("API overloaded") is True
         assert is_rate_limit_error("system is overloaded") is True
+
+
+class TestUsageLimitDetection(unittest.TestCase):
+    """Claude subscription usage-limit messages (issue #19)."""
+
+    def test_claude_code_limit_messages(self):
+        assert is_rate_limit_error(
+            "Limit reached · resets 6pm (America/New_York) · /upgrade to Max or turn on /extra-usage"
+        ) is True
+        assert is_rate_limit_error("5-hour limit reached ∙ resets 1pm") is True
+        assert is_rate_limit_error("You've hit your limit · resets 3am (Europe/London)") is True
+        assert is_rate_limit_error("Claude AI usage limit reached|1760000000") is True
+        assert is_rate_limit_error("Claude usage limit reached. Your limit will reset at 3pm") is True
+
+    def test_generic_limit_text_not_matched(self):
+        assert is_rate_limit_error("File size limit reached") is False
+        assert is_rate_limit_error("Added a check: when the upload limit is reached we show a toast") is False
+        assert is_rate_limit_error("Users who hit the limit get a 403") is False
+
+
+class TestParseLimitReset(unittest.TestCase):
+    """Tests for parse_limit_reset()."""
+
+    NY = ZoneInfo("America/New_York")
+
+    def test_time_of_day_with_timezone(self):
+        now = datetime(2026, 1, 15, 14, 30, tzinfo=self.NY)
+        result = parse_limit_reset("Limit reached · resets 6pm (America/New_York) · /upgrade", now=now)
+        assert result is not None
+        seconds, target = result
+        assert seconds == 3 * 3600 + 30 * 60
+        assert target.hour == 18 and target.minute == 0
+
+    def test_minutes_and_reset_at(self):
+        now = datetime(2026, 1, 15, 14, 0, tzinfo=self.NY)
+        result = parse_limit_reset("Your limit will reset at 6:30 PM (America/New_York).", now=now)
+        assert result is not None
+        assert result[0] == 4 * 3600 + 30 * 60
+
+    def test_passed_time_rolls_to_tomorrow(self):
+        now = datetime(2026, 1, 15, 19, 0, tzinfo=self.NY)
+        result = parse_limit_reset("resets 6pm (America/New_York)", now=now)
+        assert result is not None
+        assert result[0] == 23 * 3600
+
+    def test_twelve_am_pm(self):
+        now = datetime(2026, 1, 15, 11, 0, tzinfo=self.NY)
+        assert parse_limit_reset("resets 12pm (America/New_York)", now=now)[0] == 3600
+        assert parse_limit_reset("resets 12am (America/New_York)", now=now)[0] == 13 * 3600
+
+    def test_other_timezone(self):
+        now = datetime(2026, 1, 15, 12, 0, tzinfo=timezone.utc)  # London is UTC+0 in January
+        result = parse_limit_reset("You've hit your limit · resets 3pm (Europe/London)", now=now)
+        assert result is not None
+        assert result[0] == 3 * 3600
+
+    def test_unknown_timezone_falls_back(self):
+        now = datetime(2026, 1, 15, 12, 0, tzinfo=timezone.utc)
+        result = parse_limit_reset("resets 6pm (Not/AZone)", now=now)
+        assert result is not None
+        assert 1 <= result[0] <= 24 * 3600
+
+    def test_epoch_format(self):
+        now = datetime.fromtimestamp(1760000000 - 600, tz=timezone.utc)
+        result = parse_limit_reset("Claude AI usage limit reached|1760000000", now=now)
+        assert result is not None
+        assert result[0] == 600
+
+    def test_no_reset_time(self):
+        assert parse_limit_reset("Rate limit exceeded") is None
+        assert parse_limit_reset("") is None
+        assert parse_limit_reset("resets 13pm") is None
+
+
+class TestRateLimitMarker(unittest.TestCase):
+    """Marker line passed from agent subprocesses to the orchestrator."""
+
+    def test_round_trip(self):
+        assert parse_rate_limit_marker(format_rate_limit_marker(3600)) == (True, 3600)
+        assert parse_rate_limit_marker(format_rate_limit_marker(None)) == (True, None)
+        assert parse_rate_limit_marker(format_rate_limit_marker(42, "extra")) == (True, 42)
+
+    def test_non_marker(self):
+        assert parse_rate_limit_marker("Rate limit hit") == (False, None)
+        assert parse_rate_limit_marker("") == (False, None)
 
 
 class TestBackoffFunctions(unittest.TestCase):

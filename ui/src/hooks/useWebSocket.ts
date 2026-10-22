@@ -339,6 +339,7 @@ export function useProjectWebSocket(projectName: string | null) {
                     blockedCount: message.blockedCount ?? prev.orchestratorStatus?.blockedCount ?? 0,
                     timestamp: message.timestamp,
                     recentEvents: [newEvent, ...(prev.orchestratorStatus?.recentEvents ?? []).slice(0, 4)],
+                    rateLimitedUntil: message.rateLimitedUntil ?? null,
                   },
                 }
               })

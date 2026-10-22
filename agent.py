@@ -7,12 +7,10 @@ Core agent interaction functions for running autonomous coding sessions.
 
 import asyncio
 import io
-import re
 import sys
 from datetime import datetime, timedelta
 from pathlib import Path
 from typing import Optional
-from zoneinfo import ZoneInfo
 
 from claude_agent_sdk import ClaudeSDKClient
 
@@ -42,12 +40,34 @@ from rate_limit_utils import (
     calculate_error_backoff,
     calculate_rate_limit_backoff,
     clamp_retry_delay,
+    format_rate_limit_marker,
     is_rate_limit_error,
+    parse_limit_reset,
     parse_retry_after,
 )
 
 # Configuration
 AUTO_CONTINUE_DELAY_SECONDS = 3
+
+
+def _print_limit_warning(response: str, delay_seconds: int, reset_at: Optional[datetime]) -> None:
+    """Print a prominent warning that Claude's rate/usage limit was reached."""
+    # Show the line Claude actually sent (e.g. "Limit reached · resets 6pm (...)")
+    limit_lines = [ln.strip() for ln in response.splitlines() if ln.strip() and is_rate_limit_error(ln)]
+    detail = limit_lines[-1] if limit_lines else response.strip()[-300:]
+
+    if reset_at is not None:
+        when = reset_at.astimezone().strftime("%B %d, %Y at %I:%M %p %Z")
+    else:
+        when = (datetime.now().astimezone() + timedelta(seconds=delay_seconds)).strftime("%I:%M %p %Z")
+
+    print("\n" + "!" * 70, flush=True)
+    print("  WARNING: CLAUDE USAGE/RATE LIMIT REACHED", flush=True)
+    print("!" * 70, flush=True)
+    if detail:
+        print(f"Claude said: {detail}", flush=True)
+    print(f"Pausing new sessions for {delay_seconds}s (until ~{when}).", flush=True)
+    print("!" * 70, flush=True)
 
 
 async def run_agent_session(
@@ -237,6 +257,14 @@ async def run_autonomous_agent(
         print("Running as CODING agent")
         print_progress_summary(project_dir)
 
+    # Agents spawned by the orchestrator (feature/batch/testing) run a single session
+    # and exit; on rate limits they report to the orchestrator instead of waiting.
+    single_session = (
+        feature_id is not None
+        or bool(feature_ids)
+        or agent_type == "testing"
+    )
+
     # Main loop
     iteration = 0
     rate_limit_retries = 0  # Track consecutive rate limit errors for exponential backoff
@@ -314,62 +342,39 @@ async def run_autonomous_agent(
             reset_rate_limit_retries = True
 
             delay_seconds = AUTO_CONTINUE_DELAY_SECONDS
-            target_time_str = None
 
-            # Check for rate limit indicators in response text
+            # Check for rate/usage limit indicators in response text
+            # (e.g. "Limit reached · resets 6pm (America/New_York)")
             if is_rate_limit_error(response):
-                print("Claude Agent SDK indicated rate limit reached.")
                 reset_rate_limit_retries = False
+                known_delay: Optional[int] = None
+                reset_at: Optional[datetime] = None
 
-                # Try to extract retry-after from response text first
-                retry_seconds = parse_retry_after(response)
-                if retry_seconds is not None:
-                    delay_seconds = clamp_retry_delay(retry_seconds)
+                reset = parse_limit_reset(response)
+                if reset is not None:
+                    known_delay, reset_at = reset
                 else:
-                    # Use exponential backoff when retry-after unknown
+                    retry_seconds = parse_retry_after(response)
+                    if retry_seconds is not None:
+                        known_delay = clamp_retry_delay(retry_seconds)
+
+                if known_delay is not None:
+                    delay_seconds = known_delay
+                else:
+                    # Use exponential backoff when the reset time is unknown
                     delay_seconds = calculate_rate_limit_backoff(rate_limit_retries)
                     rate_limit_retries += 1
 
-                # Try to parse reset time from response (more specific format)
-                match = re.search(
-                    r"(?i)\bresets(?:\s+at)?\s+(\d+)(?::(\d+))?\s*(am|pm)\s*\(([^)]+)\)",
-                    response,
-                )
-                if match:
-                    hour = int(match.group(1))
-                    minute = int(match.group(2)) if match.group(2) else 0
-                    period = match.group(3).lower()
-                    tz_name = match.group(4).strip()
+                _print_limit_warning(response, delay_seconds, reset_at)
 
-                    # Convert to 24-hour format
-                    if period == "pm" and hour != 12:
-                        hour += 12
-                    elif period == "am" and hour == 12:
-                        hour = 0
+                if single_session:
+                    # Don't sleep for hours inside a feature agent: hand the wait to
+                    # the orchestrator so it pauses ALL agents instead of respawning.
+                    print(format_rate_limit_marker(known_delay), flush=True)
+                    print("Stopping this session; new sessions are paused until the limit resets.", flush=True)
+                    break
 
-                    try:
-                        tz = ZoneInfo(tz_name)
-                        now = datetime.now(tz)
-                        target = now.replace(
-                            hour=hour, minute=minute, second=0, microsecond=0
-                        )
-
-                        # If target time has already passed today, wait until tomorrow
-                        if target <= now:
-                            target += timedelta(days=1)
-
-                        delta = target - now
-                        delay_seconds = min(max(int(delta.total_seconds()), 1), 24 * 60 * 60)
-                        target_time_str = target.strftime("%B %d, %Y at %I:%M %p %Z")
-
-                    except Exception as e:
-                        print(f"Error parsing reset time: {e}, using default delay")
-
-            if target_time_str:
-                print(
-                    f"\nClaude Code Limit Reached. Agent will auto-continue in {delay_seconds:.0f}s ({target_time_str})...",
-                    flush=True,
-                )
+                print(f"\nAgent will auto-continue in {delay_seconds:.0f}s...", flush=True)
             else:
                 print(
                     f"\nAgent will auto-continue in {delay_seconds:.0f}s...", flush=True
@@ -413,6 +418,18 @@ async def run_autonomous_agent(
             # Smart rate limit handling with exponential backoff
             # Reset error counter so mixed events don't inflate delays
             error_retries = 0
+            if single_session:
+                retry_hint = int(response) if response.isdigit() else None
+                if retry_hint is not None:
+                    retry_hint = clamp_retry_delay(retry_hint)
+                _print_limit_warning(
+                    "Rate limit hit (API error).",
+                    retry_hint if retry_hint is not None else calculate_rate_limit_backoff(rate_limit_retries),
+                    None,
+                )
+                print(format_rate_limit_marker(retry_hint), flush=True)
+                print("Stopping this session; new sessions are paused until the limit resets.", flush=True)
+                break
             if response != "unknown":
                 try:
                     delay_seconds = clamp_retry_delay(int(response))

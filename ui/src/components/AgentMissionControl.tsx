@@ -69,8 +69,10 @@ export function AgentMissionControl({
           <span className="font-semibold text-primary-foreground uppercase tracking-wide">
             Mission Control
           </span>
-          <Badge variant="secondary" className="ml-2">
-            {agents.length > 0
+          <Badge variant={orchestratorStatus?.state === 'rate_limited' ? 'destructive' : 'secondary'} className="ml-2">
+            {orchestratorStatus?.state === 'rate_limited'
+              ? 'Usage limit - paused'
+              : agents.length > 0
               ? `${agents.length} ${agents.length === 1 ? 'agent' : 'agents'} active`
               : orchestratorStatus?.state === 'initializing'
                 ? 'Initializing'

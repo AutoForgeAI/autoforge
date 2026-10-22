@@ -1,5 +1,5 @@
 import { useState } from 'react'
-import { ChevronDown, ChevronUp, Code, FlaskConical, Clock, Lock, Sparkles } from 'lucide-react'
+import { AlertTriangle, ChevronDown, ChevronUp, Code, FlaskConical, Clock, Lock, Sparkles } from 'lucide-react'
 import { OrchestratorAvatar } from './OrchestratorAvatar'
 import type { OrchestratorStatus, OrchestratorState } from '../lib/types'
 import { Card, CardContent } from '@/components/ui/card'
@@ -29,6 +29,8 @@ function getStateText(state: OrchestratorState): string {
       return 'Draining agents...'
     case 'paused':
       return 'Paused'
+    case 'rate_limited':
+      return 'Usage limit reached'
     default:
       return 'Orchestrating...'
   }
@@ -50,6 +52,8 @@ function getStateColor(state: OrchestratorState): string {
       return 'text-amber-600 dark:text-amber-400'
     case 'paused':
       return 'text-muted-foreground'
+    case 'rate_limited':
+      return 'text-destructive'
     default:
       return 'text-muted-foreground'
   }
@@ -95,6 +99,21 @@ export function OrchestratorStatusCard({ status }: OrchestratorStatusCardProps) 
             <p className="text-sm text-foreground mb-3 line-clamp-2">
               {status.message}
             </p>
+
+            {/* Claude usage/rate limit warning */}
+            {status.state === 'rate_limited' && (
+              <div
+                role="alert"
+                className="flex items-start gap-2 mb-3 p-2 rounded border-2 border-destructive bg-destructive/10 text-sm text-foreground"
+              >
+                <AlertTriangle size={16} className="text-destructive shrink-0 mt-0.5" />
+                <span>
+                  Claude usage limit reached. New agent sessions are paused
+                  {status.rateLimitedUntil ? <> until <strong>{status.rateLimitedUntil}</strong></> : null}
+                  {' '}and will resume automatically.
+                </span>
+              </div>
+            )}
 
             {/* Status badges row */}
             <div className="flex flex-wrap items-center gap-2">

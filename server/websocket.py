@@ -82,6 +82,10 @@ ORCHESTRATOR_PATTERNS = {
     'drain_start': re.compile(r'Graceful pause requested'),
     'drain_complete': re.compile(r'All agents drained'),
     'drain_resume': re.compile(r'Resuming from graceful pause'),
+    'rate_limit_pause': re.compile(
+        r'Claude rate limit reached - (?:Pausing|Extending) all agents for (\d+)s \(until ([^)]+)\)'
+    ),
+    'rate_limit_resume': re.compile(r'Rate limit pause over'),
 }
 
 
@@ -449,6 +453,8 @@ class OrchestratorTracker:
         self.ready_count = 0
         self.blocked_count = 0
         self.recent_events: list[dict] = []
+        # Human-readable time the Claude rate/usage limit pause ends, while paused
+        self.rate_limited_until: str | None = None
         self._lock = asyncio.Lock()
 
     async def process_line(self, line: str) -> dict | None:
@@ -460,8 +466,24 @@ class OrchestratorTracker:
         async with self._lock:
             update = None
 
+            # Claude rate/usage limit hit - orchestrator paused all agents
+            if match := ORCHESTRATOR_PATTERNS['rate_limit_pause'].search(line):
+                self.rate_limited_until = match.group(2).strip()
+                update = self._create_update(
+                    'rate_limit_pause',
+                    f'Claude usage limit reached. Agents paused until {self.rate_limited_until}.'
+                )
+
+            elif ORCHESTRATOR_PATTERNS['rate_limit_resume'].search(line):
+                self.rate_limited_until = None
+                self.state = 'scheduling'
+                update = self._create_update(
+                    'rate_limit_resume',
+                    'Usage limit reset, resuming agents'
+                )
+
             # Check for initializer start
-            if ORCHESTRATOR_PATTERNS['init_start'].search(line):
+            elif ORCHESTRATOR_PATTERNS['init_start'].search(line):
                 self.state = 'initializing'
                 update = self._create_update(
                     'init_start',
@@ -559,6 +581,7 @@ class OrchestratorTracker:
             # Check for all complete
             elif ORCHESTRATOR_PATTERNS['all_complete'].search(line):
                 self.state = 'complete'
+                self.rate_limited_until = None
                 self.coding_agents = 0
                 self.testing_agents = 0
                 update = self._create_update(
@@ -618,7 +641,9 @@ class OrchestratorTracker:
         update = {
             'type': 'orchestrator_update',
             'eventType': event_type,
-            'state': self.state,
+            # Keep reporting the limit pause while other events (agents exiting) arrive
+            'state': 'rate_limited' if self.rate_limited_until else self.state,
+            'rateLimitedUntil': self.rate_limited_until,
             'message': message,
             'timestamp': timestamp,
             'codingAgents': self.coding_agents,
@@ -643,6 +668,7 @@ class OrchestratorTracker:
             self.testing_agents = 0
             self.ready_count = 0
             self.blocked_count = 0
+            self.rate_limited_until = None
             self.recent_events.clear()
 
 
