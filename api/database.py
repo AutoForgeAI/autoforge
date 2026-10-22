@@ -66,6 +66,11 @@ class Feature(Base):
     human_input_request = Column(JSON, nullable=True, default=None)   # Agent's structured request
     human_input_response = Column(JSON, nullable=True, default=None)  # Human's response
 
+    # Number of times this feature has been selected for regression testing.
+    # Testing agents pick the least-tested passing features first so every
+    # feature is covered before any is re-tested (persists across restarts).
+    regression_count = Column(Integer, nullable=False, default=0, server_default=text("0"))
+
     def to_dict(self) -> dict:
         """Convert feature to dictionary for JSON serialization."""
         return {
@@ -326,6 +331,17 @@ def _migrate_add_human_input_columns(engine) -> None:
         conn.commit()
 
 
+def _migrate_add_regression_count_column(engine) -> None:
+    """Add regression_count column to existing databases that don't have it."""
+    with engine.connect() as conn:
+        result = conn.execute(text("PRAGMA table_info(features)"))
+        columns = [row[1] for row in result.fetchall()]
+
+        if "regression_count" not in columns:
+            conn.execute(text("ALTER TABLE features ADD COLUMN regression_count INTEGER NOT NULL DEFAULT 0"))
+            conn.commit()
+
+
 def _migrate_add_schedules_tables(engine) -> None:
     """Create schedules and schedule_overrides tables if they don't exist."""
     from sqlalchemy import inspect
@@ -450,6 +466,7 @@ def create_database(project_dir: Path) -> tuple:
     _migrate_add_dependencies_column(engine)
     _migrate_add_testing_columns(engine)
     _migrate_add_human_input_columns(engine)
+    _migrate_add_regression_count_column(engine)
 
     # Migrate to add schedules tables
     _migrate_add_schedules_tables(engine)

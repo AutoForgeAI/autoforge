@@ -20,6 +20,8 @@ jobs:
         run: ruff check .
       - name: Run security tests
         run: python test_security.py
+      - name: Run regression selection tests
+        run: python -m pytest test_regression_selection.py
 
   ui:
     runs-on: ubuntu-latest
