@@ -1,7 +1,8 @@
 import { useState } from 'react'
-import { ChevronDown, Plus, FolderOpen, Loader2, Trash2 } from 'lucide-react'
+import { ChevronDown, Plus, FolderOpen, FolderInput, Loader2, Trash2 } from 'lucide-react'
 import type { ProjectSummary } from '../lib/types'
 import { NewProjectModal } from './NewProjectModal'
+import { ImportProjectModal } from './ImportProjectModal'
 import { ConfirmDialog } from './ConfirmDialog'
 import { useDeleteProject } from '../hooks/useProjects'
 import { Button } from '@/components/ui/button'
@@ -31,6 +32,7 @@ export function ProjectSelector({
 }: ProjectSelectorProps) {
   const [isOpen, setIsOpen] = useState(false)
   const [showNewProjectModal, setShowNewProjectModal] = useState(false)
+  const [showImportProjectModal, setShowImportProjectModal] = useState(false)
   const [projectToDelete, setProjectToDelete] = useState<string | null>(null)
 
   const deleteProject = useDeleteProject()
@@ -148,6 +150,15 @@ export function ProjectSelector({
               <Plus size={16} />
               New Project
             </DropdownMenuItem>
+            <DropdownMenuItem
+              onSelect={() => {
+                setShowImportProjectModal(true)
+              }}
+              className="cursor-pointer"
+            >
+              <FolderInput size={16} />
+              Import Existing Project
+            </DropdownMenuItem>
           </div>
         </DropdownMenuContent>
       </DropdownMenu>
@@ -158,6 +169,13 @@ export function ProjectSelector({
         onClose={() => setShowNewProjectModal(false)}
         onProjectCreated={handleProjectCreated}
         onStepChange={(step) => onSpecCreatingChange?.(step === 'chat')}
+      />
+
+      {/* Import Project Modal */}
+      <ImportProjectModal
+        isOpen={showImportProjectModal}
+        onClose={() => setShowImportProjectModal(false)}
+        onProjectImported={handleProjectCreated}
       />
 
       {/* Delete Confirmation Dialog */}

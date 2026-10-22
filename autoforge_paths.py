@@ -98,6 +98,22 @@ def get_autoforge_dir(project_dir: Path) -> Path:
     return project_dir / ".autoforge"
 
 
+def is_autoforge_project(project_dir: Path) -> bool:
+    """Return True if *project_dir* contains AutoForge project data.
+
+    Used when importing (re-registering) an existing project, e.g. after a
+    fresh install where the registry no longer knows about it.  Recognises the
+    current ``.autoforge/`` layout as well as the legacy ``.autocoder/`` and
+    root-level layouts.
+    """
+    for base in (project_dir / ".autoforge", project_dir / ".autocoder", project_dir):
+        if (base / "features.db").is_file():
+            return True
+        if (base / "prompts" / "app_spec.txt").is_file():
+            return True
+    return False
+
+
 def ensure_autoforge_dir(project_dir: Path) -> Path:
     """Create the ``.autoforge/`` directory (if needed) and write its ``.gitignore``.
 

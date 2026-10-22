@@ -31,6 +31,12 @@ class ProjectCreate(BaseModel):
     spec_method: Literal["claude", "manual"] = "claude"
 
 
+class ProjectImport(BaseModel):
+    """Request schema for importing (re-registering) an existing project."""
+    name: str = Field(..., min_length=1, max_length=50, pattern=r'^[a-zA-Z0-9_-]+$')
+    path: str = Field(..., min_length=1, description="Absolute path to an existing AutoForge project directory")
+
+
 class ProjectStats(BaseModel):
     """Project statistics."""
     passing: int = 0

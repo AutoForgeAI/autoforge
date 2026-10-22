@@ -17,6 +17,7 @@ from fastapi import APIRouter, HTTPException
 from ..schemas import (
     ProjectCreate,
     ProjectDetail,
+    ProjectImport,
     ProjectPrompts,
     ProjectPromptsUpdate,
     ProjectSettingsUpdate,
@@ -116,6 +117,36 @@ def get_project_stats(project_dir: Path) -> ProjectStats:
     )
 
 
+def _ensure_not_registered(name: str, project_path: Path) -> None:
+    """Raise 409 if the name or the path is already in the registry."""
+    (_, _, get_project_path, list_registered_projects,
+     _, _, _, _, _) = _get_registry_functions()
+
+    # Check if project name already registered
+    existing = get_project_path(name)
+    if existing:
+        raise HTTPException(
+            status_code=409,
+            detail=f"Project '{name}' already exists at {existing}"
+        )
+
+    # Check if path already registered under a different name
+    all_projects = list_registered_projects()
+    for existing_name, info in all_projects.items():
+        existing_path = Path(info["path"]).resolve()
+        # Case-insensitive comparison on Windows
+        if sys.platform == "win32":
+            paths_match = str(existing_path).lower() == str(project_path).lower()
+        else:
+            paths_match = existing_path == project_path
+
+        if paths_match:
+            raise HTTPException(
+                status_code=409,
+                detail=f"Path '{project_path}' is already registered as project '{existing_name}'"
+            )
+
+
 @router.get("", response_model=list[ProjectSummary])
 async def list_projects():
     """List all registered projects."""
@@ -158,35 +189,12 @@ async def create_project(project: ProjectCreate):
     """Create a new project at the specified path."""
     _init_imports()
     assert _scaffold_project_prompts is not None  # guaranteed by _init_imports()
-    (register_project, _, get_project_path, list_registered_projects,
-     _, _, _, _, _) = _get_registry_functions()
+    (register_project, _, _, _, _, _, _, _, _) = _get_registry_functions()
 
     name = validate_project_name(project.name)
     project_path = Path(project.path).resolve()
 
-    # Check if project name already registered
-    existing = get_project_path(name)
-    if existing:
-        raise HTTPException(
-            status_code=409,
-            detail=f"Project '{name}' already exists at {existing}"
-        )
-
-    # Check if path already registered under a different name
-    all_projects = list_registered_projects()
-    for existing_name, info in all_projects.items():
-        existing_path = Path(info["path"]).resolve()
-        # Case-insensitive comparison on Windows
-        if sys.platform == "win32":
-            paths_match = str(existing_path).lower() == str(project_path).lower()
-        else:
-            paths_match = existing_path == project_path
-
-        if paths_match:
-            raise HTTPException(
-                status_code=409,
-                detail=f"Path '{project_path}' is already registered as project '{existing_name}'"
-            )
+    _ensure_not_registered(name, project_path)
 
     # Security: Check if path is in a blocked location
     from .filesystem import is_path_blocked
@@ -230,6 +238,66 @@ async def create_project(project: ProjectCreate):
         path=project_path.as_posix(),
         has_spec=False,  # Just created, no spec yet
         stats=ProjectStats(passing=0, total=0, percentage=0.0),
+        default_concurrency=3,
+    )
+
+
+@router.post("/import", response_model=ProjectSummary)
+async def import_project(project: ProjectImport):
+    """Register an existing AutoForge project folder (e.g. after a reinstall).
+
+    Unlike project creation, this never creates directories or scaffolds
+    prompt templates: the folder must already contain AutoForge data
+    (``features.db`` and/or ``prompts/app_spec.txt``) so its features,
+    progress and spec are picked up as-is.
+    """
+    _init_imports()
+    assert _check_spec_exists is not None  # guaranteed by _init_imports()
+    (register_project, _, _, _, _, _, _, _, _) = _get_registry_functions()
+
+    name = validate_project_name(project.name)
+    project_path = Path(project.path).resolve()
+
+    # Security: Check if path is in a blocked location
+    from .filesystem import is_path_blocked
+    if is_path_blocked(project_path):
+        raise HTTPException(
+            status_code=403,
+            detail="Cannot import project from system or sensitive directory"
+        )
+
+    if not project_path.is_dir():
+        raise HTTPException(
+            status_code=400,
+            detail=f"Folder does not exist: {project_path}"
+        )
+
+    from autoforge_paths import is_autoforge_project
+    if not is_autoforge_project(project_path):
+        raise HTTPException(
+            status_code=400,
+            detail=(
+                "This folder does not look like an AutoForge project "
+                "(no .autoforge/features.db or prompts/app_spec.txt found). "
+                "Use 'New Project' to start a new project in it instead."
+            )
+        )
+
+    _ensure_not_registered(name, project_path)
+
+    try:
+        register_project(name, project_path)
+    except Exception as e:
+        raise HTTPException(
+            status_code=500,
+            detail=f"Failed to register project: {e}"
+        )
+
+    return ProjectSummary(
+        name=name,
+        path=project_path.as_posix(),
+        has_spec=_check_spec_exists(project_path),
+        stats=get_project_stats(project_path),
         default_concurrency=3,
     )
 

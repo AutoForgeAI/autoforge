@@ -357,7 +357,7 @@ export function NewProjectModal({
                 value={projectName}
                 onChange={(e) => setProjectName(e.target.value)}
                 placeholder="my-awesome-app"
-                pattern="^[a-zA-Z0-9_-]+$"
+                pattern="^[a-zA-Z0-9_\-]+$"
                 autoFocus
               />
               <p className="text-sm text-muted-foreground">

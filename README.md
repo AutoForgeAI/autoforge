@@ -117,6 +117,9 @@ The start script will:
 You'll see options to:
 - **Create new project** - Start a fresh project with AI-assisted spec generation
 - **Continue existing project** - Resume work on a previous project
+- **Import existing project folder** - Re-register a project folder created by AutoForge (e.g. after a reinstall, on another machine, or under WSL) so you can resume it with its spec, features and progress intact
+
+In the Web UI, the same is available from the project dropdown via **Import Existing Project**.
 
 For new projects, you can use the built-in `/create-spec` command to interactively create your app specification with Claude's help.
 
