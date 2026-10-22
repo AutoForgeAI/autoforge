@@ -23,7 +23,7 @@ interface SettingsModalProps {
 const PROVIDER_INFO_TEXT: Record<string, string> = {
   claude: 'Default provider. Uses Claude CLI credentials. API key auth is recommended.',
   kimi: 'Get an API key at kimi.com',
-  glm: 'Get an API key at open.bigmodel.cn',
+  glm: 'Get an API key at z.ai (GLM Coding Plan). Mainland China accounts: change the Base URL to https://open.bigmodel.cn/api/anthropic',
   ollama: 'Run models locally. Install from ollama.com',
   custom: 'Connect to any OpenAI-compatible API endpoint.',
 }
@@ -116,7 +116,7 @@ export function SettingsModal({ isOpen, onClose }: SettingsModalProps) {
   const currentProviderInfo: ProviderInfo | undefined = providers.find(p => p.id === currentProvider)
   const isAlternativeProvider = currentProvider !== 'claude'
   const showAuthField = isAlternativeProvider && currentProviderInfo?.requires_auth
-  const showBaseUrlField = currentProvider === 'custom' || currentProvider === 'azure'
+  const showBaseUrlField = currentProvider === 'custom' || currentProvider === 'azure' || currentProvider === 'glm'
   const showCustomModelInput = currentProvider === 'custom' || currentProvider === 'ollama'
 
   return (
@@ -332,7 +332,7 @@ export function SettingsModal({ isOpen, onClose }: SettingsModalProps) {
                         type="text"
                         value={customBaseUrlInput}
                         onChange={(e) => setCustomBaseUrlInput(e.target.value)}
-                        placeholder={currentProvider === 'azure' ? 'https://your-resource.services.ai.azure.com/anthropic' : 'https://api.example.com/v1'}
+                        placeholder={currentProvider === 'azure' ? 'https://your-resource.services.ai.azure.com/anthropic' : currentProvider === 'glm' ? 'https://api.z.ai/api/anthropic' : 'https://api.example.com/v1'}
                         className="flex-1 py-1.5 px-3 text-sm border rounded-md bg-background"
                       />
                       <Button

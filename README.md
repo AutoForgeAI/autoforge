@@ -338,6 +338,8 @@ Alternative providers are configured via the **Settings UI** (gear icon > API Pr
 
 Available providers: **Claude** (default), **GLM** (Zhipu AI), **Ollama** (local models), **Kimi** (Moonshot), **Custom**
 
+**GLM (Zhipu AI / Z.ai):** pick "GLM" in Settings, paste your Z.ai API key (e.g. from the GLM Coding Plan), and choose a model (GLM 5, GLM 4.7, 4.6, 4.5, 4.5 Air, or type any other model ID). The base URL defaults to `https://api.z.ai/api/anthropic`; mainland China accounts should change it to `https://open.bigmodel.cn/api/anthropic`. AutoForge applies Z.ai's recommended `API_TIMEOUT_MS=3000000` automatically so long planning turns don't time out.
+
 For Ollama, install [Ollama v0.14.0+](https://ollama.com), run `ollama serve`, and pull a coding model (e.g., `ollama pull qwen3-coder`). Then select "Ollama" in the Settings UI.
 
 ### Using Vertex AI

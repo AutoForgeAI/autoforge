@@ -801,9 +801,14 @@ API_PROVIDERS: dict[str, dict[str, Any]] = {
         "models": [
             {"id": "glm-5", "name": "GLM 5"},
             {"id": "glm-4.7", "name": "GLM 4.7"},
+            {"id": "glm-4.6", "name": "GLM 4.6"},
+            {"id": "glm-4.5", "name": "GLM 4.5"},
             {"id": "glm-4.5-air", "name": "GLM 4.5 Air"},
         ],
         "default_model": "glm-4.7",
+        # Z.ai recommends a long timeout for its Anthropic-compatible endpoint;
+        # long planning turns otherwise hit the CLI's default request timeout.
+        "default_timeout_ms": "3000000",
     },
     "azure": {
         "name": "Azure Anthropic (Claude)",
@@ -907,7 +912,7 @@ def get_effective_sdk_env() -> dict[str, str]:
         sdk_env["ANTHROPIC_DEFAULT_HAIKU_MODEL"] = model
 
     # Timeout
-    timeout = all_settings.get("api_timeout_ms")
+    timeout = all_settings.get("api_timeout_ms") or provider.get("default_timeout_ms")
     if timeout:
         sdk_env["API_TIMEOUT_MS"] = timeout
 

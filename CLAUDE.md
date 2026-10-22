@@ -120,6 +120,7 @@ python test_security_integration.py   # Integration tests (9 tests)
 python -m pytest test_client.py       # Client tests (20 tests)
 python -m pytest test_dependency_resolver.py  # Dependency resolver tests (12 tests)
 python -m pytest test_rate_limit_utils.py     # Rate limit tests (22 tests)
+python -m pytest test_api_providers.py        # API provider env tests
 ```
 
 ### React UI
@@ -423,6 +424,11 @@ Run coding agents via Google Cloud Vertex AI:
 Alternative providers are configured via the **Settings UI** (gear icon > API Provider section). Select a provider, set the base URL, auth token, and model — no `.env` changes needed.
 
 **Available providers:** Claude (default), GLM (Zhipu AI), Ollama (local models), Kimi (Moonshot), Custom
+
+**GLM notes:**
+- Auth via `ANTHROPIC_AUTH_TOKEN`; base URL defaults to `https://api.z.ai/api/anthropic` (editable, e.g. `https://open.bigmodel.cn/api/anthropic` for mainland China)
+- Models: `glm-5`, `glm-4.7` (default), `glm-4.6`, `glm-4.5`, `glm-4.5-air`
+- `API_TIMEOUT_MS` defaults to 3000000 via the provider's `default_timeout_ms` in `registry.py`
 
 **Ollama notes:**
 - Requires Ollama v0.14.0+ with Anthropic API compatibility
