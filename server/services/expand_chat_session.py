@@ -44,6 +44,33 @@ EXPAND_FEATURE_TOOLS = [
     "mcp__features__feature_get_stats",
 ]
 
+# Read-only built-in tools for the expand session. WebFetch/WebSearch let the
+# user point Claude at reference URLs (e.g. UI examples) while defining features.
+EXPAND_BUILTIN_TOOLS = [
+    "Read",
+    "Glob",
+    "Grep",
+    "WebFetch",
+    "WebSearch",
+]
+
+# Appended to the expand-project skill so the model knows exactly which tools
+# this session grants. The skill file is also used as an interactive CLI slash
+# command, so session-specific tool notes live here rather than in the skill.
+EXPAND_TOOLS_PROMPT = """
+
+## Tools Available In This Session
+
+- **Read / Glob / Grep**: Inspect the existing project files (read-only)
+- **WebFetch**: Fetch a web page the user links to (e.g. design examples, docs, competitor sites)
+- **WebSearch**: Search the web for references, patterns, or documentation
+- **feature_create / feature_create_bulk / feature_get_stats**: Manage the feature backlog
+
+You ARE allowed to use WebFetch and WebSearch. When the user shares a URL or asks you to look
+something up, fetch it and use what you learn to write better features. You cannot modify files
+or run commands; implementation is done later by the coding agent.
+"""
+
 
 class ExpandChatSession:
     """
@@ -146,6 +173,9 @@ class ExpandChatSession:
                 "allow": [
                     "Read(./**)",
                     "Glob(./**)",
+                    "Grep(./**)",
+                    "WebFetch",
+                    "WebSearch",
                     *EXPAND_FEATURE_TOOLS,
                 ],
                 "deny": ["Write", "Edit", "MultiEdit", "NotebookEdit", "Bash"],
@@ -160,7 +190,7 @@ class ExpandChatSession:
 
         # Replace $ARGUMENTS with absolute project path
         project_path = str(self.project_dir.resolve())
-        system_prompt = skill_content.replace("$ARGUMENTS", project_path)
+        system_prompt = skill_content.replace("$ARGUMENTS", project_path) + EXPAND_TOOLS_PROMPT
 
         # Build environment overrides for API configuration
         from registry import DEFAULT_MODEL, get_effective_sdk_env, get_effort_setting
@@ -190,14 +220,7 @@ class ExpandChatSession:
                     effort=effort,  # type: ignore[arg-type]  # SDK 0.1.61 Literal omits "xhigh"
                     cli_path=system_cli,
                     system_prompt=system_prompt,
-                    allowed_tools=[
-                        "Read",
-                        "Glob",
-                        "Grep",
-                        "WebFetch",
-                        "WebSearch",
-                        *EXPAND_FEATURE_TOOLS,
-                    ],
+                    allowed_tools=[*EXPAND_BUILTIN_TOOLS, *EXPAND_FEATURE_TOOLS],
                     disallowed_tools=["Write", "Edit", "MultiEdit", "NotebookEdit", "Bash"],
                     mcp_servers=mcp_servers,  # type: ignore[arg-type]  # SDK accepts dict config at runtime
                     permission_mode="bypassPermissions",

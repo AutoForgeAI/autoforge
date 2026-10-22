@@ -121,6 +121,8 @@ class SpecChatSession:
                     "Write(./**)",
                     "Edit(./**)",
                     "Glob(./**)",
+                    "WebFetch",
+                    "WebSearch",
                 ],
             },
         }
