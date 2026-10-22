@@ -14,14 +14,18 @@ import tempfile
 from contextlib import contextmanager
 from pathlib import Path
 
+from autoforge_paths import get_denied_commands_path
 from security import (
     bash_security_hook,
+    clear_denied_commands,
     extract_commands,
     get_effective_commands,
     get_effective_pkill_processes,
+    load_denied_commands,
     load_org_config,
     load_project_commands,
     matches_pattern,
+    summarize_denied_commands,
     validate_chmod_command,
     validate_init_script,
     validate_pkill_command,
@@ -988,6 +992,79 @@ def test_playwright_cli_validation():
     return passed, failed
 
 
+def test_denied_command_logging():
+    """Test that denied commands are recorded to the project's log for later inspection."""
+    print("\nTesting denied command logging:\n")
+    passed = 0
+    failed = 0
+
+    def check(desc, condition):
+        nonlocal passed, failed
+        if condition:
+            print(f"  PASS: {desc}")
+            passed += 1
+        else:
+            print(f"  FAIL: {desc}")
+            failed += 1
+
+    with tempfile.TemporaryDirectory() as tmpdir:
+        project_dir = Path(tmpdir)
+        context = {"project_dir": str(project_dir)}
+
+        def run(cmd):
+            input_data = {"tool_name": "Bash", "tool_input": {"command": cmd}}
+            return asyncio.run(bash_security_hook(input_data, context=context))
+
+        # Allowed commands are not logged
+        run("ls -la")
+        check("allowed command does not create log", not get_denied_commands_path(project_dir).exists())
+
+        run("pytest -q tests/")
+        run("pytest tests/test_api.py")
+        run("openssl rand -hex 16")
+        run("shutdown now")
+        run("chmod 777 file.sh")
+
+        entries = load_denied_commands(project_dir)
+        check("five denials recorded", len(entries) == 5)
+        check("entry stores denied command name", entries[0].get("command") == "pytest")
+        check("entry stores full command", entries[0].get("full_command") == "pytest -q tests/")
+        check("entry has timestamp", bool(entries[0].get("timestamp")))
+        check("entry stores reason", "not allowed" in entries[0].get("reason", ""))
+
+        summary = summarize_denied_commands(project_dir)
+        by_cmd = {g["command"]: g for g in summary}
+        check("summary groups by command (most frequent first)", summary[0]["command"] == "pytest")
+        check("summary counts repeats", by_cmd.get("pytest", {}).get("count") == 2)
+        check("summary keeps latest example", by_cmd.get("pytest", {}).get("last_full_command") == "pytest tests/test_api.py")
+        check("unknown command kind is not_allowed", by_cmd.get("openssl", {}).get("kind") == "not_allowed")
+        check("blocklisted command kind is blocklisted", by_cmd.get("shutdown", {}).get("kind") == "blocklisted")
+        check("failed extra validation kind is validation", by_cmd.get("chmod", {}).get("kind") == "validation")
+        check("pytest not currently allowed", by_cmd.get("pytest", {}).get("currently_allowed") is False)
+
+        # After adding the command to the project allowlist it is flagged as resolved
+        (project_dir / ".autoforge" / "allowed_commands.yaml").write_text(
+            "version: 1\ncommands:\n  - name: pytest\n"
+        )
+        by_cmd = {g["command"]: g for g in summarize_denied_commands(project_dir)}
+        check("pytest flagged currently_allowed after config update", by_cmd["pytest"]["currently_allowed"] is True)
+
+        # Malformed lines are skipped
+        with open(get_denied_commands_path(project_dir), "a", encoding="utf-8") as f:
+            f.write("not json\n")
+        check("malformed lines are skipped", len(load_denied_commands(project_dir)) == 5)
+
+        clear_denied_commands(project_dir)
+        check("clear removes log", load_denied_commands(project_dir) == [])
+
+    # Without a project dir nothing is written (and nothing crashes)
+    input_data = {"tool_name": "Bash", "tool_input": {"command": "pytest"}}
+    result = asyncio.run(bash_security_hook(input_data))
+    check("no project dir still blocks", result.get("decision") == "block")
+
+    return passed, failed
+
+
 def main():
     print("=" * 70)
     print("  SECURITY HOOK TESTS")
@@ -1060,6 +1137,11 @@ def main():
     pw_passed, pw_failed = test_playwright_cli_validation()
     passed += pw_passed
     failed += pw_failed
+
+    # Test denied command logging
+    denied_passed, denied_failed = test_denied_command_logging()
+    passed += denied_passed
+    failed += denied_failed
 
     # Commands that SHOULD be blocked
     # Note: blocklisted commands (sudo, shutdown, dd, aws) are tested in

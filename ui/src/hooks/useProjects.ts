@@ -75,6 +75,26 @@ export function useUpdateProjectSettings(projectName: string) {
   })
 }
 
+export function useDeniedCommands(projectName: string | null, refetchInterval: number | false = false) {
+  return useQuery({
+    queryKey: ['denied-commands', projectName],
+    queryFn: () => api.getDeniedCommands(projectName!),
+    enabled: !!projectName,
+    refetchInterval,
+  })
+}
+
+export function useClearDeniedCommands(projectName: string) {
+  const queryClient = useQueryClient()
+
+  return useMutation({
+    mutationFn: () => api.clearDeniedCommands(projectName),
+    onSuccess: () => {
+      queryClient.invalidateQueries({ queryKey: ['denied-commands', projectName] })
+    },
+  })
+}
+
 // ============================================================================
 // Features
 // ============================================================================

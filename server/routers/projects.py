@@ -14,7 +14,11 @@ from typing import Any, Callable
 
 from fastapi import APIRouter, HTTPException
 
+from security import clear_denied_commands, summarize_denied_commands
+
 from ..schemas import (
+    DeniedCommandsResponse,
+    DeniedCommandSummary,
     ProjectCreate,
     ProjectDetail,
     ProjectPrompts,
@@ -570,3 +574,40 @@ async def update_project_settings(name: str, settings: ProjectSettingsUpdate):
         auto_improve_enabled=ai_enabled,
         auto_improve_interval_minutes=ai_interval,
     )
+
+
+def _resolve_existing_project_dir(name: str) -> Path:
+    """Look up a registered project's directory or raise 404."""
+    (_, _, get_project_path, _, _, _, _, _, _) = _get_registry_functions()
+
+    name = validate_project_name(name)
+    project_dir: Path | None = get_project_path(name)
+
+    if not project_dir:
+        raise HTTPException(status_code=404, detail=f"Project '{name}' not found")
+
+    if not project_dir.exists():
+        raise HTTPException(status_code=404, detail="Project directory not found")
+
+    return project_dir
+
+
+@router.get("/{name}/denied-commands", response_model=DeniedCommandsResponse)
+async def get_denied_commands(name: str):
+    """List Bash commands the agent tried to run but were rejected by the security hook."""
+    project_dir = _resolve_existing_project_dir(name)
+
+    commands = summarize_denied_commands(project_dir)
+    return DeniedCommandsResponse(
+        commands=[DeniedCommandSummary(**c) for c in commands],
+        total=sum(c["count"] for c in commands),
+    )
+
+
+@router.delete("/{name}/denied-commands")
+async def clear_denied_commands_endpoint(name: str):
+    """Clear the project's denied-commands log."""
+    project_dir = _resolve_existing_project_dir(name)
+
+    clear_denied_commands(project_dir)
+    return {"success": True}

@@ -45,6 +45,7 @@ assistant.db-shm
 .claude_settings.expand.*.json
 .progress_cache
 .migration_version
+denied_commands.jsonl
 """
 
 
@@ -169,6 +170,16 @@ def get_prompts_dir(project_dir: Path) -> Path:
 # ---------------------------------------------------------------------------
 # Non-dual-path helpers (always use new location)
 # ---------------------------------------------------------------------------
+
+def get_denied_commands_path(project_dir: Path) -> Path:
+    """Return the path to ``denied_commands.jsonl``.
+
+    Append-only log of Bash commands rejected by the security hook, kept so
+    users can review them and extend the allowlist later.  Always uses the new
+    location since it is a runtime log.
+    """
+    return project_dir / ".autoforge" / "denied_commands.jsonl"
+
 
 def get_expand_settings_path(project_dir: Path, uuid_hex: str) -> Path:
     """Return the path for an ephemeral expand-session settings file.

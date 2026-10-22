@@ -97,6 +97,24 @@ class ProjectSettingsUpdate(BaseModel):
         return v
 
 
+class DeniedCommandSummary(BaseModel):
+    """A Bash command the agent tried to run but the security hook rejected."""
+    command: str
+    kind: Literal["not_allowed", "blocklisted", "validation", "parse_error"]
+    count: int
+    first_seen: str
+    last_seen: str
+    last_full_command: str = ""
+    last_reason: str = ""
+    currently_allowed: bool = False
+
+
+class DeniedCommandsResponse(BaseModel):
+    """Denied commands for a project, grouped by command name (most frequent first)."""
+    commands: list[DeniedCommandSummary]
+    total: int
+
+
 # ============================================================================
 # Feature Schemas
 # ============================================================================

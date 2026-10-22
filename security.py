@@ -6,14 +6,18 @@ Pre-tool-use hooks that validate bash commands for security.
 Uses an allowlist approach - only explicitly permitted commands can run.
 """
 
+import json
 import logging
 import os
 import re
 import shlex
+from datetime import datetime, timezone
 from pathlib import Path
 from typing import Optional
 
 import yaml
+
+from autoforge_paths import get_denied_commands_path
 
 # Logger for security-related events (fallback parsing, validation failures, etc.)
 logger = logging.getLogger(__name__)
@@ -898,6 +902,8 @@ async def bash_security_hook(input_data, tool_use_id=None, context=None):
     Pre-tool-use hook that validates bash commands using an allowlist.
 
     Only commands in ALLOWED_COMMANDS and project-specific commands are permitted.
+    Denied commands are appended to the project's denied-commands log (when a
+    project directory is known) so they can be reviewed later.
 
     Args:
         input_data: Dict containing tool_name and tool_input
@@ -914,6 +920,32 @@ async def bash_security_hook(input_data, tool_use_id=None, context=None):
     if not command:
         return {}
 
+    # Get project directory from context
+    project_dir = None
+    if context and isinstance(context, dict):
+        project_dir_str = context.get("project_dir")
+        if project_dir_str:
+            project_dir = Path(project_dir_str)
+
+    result, denied_cmd, kind = _evaluate_bash_command(command, project_dir)
+
+    if result and project_dir is not None:
+        record_denied_command(project_dir, command, denied_cmd, kind, result.get("reason", ""))
+
+    return result
+
+
+def _evaluate_bash_command(
+    command: str, project_dir: Optional[Path]
+) -> tuple[dict, Optional[str], Optional[str]]:
+    """
+    Validate a bash command string against the effective allow/block lists.
+
+    Returns:
+        Tuple of (hook_result, denied_command, denial_kind). hook_result is an
+        empty dict when the command is allowed. denial_kind is one of the
+        DENIAL_* constants when blocked.
+    """
     # Extract all commands from the command string
     commands = extract_commands(command)
 
@@ -922,14 +954,7 @@ async def bash_security_hook(input_data, tool_use_id=None, context=None):
         return {
             "decision": "block",
             "reason": f"Could not parse command for security validation: {command}",
-        }
-
-    # Get project directory from context
-    project_dir = None
-    if context and isinstance(context, dict):
-        project_dir_str = context.get("project_dir")
-        if project_dir_str:
-            project_dir = Path(project_dir_str)
+        }, None, DENIAL_PARSE_ERROR
 
     # Get effective commands using hierarchy resolution
     allowed_commands, blocked_commands = get_effective_commands(project_dir)
@@ -947,7 +972,7 @@ async def bash_security_hook(input_data, tool_use_id=None, context=None):
             return {
                 "decision": "block",
                 "reason": f"Command '{cmd}' is blocked at organization level and cannot be approved.",
-            }
+            }, cmd, DENIAL_BLOCKLISTED
 
         # Check allowlist (with pattern matching)
         if not is_command_allowed(cmd, allowed_commands):
@@ -960,7 +985,7 @@ async def bash_security_hook(input_data, tool_use_id=None, context=None):
             return {
                 "decision": "block",
                 "reason": error_msg,
-            }
+            }, cmd, DENIAL_NOT_ALLOWED
 
         # Additional validation for sensitive commands
         if cmd in COMMANDS_NEEDING_EXTRA_VALIDATION:
@@ -978,19 +1003,138 @@ async def bash_security_hook(input_data, tool_use_id=None, context=None):
                 # Pass configured extra processes (beyond defaults)
                 extra_procs = pkill_processes - DEFAULT_PKILL_PROCESSES
                 allowed, reason = validate_pkill_command(cmd_segment, extra_procs if extra_procs else None)
-                if not allowed:
-                    return {"decision": "block", "reason": reason}
             elif cmd == "chmod":
                 allowed, reason = validate_chmod_command(cmd_segment)
-                if not allowed:
-                    return {"decision": "block", "reason": reason}
             elif cmd == "init.sh":
                 allowed, reason = validate_init_script(cmd_segment)
-                if not allowed:
-                    return {"decision": "block", "reason": reason}
             elif cmd == "playwright-cli":
                 allowed, reason = validate_playwright_command(cmd_segment)
-                if not allowed:
-                    return {"decision": "block", "reason": reason}
+            else:
+                allowed, reason = True, ""
+            if not allowed:
+                return {"decision": "block", "reason": reason}, cmd, DENIAL_VALIDATION
 
-    return {}
+    return {}, None, None
+
+
+# ---------------------------------------------------------------------------
+# Denied command log
+# ---------------------------------------------------------------------------
+# Every Bash command rejected by the hook is appended (one JSON object per
+# line) to .autoforge/denied_commands.jsonl so users can later inspect what the
+# agent tried to run and decide whether to extend the allowlist.
+
+DENIAL_NOT_ALLOWED = "not_allowed"  # Not on any allowlist - can be added to allowed_commands.yaml
+DENIAL_BLOCKLISTED = "blocklisted"  # Hardcoded/org blocklist - cannot be allowed by projects
+DENIAL_VALIDATION = "validation"  # Allowed command, but arguments failed extra validation
+DENIAL_PARSE_ERROR = "parse_error"  # Command string could not be parsed
+
+# Keep the log bounded: once it exceeds the byte limit, keep only the newest entries.
+DENIED_LOG_MAX_BYTES = 1024 * 1024
+DENIED_LOG_KEEP_ENTRIES = 2000
+# Truncate stored command strings / reasons so a single huge heredoc can't bloat the log.
+DENIED_LOG_MAX_FIELD_CHARS = 2000
+
+
+def record_denied_command(
+    project_dir: Path,
+    command: str,
+    denied_cmd: Optional[str],
+    kind: Optional[str],
+    reason: str,
+) -> None:
+    """Append a denied command to the project's denied-commands log.
+
+    Never raises: logging failures must not affect the security decision.
+    """
+    try:
+        log_path = get_denied_commands_path(project_dir)
+        log_path.parent.mkdir(parents=True, exist_ok=True)
+        entry = {
+            "timestamp": datetime.now(timezone.utc).isoformat(),
+            "command": denied_cmd,
+            "kind": kind,
+            "full_command": command[:DENIED_LOG_MAX_FIELD_CHARS],
+            "reason": reason[:DENIED_LOG_MAX_FIELD_CHARS],
+        }
+        with open(log_path, "a", encoding="utf-8") as f:
+            f.write(json.dumps(entry) + "\n")
+
+        if log_path.stat().st_size > DENIED_LOG_MAX_BYTES:
+            lines = log_path.read_text(encoding="utf-8").splitlines()
+            log_path.write_text("\n".join(lines[-DENIED_LOG_KEEP_ENTRIES:]) + "\n", encoding="utf-8")
+    except Exception as e:
+        logger.warning(f"Failed to record denied command: {e}")
+
+
+def load_denied_commands(project_dir: Path) -> list[dict]:
+    """Read all entries from the project's denied-commands log (oldest first).
+
+    Malformed lines are skipped.
+    """
+    log_path = get_denied_commands_path(project_dir)
+    if not log_path.exists():
+        return []
+
+    entries = []
+    try:
+        with open(log_path, encoding="utf-8") as f:
+            for line in f:
+                line = line.strip()
+                if not line:
+                    continue
+                try:
+                    entry = json.loads(line)
+                except json.JSONDecodeError:
+                    continue
+                if isinstance(entry, dict):
+                    entries.append(entry)
+    except OSError as e:
+        logger.warning(f"Failed to read denied commands log: {e}")
+    return entries
+
+
+def summarize_denied_commands(project_dir: Path) -> list[dict]:
+    """Aggregate denied-command log entries by command name.
+
+    Returns a list (most frequent first) of dicts with: command, kind, count,
+    first_seen, last_seen, last_full_command, last_reason, and
+    currently_allowed (True if the command has since been added to the
+    effective allowlist).
+    """
+    allowed_commands, _ = get_effective_commands(project_dir)
+    groups: dict[tuple[str, str], dict] = {}
+
+    for entry in load_denied_commands(project_dir):
+        cmd = entry.get("command") or ""
+        kind = entry.get("kind") or DENIAL_NOT_ALLOWED
+        key = (cmd, kind)
+        ts = entry.get("timestamp", "")
+        group = groups.get(key)
+        if group is None:
+            group = groups[key] = {
+                "command": cmd,
+                "kind": kind,
+                "count": 0,
+                "first_seen": ts,
+                "last_seen": ts,
+                "last_full_command": "",
+                "last_reason": "",
+                "currently_allowed": False,
+            }
+        group["count"] += 1
+        # Entries are appended chronologically, so the latest one wins
+        group["last_seen"] = ts
+        group["last_full_command"] = entry.get("full_command", "")
+        group["last_reason"] = entry.get("reason", "")
+
+    for group in groups.values():
+        if group["kind"] == DENIAL_NOT_ALLOWED and group["command"]:
+            group["currently_allowed"] = is_command_allowed(group["command"], allowed_commands)
+
+    return sorted(groups.values(), key=lambda g: (-g["count"], g["command"]))
+
+
+def clear_denied_commands(project_dir: Path) -> None:
+    """Delete the project's denied-commands log."""
+    get_denied_commands_path(project_dir).unlink(missing_ok=True)

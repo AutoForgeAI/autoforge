@@ -7,6 +7,7 @@ import type {
   ProjectDetail,
   ProjectPrompts,
   ProjectSettingsUpdate,
+  DeniedCommandsResponse,
   FeatureListResponse,
   Feature,
   FeatureCreate,
@@ -126,6 +127,16 @@ export async function resetProject(
   const params = fullReset ? '?full_reset=true' : ''
   return fetchJSON(`/projects/${encodeURIComponent(name)}/reset${params}`, {
     method: 'POST',
+  })
+}
+
+export async function getDeniedCommands(name: string): Promise<DeniedCommandsResponse> {
+  return fetchJSON(`/projects/${encodeURIComponent(name)}/denied-commands`)
+}
+
+export async function clearDeniedCommands(name: string): Promise<void> {
+  await fetchJSON(`/projects/${encodeURIComponent(name)}/denied-commands`, {
+    method: 'DELETE',
   })
 }
 

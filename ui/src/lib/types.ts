@@ -191,6 +191,25 @@ export interface DevServerConfig {
   effective_command: string | null
 }
 
+// Denied commands (Bash commands rejected by the security hook)
+export type DeniedCommandKind = 'not_allowed' | 'blocklisted' | 'validation' | 'parse_error'
+
+export interface DeniedCommandSummary {
+  command: string
+  kind: DeniedCommandKind
+  count: number
+  first_seen: string
+  last_seen: string
+  last_full_command: string
+  last_reason: string
+  currently_allowed: boolean
+}
+
+export interface DeniedCommandsResponse {
+  commands: DeniedCommandSummary[]
+  total: number
+}
+
 // Terminal types
 export interface TerminalInfo {
   id: string
