@@ -208,7 +208,10 @@ async def list_directory(
                 status_code=403,
                 detail="Network paths (UNC) are not allowed"
             )
-        target = Path(path)
+        # Expand "~" so pasted paths like "~/projects" work
+        target = Path(path).expanduser()
+        if not target.anchor:  # Relative paths would resolve against the server's cwd
+            raise HTTPException(status_code=400, detail="Path must be absolute")
 
     # Resolve symlinks and get absolute path
     try:

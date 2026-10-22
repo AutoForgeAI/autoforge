@@ -10,7 +10,6 @@ but cannot modify any files.
 import json
 import logging
 import os
-import shutil
 import sys
 import threading
 from datetime import datetime
@@ -19,6 +18,8 @@ from typing import AsyncGenerator, Optional
 
 from claude_agent_sdk import ClaudeAgentOptions, ClaudeSDKClient
 from dotenv import load_dotenv
+
+from claude_cli import find_claude_cli
 
 from .assistant_database import (
     add_message,
@@ -287,7 +288,7 @@ class AssistantChatSession:
         logger.info(f"Wrote assistant system prompt to {claude_md_path}")
 
         # Use system Claude CLI
-        system_cli = shutil.which("claude")
+        system_cli = find_claude_cli()
 
         # Build environment overrides for API configuration
         from registry import DEFAULT_MODEL, get_effective_sdk_env, get_effort_setting

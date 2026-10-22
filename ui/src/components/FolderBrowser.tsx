@@ -16,6 +16,7 @@ import {
   AlertCircle,
   FolderPlus,
   ArrowLeft,
+  CornerDownLeft,
 } from 'lucide-react'
 import * as api from '../lib/api'
 import { isSubmitEnter } from '../lib/keyboard'
@@ -23,6 +24,36 @@ import type { DirectoryEntry, DriveInfo } from '../lib/types'
 import { Button } from '@/components/ui/button'
 import { Input } from '@/components/ui/input'
 import { Card, CardContent } from '@/components/ui/card'
+import { Checkbox } from '@/components/ui/checkbox'
+import { Label } from '@/components/ui/label'
+
+const SHOW_HIDDEN_STORAGE_KEY = 'autoforge-folder-browser-show-hidden'
+
+function loadShowHidden(): boolean {
+  try {
+    return localStorage.getItem(SHOW_HIDDEN_STORAGE_KEY) === 'true'
+  } catch {
+    return false
+  }
+}
+
+/**
+ * Normalize a path typed or pasted by the user.
+ * Strips surrounding quotes (Windows "Copy as path" adds them) and converts
+ * Windows backslashes to forward slashes, which the backend accepts on all platforms.
+ */
+function normalizePathInput(raw: string): string {
+  let path = raw.trim()
+  if (path.length >= 2 && (path[0] === '"' || path[0] === "'") && path[path.length - 1] === path[0]) {
+    path = path.slice(1, -1).trim()
+  }
+  if (/^[A-Za-z]:/.test(path)) {
+    path = path.replace(/\\/g, '/')
+    // "C:" alone means the drive root
+    if (path.length === 2) path += '/'
+  }
+  return path
+}
 
 interface FolderBrowserProps {
   onSelect: (path: string) => void
@@ -36,6 +67,9 @@ export function FolderBrowser({ onSelect, onCancel, initialPath }: FolderBrowser
   const [isCreatingFolder, setIsCreatingFolder] = useState(false)
   const [newFolderName, setNewFolderName] = useState('')
   const [createError, setCreateError] = useState<string | null>(null)
+  const [showHidden, setShowHidden] = useState(loadShowHidden)
+  const [pathInput, setPathInput] = useState(initialPath ?? '')
+  const [lastValidPath, setLastValidPath] = useState<string | null>(null)
 
   // Fetch directory listing
   const {
@@ -44,16 +78,39 @@ export function FolderBrowser({ onSelect, onCancel, initialPath }: FolderBrowser
     error,
     refetch,
   } = useQuery({
-    queryKey: ['filesystem', 'list', currentPath],
-    queryFn: () => api.listDirectory(currentPath),
+    queryKey: ['filesystem', 'list', currentPath, showHidden],
+    queryFn: () => api.listDirectory(currentPath, showHidden),
+    retry: false,
   })
 
-  // Update selected path when directory changes
+  // Update selected path (and the editable path field) when directory changes
   useEffect(() => {
     if (directoryData?.current_path) {
       setSelectedPath(directoryData.current_path)
+      setPathInput(directoryData.current_path)
+      setLastValidPath(directoryData.current_path)
     }
   }, [directoryData?.current_path])
+
+  const handleShowHiddenChange = (checked: boolean) => {
+    setShowHidden(checked)
+    try {
+      localStorage.setItem(SHOW_HIDDEN_STORAGE_KEY, String(checked))
+    } catch {
+      // Storage unavailable (private mode etc.) - preference just won't persist
+    }
+  }
+
+  const handlePathSubmit = () => {
+    const path = normalizePathInput(pathInput)
+    if (!path) return
+    setPathInput(path)
+    if (path === currentPath) {
+      refetch()
+    } else {
+      handleNavigate(path)
+    }
+  }
 
   const handleNavigate = (path: string) => {
     setCurrentPath(path)
@@ -147,7 +204,41 @@ export function FolderBrowser({ onSelect, onCancel, initialPath }: FolderBrowser
         <div className="flex items-center gap-2 mb-3">
           <Folder size={20} className="text-primary" />
           <span className="font-semibold">Select Project Folder</span>
+          <div className="ml-auto flex items-center gap-2">
+            <Checkbox
+              id="folder-browser-show-hidden"
+              checked={showHidden}
+              onCheckedChange={(checked) => handleShowHiddenChange(checked === true)}
+            />
+            <Label htmlFor="folder-browser-show-hidden" className="text-sm font-normal cursor-pointer">
+              Show hidden folders
+            </Label>
+          </div>
         </div>
+
+        {/* Editable path - type or paste a full path and press Enter */}
+        <form
+          className="flex items-center gap-2 mb-2"
+          onSubmit={(e) => {
+            e.preventDefault()
+            handlePathSubmit()
+          }}
+        >
+          <Input
+            type="text"
+            value={pathInput}
+            onChange={(e) => setPathInput(e.target.value)}
+            placeholder="Type or paste a folder path, e.g. C:\Users\me\projects"
+            className="flex-1 font-mono text-sm"
+            aria-label="Folder path"
+            spellCheck={false}
+            autoComplete="off"
+          />
+          <Button type="submit" variant="outline" size="sm" disabled={!pathInput.trim()}>
+            <CornerDownLeft size={14} />
+            Go
+          </Button>
+        </form>
 
         {/* Breadcrumb navigation */}
         <div className="flex items-center gap-1 flex-wrap text-sm">
@@ -211,9 +302,17 @@ export function FolderBrowser({ onSelect, onCancel, initialPath }: FolderBrowser
               <p className="text-destructive">
                 {error instanceof Error ? error.message : 'Failed to load directory'}
               </p>
-              <Button variant="outline" size="sm" onClick={() => refetch()} className="mt-2">
-                Retry
-              </Button>
+              <div className="flex items-center justify-center gap-2 mt-2">
+                {lastValidPath && lastValidPath !== currentPath && (
+                  <Button variant="outline" size="sm" onClick={() => handleNavigate(lastValidPath)}>
+                    <ArrowLeft size={14} />
+                    Back
+                  </Button>
+                )}
+                <Button variant="outline" size="sm" onClick={() => refetch()}>
+                  Retry
+                </Button>
+              </div>
             </div>
           ) : (
             <div className="grid grid-cols-1 gap-1">
@@ -238,7 +337,7 @@ export function FolderBrowser({ onSelect, onCancel, initialPath }: FolderBrowser
                     ) : (
                       <Folder size={18} className="text-muted-foreground flex-shrink-0" />
                     )}
-                    <span className="truncate flex-1">{entry.name}</span>
+                    <span className={`truncate flex-1 ${entry.is_hidden ? 'opacity-60' : ''}`}>{entry.name}</span>
                     {entry.has_children && (
                       <ChevronRight size={14} className="ml-auto text-muted-foreground flex-shrink-0" />
                     )}
@@ -322,7 +421,7 @@ export function FolderBrowser({ onSelect, onCancel, initialPath }: FolderBrowser
           <Button
             variant="outline"
             onClick={() => setIsCreatingFolder(true)}
-            disabled={isCreatingFolder}
+            disabled={isCreatingFolder || !directoryData}
           >
             <FolderPlus size={16} />
             New Folder
@@ -332,7 +431,7 @@ export function FolderBrowser({ onSelect, onCancel, initialPath }: FolderBrowser
             <Button variant="outline" onClick={onCancel}>
               Cancel
             </Button>
-            <Button onClick={handleSelect} disabled={!selectedPath}>
+            <Button onClick={handleSelect} disabled={!selectedPath || !!error || isLoading}>
               Select This Folder
             </Button>
           </div>

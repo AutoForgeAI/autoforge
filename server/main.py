@@ -32,6 +32,8 @@ if sys.platform == "win32":
 
 from dotenv import load_dotenv
 
+from claude_cli import find_claude_cli
+
 # Load environment variables from .env file if present
 load_dotenv()
 
@@ -217,7 +219,7 @@ async def health_check():
 async def setup_status():
     """Check system setup status."""
     # Check for Claude CLI
-    claude_cli = shutil.which("claude") is not None
+    claude_cli = find_claude_cli() is not None
 
     # Check for CLI configuration directory
     # Note: CLI no longer stores credentials in ~/.claude/.credentials.json

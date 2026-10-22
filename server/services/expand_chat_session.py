@@ -10,7 +10,6 @@ import asyncio
 import json
 import logging
 import os
-import shutil
 import sys
 import threading
 import uuid
@@ -20,6 +19,8 @@ from typing import Any, AsyncGenerator, Optional
 
 from claude_agent_sdk import ClaudeAgentOptions, ClaudeSDKClient
 from dotenv import load_dotenv
+
+from claude_cli import find_claude_cli
 
 from ..schemas import FileAttachment
 from ..utils.document_extraction import DocumentExtractionError
@@ -126,7 +127,7 @@ class ExpandChatSession:
             skill_content = skill_path.read_text(encoding="utf-8", errors="replace")
 
         # Find and validate Claude CLI before creating temp files
-        system_cli = shutil.which("claude")
+        system_cli = find_claude_cli()
         if not system_cli:
             yield {
                 "type": "error",

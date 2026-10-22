@@ -28,6 +28,7 @@ if sys.version_info < (3, 11):
 from dotenv import load_dotenv
 
 from auth import is_auth_error, print_auth_error_help
+from claude_cli import find_claude_cli
 
 # Load environment variables from .env file if present
 load_dotenv()
@@ -239,7 +240,7 @@ def run_spec_creation(project_dir: Path) -> bool:
         # Project path included in command string so it populates $ARGUMENTS
         # Capture stderr to detect auth errors while letting stdout flow to terminal
         result = subprocess.run(
-            ["claude", f"/create-spec {project_dir}"],
+            [find_claude_cli() or "claude", f"/create-spec {project_dir}"],
             check=False,  # Don't raise on non-zero exit
             cwd=str(Path(__file__).parent),  # Run from project root
             stderr=subprocess.PIPE,
