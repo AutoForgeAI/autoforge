@@ -477,6 +477,10 @@ class AgentProcessManager:
             subprocess_env = {
                 **os.environ,
                 "PYTHONUNBUFFERED": "1",
+                # Force UTF-8 stdout in the child; on Windows a piped stdout otherwise
+                # defaults to the ANSI code page (e.g. CP1252) and mangles/crashes on
+                # non-ASCII agent output. The reader below decodes as UTF-8.
+                "PYTHONIOENCODING": "utf-8",
                 "PLAYWRIGHT_CLI_SESSION": f"agent-{self.project_name}-{os.getpid()}",
                 "NODE_COMPILE_CACHE": "",  # Disable V8 compile caching to prevent .node file accumulation in %TEMP%
                 **api_env,

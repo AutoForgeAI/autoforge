@@ -243,7 +243,9 @@ def run_spec_creation(project_dir: Path) -> bool:
             check=False,  # Don't raise on non-zero exit
             cwd=str(Path(__file__).parent),  # Run from project root
             stderr=subprocess.PIPE,
-            text=True
+            text=True,
+            encoding="utf-8",
+            errors="replace",
         )
 
         # Check for authentication errors in stderr
@@ -415,7 +417,9 @@ def run_agent(project_name: str, project_dir: Path) -> None:
             cmd,
             check=False,
             stderr=subprocess.PIPE,
-            text=True
+            text=True,
+            encoding="utf-8",
+            errors="replace",
         )
 
         # Check for authentication errors

@@ -848,6 +848,7 @@ class ParallelOrchestrator:
             # CREATE_NO_WINDOW on Windows prevents console window pop-ups
             # stdin=DEVNULL prevents blocking on stdin reads
             # encoding="utf-8" and errors="replace" fix Windows CP1252 issues
+            # PYTHONIOENCODING=utf-8 makes the child write UTF-8 to the pipe (Windows defaults to CP1252)
             popen_kwargs: dict[str, Any] = {
                 "stdin": subprocess.DEVNULL,
                 "stdout": subprocess.PIPE,
@@ -856,7 +857,7 @@ class ParallelOrchestrator:
                 "encoding": "utf-8",
                 "errors": "replace",
                 "cwd": str(self.project_dir),  # Run from project dir so CLI creates .claude/ in project
-                "env": {**os.environ, "PYTHONUNBUFFERED": "1", "NODE_COMPILE_CACHE": "", "PLAYWRIGHT_CLI_SESSION": f"coding-{feature_id}"},
+                "env": {**os.environ, "PYTHONUNBUFFERED": "1", "PYTHONIOENCODING": "utf-8", "NODE_COMPILE_CACHE": "", "PLAYWRIGHT_CLI_SESSION": f"coding-{feature_id}"},
             }
             if sys.platform == "win32":
                 popen_kwargs["creationflags"] = subprocess.CREATE_NO_WINDOW
@@ -919,7 +920,7 @@ class ParallelOrchestrator:
                 "encoding": "utf-8",
                 "errors": "replace",
                 "cwd": str(self.project_dir),  # Run from project dir so CLI creates .claude/ in project
-                "env": {**os.environ, "PYTHONUNBUFFERED": "1", "NODE_COMPILE_CACHE": "", "PLAYWRIGHT_CLI_SESSION": f"coding-{primary_id}"},
+                "env": {**os.environ, "PYTHONUNBUFFERED": "1", "PYTHONIOENCODING": "utf-8", "NODE_COMPILE_CACHE": "", "PLAYWRIGHT_CLI_SESSION": f"coding-{primary_id}"},
             }
             if sys.platform == "win32":
                 popen_kwargs["creationflags"] = subprocess.CREATE_NO_WINDOW
@@ -1015,6 +1016,7 @@ class ParallelOrchestrator:
                 # CREATE_NO_WINDOW on Windows prevents console window pop-ups
                 # stdin=DEVNULL prevents blocking on stdin reads
                 # encoding="utf-8" and errors="replace" fix Windows CP1252 issues
+                # PYTHONIOENCODING=utf-8 makes the child write UTF-8 to the pipe (Windows defaults to CP1252)
                 popen_kwargs: dict[str, Any] = {
                     "stdin": subprocess.DEVNULL,
                     "stdout": subprocess.PIPE,
@@ -1023,7 +1025,7 @@ class ParallelOrchestrator:
                     "encoding": "utf-8",
                     "errors": "replace",
                     "cwd": str(self.project_dir),  # Run from project dir so CLI creates .claude/ in project
-                    "env": {**os.environ, "PYTHONUNBUFFERED": "1", "NODE_COMPILE_CACHE": "", "PLAYWRIGHT_CLI_SESSION": f"testing-{self._testing_session_counter}"},
+                    "env": {**os.environ, "PYTHONUNBUFFERED": "1", "PYTHONIOENCODING": "utf-8", "NODE_COMPILE_CACHE": "", "PLAYWRIGHT_CLI_SESSION": f"testing-{self._testing_session_counter}"},
                 }
                 self._testing_session_counter += 1
                 if sys.platform == "win32":
@@ -1077,6 +1079,7 @@ class ParallelOrchestrator:
         # CREATE_NO_WINDOW on Windows prevents console window pop-ups
         # stdin=DEVNULL prevents blocking on stdin reads
         # encoding="utf-8" and errors="replace" fix Windows CP1252 issues
+        # PYTHONIOENCODING=utf-8 makes the child write UTF-8 to the pipe (Windows defaults to CP1252)
         popen_kwargs: dict[str, Any] = {
             "stdin": subprocess.DEVNULL,
             "stdout": subprocess.PIPE,
@@ -1085,7 +1088,7 @@ class ParallelOrchestrator:
             "encoding": "utf-8",
             "errors": "replace",
             "cwd": str(AUTOFORGE_ROOT),
-            "env": {**os.environ, "PYTHONUNBUFFERED": "1", "NODE_COMPILE_CACHE": ""},
+            "env": {**os.environ, "PYTHONUNBUFFERED": "1", "PYTHONIOENCODING": "utf-8", "NODE_COMPILE_CACHE": ""},
         }
         if sys.platform == "win32":
             popen_kwargs["creationflags"] = subprocess.CREATE_NO_WINDOW
