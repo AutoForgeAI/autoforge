@@ -35,6 +35,7 @@
     "registry.py",
     "rate_limit_utils.py",
     "security.py",
+    "skills.py",
     "temp_cleanup.py",
     "requirements-prod.txt",
     "pyproject.toml",

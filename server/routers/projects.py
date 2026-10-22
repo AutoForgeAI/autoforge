@@ -20,8 +20,11 @@ from ..schemas import (
     ProjectPrompts,
     ProjectPromptsUpdate,
     ProjectSettingsUpdate,
+    ProjectSkillsInstall,
+    ProjectSkillsInstallResponse,
     ProjectStats,
     ProjectSummary,
+    SkillInfo,
 )
 
 # Lazy imports to avoid circular dependencies
@@ -56,6 +59,29 @@ def _init_imports():
     _get_project_prompts_dir = get_project_prompts_dir
     _count_passing_tests = count_passing_tests
     _imports_initialized = True
+
+
+def _get_skills_module():
+    """Get the project skills module with lazy import."""
+    import sys
+    root = Path(__file__).parent.parent.parent
+    if str(root) not in sys.path:
+        sys.path.insert(0, str(root))
+
+    import skills
+    return skills
+
+
+def _validate_skill_names(names: list[str]) -> None:
+    """Raise 400 if any requested skill isn't in the skill library."""
+    skills = _get_skills_module()
+    available = {s["name"] for s in skills.list_available_skills()}
+    unknown = [n for n in names if n not in available]
+    if unknown:
+        raise HTTPException(
+            status_code=400,
+            detail=f"Unknown skill(s): {', '.join(unknown)}"
+        )
 
 
 def _get_registry_functions():
@@ -163,6 +189,7 @@ async def create_project(project: ProjectCreate):
 
     name = validate_project_name(project.name)
     project_path = Path(project.path).resolve()
+    _validate_skill_names(project.skills)
 
     # Check if project name already registered
     existing = get_project_path(name)
@@ -215,6 +242,10 @@ async def create_project(project: ProjectCreate):
 
     # Scaffold prompts
     _scaffold_project_prompts(project_path)
+
+    # Install the skills chosen at setup time
+    if project.skills:
+        _get_skills_module().install_skills(project_path, project.skills)
 
     # Register in registry
     try:
@@ -374,6 +405,46 @@ async def update_project_prompts(name: str, prompts: ProjectPromptsUpdate):
     write_file("coding_prompt.md", prompts.coding_prompt)
 
     return {"success": True, "message": "Prompts updated"}
+
+
+def _get_existing_project_dir(name: str) -> Path:
+    """Resolve a registered project's directory or raise 404."""
+    (_, _, get_project_path, _, _, _, _, _, _) = _get_registry_functions()
+
+    name = validate_project_name(name)
+    project_dir = get_project_path(name)
+
+    if not project_dir:
+        raise HTTPException(status_code=404, detail=f"Project '{name}' not found in registry")
+
+    if not project_dir.exists():
+        raise HTTPException(status_code=404, detail="Project directory not found")
+
+    return Path(project_dir)
+
+
+@router.get("/{name}/skills", response_model=list[SkillInfo])
+async def get_project_skills(name: str):
+    """List the skills installed in a project's .claude/skills/ directory."""
+    project_dir = _get_existing_project_dir(name)
+    return _get_skills_module().list_project_skills(project_dir)
+
+
+@router.post("/{name}/skills", response_model=ProjectSkillsInstallResponse)
+async def install_project_skills(name: str, body: ProjectSkillsInstall):
+    """Install library skills into an existing project.
+
+    Skills the project already has are left untouched.
+    """
+    project_dir = _get_existing_project_dir(name)
+    _validate_skill_names(body.skills)
+
+    skills = _get_skills_module()
+    installed, _ = skills.install_skills(project_dir, body.skills)
+    return ProjectSkillsInstallResponse(
+        installed=installed,
+        skills=[SkillInfo(**s) for s in skills.list_project_skills(project_dir)],
+    )
 
 
 @router.get("/{name}/stats", response_model=ProjectStats)

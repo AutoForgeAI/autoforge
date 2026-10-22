@@ -15,6 +15,7 @@ from .projects import router as projects_router
 from .scaffold import router as scaffold_router
 from .schedules import router as schedules_router
 from .settings import router as settings_router
+from .skills import router as skills_router
 from .spec_creation import router as spec_creation_router
 from .terminal import router as terminal_router
 
@@ -31,4 +32,5 @@ __all__ = [
     "settings_router",
     "terminal_router",
     "scaffold_router",
+    "skills_router",
 ]

@@ -25,12 +25,21 @@ export function useProject(name: string | null) {
   })
 }
 
+export function useSkills(enabled: boolean = true) {
+  return useQuery({
+    queryKey: ['skills'],
+    queryFn: api.listSkills,
+    enabled,
+    staleTime: 60_000,
+  })
+}
+
 export function useCreateProject() {
   const queryClient = useQueryClient()
 
   return useMutation({
-    mutationFn: ({ name, path, specMethod }: { name: string; path: string; specMethod?: 'claude' | 'manual' }) =>
-      api.createProject(name, path, specMethod),
+    mutationFn: ({ name, path, specMethod, skills }: { name: string; path: string; specMethod?: 'claude' | 'manual'; skills?: string[] }) =>
+      api.createProject(name, path, specMethod, skills),
     onSuccess: () => {
       queryClient.invalidateQueries({ queryKey: ['projects'] })
     },

@@ -20,6 +20,13 @@ export interface ProjectSummary {
   auto_improve_interval_minutes: number
 }
 
+export interface SkillInfo {
+  name: string
+  description: string
+  source: 'autoforge' | 'bundled' | 'user' | 'project'
+  default: boolean
+}
+
 export interface ProjectDetail extends ProjectSummary {
   prompts_dir: string
 }

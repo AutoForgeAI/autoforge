@@ -42,6 +42,7 @@ from registry import (
     list_registered_projects,
     register_project,
 )
+from skills import DEFAULT_SKILLS, install_skills
 
 
 def check_spec_exists(project_dir: Path) -> bool:
@@ -210,6 +211,9 @@ def ensure_project_scaffolded(project_name: str, project_dir: Path) -> Path:
     print(f"\nSetting up project: {project_name}")
     print(f"Location: {project_dir}")
     scaffold_project_prompts(project_dir)
+
+    # Install default skills (e.g. the self-improving project-learnings skill)
+    install_skills(project_dir, DEFAULT_SKILLS)
 
     # Register in registry
     register_project(project_name, project_dir)

@@ -5,15 +5,16 @@
  * 1. Enter project name
  * 2. Select project folder
  * 3. Choose project template (blank or agentic starter)
- * 4. Choose spec method (Claude or manual)
- * 5a. If Claude: Show SpecCreationChat
- * 5b. If manual: Create project and close
+ * 4. Choose Claude Code skills to install into the project
+ * 5. Choose spec method (Claude or manual)
+ * 6a. If Claude: Show SpecCreationChat
+ * 6b. If manual: Create project and close
  */
 
 import { useRef, useState } from 'react'
 import { createPortal } from 'react-dom'
-import { Bot, FileEdit, ArrowRight, ArrowLeft, Loader2, CheckCircle2, Folder, Zap, FileCode2, AlertCircle, RotateCcw } from 'lucide-react'
-import { useCreateProject } from '../hooks/useProjects'
+import { Bot, FileEdit, ArrowRight, ArrowLeft, Loader2, CheckCircle2, Folder, Zap, FileCode2, AlertCircle, RotateCcw, Sparkles } from 'lucide-react'
+import { useCreateProject, useSkills } from '../hooks/useProjects'
 import { SpecCreationChat } from './SpecCreationChat'
 import { FolderBrowser } from './FolderBrowser'
 import { startAgent } from '../lib/api'
@@ -31,11 +32,12 @@ import { Label } from '@/components/ui/label'
 import { Alert, AlertDescription } from '@/components/ui/alert'
 import { Badge } from '@/components/ui/badge'
 import { Card, CardContent } from '@/components/ui/card'
+import { Checkbox } from '@/components/ui/checkbox'
 
 type InitializerStatus = 'idle' | 'starting' | 'error'
 type ScaffoldStatus = 'idle' | 'running' | 'success' | 'error'
 
-type Step = 'name' | 'folder' | 'template' | 'method' | 'chat' | 'complete'
+type Step = 'name' | 'folder' | 'template' | 'skills' | 'method' | 'chat' | 'complete'
 type SpecMethod = 'claude' | 'manual'
 
 interface NewProjectModalProps {
@@ -63,11 +65,25 @@ export function NewProjectModal({
   const [scaffoldOutput, setScaffoldOutput] = useState<string[]>([])
   const [scaffoldError, setScaffoldError] = useState<string | null>(null)
   const scaffoldLogRef = useRef<HTMLDivElement>(null)
+  // null = user hasn't touched the picker yet, so the library defaults apply
+  const [pickedSkills, setPickedSkills] = useState<string[] | null>(null)
 
   // Suppress unused variable warning - specMethod may be used in future
   void _specMethod
 
   const createProject = useCreateProject()
+  const skillsQuery = useSkills(isOpen)
+  const availableSkills = skillsQuery.data ?? []
+  const selectedSkills = pickedSkills
+    ?? availableSkills.filter((s) => s.default).map((s) => s.name)
+
+  const toggleSkill = (name: string, checked: boolean) => {
+    setPickedSkills(
+      checked
+        ? [...selectedSkills.filter((n) => n !== name), name]
+        : selectedSkills.filter((n) => n !== name)
+    )
+  }
 
   // Wrapper to notify parent of step changes
   const changeStep = (newStep: Step) => {
@@ -106,7 +122,7 @@ export function NewProjectModal({
 
   const handleTemplateSelect = async (choice: 'blank' | 'agentic-starter') => {
     if (choice === 'blank') {
-      changeStep('method')
+      changeStep('skills')
       return
     }
 
@@ -155,7 +171,7 @@ export function NewProjectModal({
             } else if (event.type === 'complete') {
               if (event.success) {
                 setScaffoldStatus('success')
-                setTimeout(() => changeStep('method'), 1200)
+                setTimeout(() => changeStep('skills'), 1200)
               } else {
                 setScaffoldStatus('error')
                 setScaffoldError(`Scaffold exited with code ${event.exit_code}`)
@@ -191,6 +207,7 @@ export function NewProjectModal({
           name: projectName.trim(),
           path: projectPath,
           specMethod: 'manual',
+          skills: selectedSkills,
         })
         changeStep('complete')
         setTimeout(() => {
@@ -207,6 +224,7 @@ export function NewProjectModal({
           name: projectName.trim(),
           path: projectPath,
           specMethod: 'claude',
+          skills: selectedSkills,
         })
         changeStep('chat')
       } catch (err: unknown) {
@@ -268,13 +286,19 @@ export function NewProjectModal({
     setScaffoldStatus('idle')
     setScaffoldOutput([])
     setScaffoldError(null)
+    setPickedSkills(null)
     onClose()
   }
 
   const handleBack = () => {
     if (step === 'method') {
-      changeStep('template')
+      changeStep('skills')
       setSpecMethod(null)
+    } else if (step === 'skills') {
+      changeStep('template')
+      setScaffoldStatus('idle')
+      setScaffoldOutput([])
+      setScaffoldError(null)
     } else if (step === 'template') {
       changeStep('folder')
       setScaffoldStatus('idle')
@@ -341,6 +365,7 @@ export function NewProjectModal({
           <DialogTitle>
             {step === 'name' && 'Create New Project'}
             {step === 'template' && 'Choose Project Template'}
+            {step === 'skills' && 'Choose Project Skills'}
             {step === 'method' && 'Choose Setup Method'}
             {step === 'complete' && 'Project Created!'}
           </DialogTitle>
@@ -500,7 +525,87 @@ export function NewProjectModal({
           </div>
         )}
 
-        {/* Step 3: Spec Method */}
+        {/* Step 3: Skills */}
+        {step === 'skills' && (
+          <div className="space-y-4">
+            <DialogDescription>
+              Pick the Claude Code skills your agents should use in this project.
+              They are copied into <span className="font-mono">.claude/skills/</span>, where you can edit them later.
+            </DialogDescription>
+
+            {skillsQuery.isLoading && (
+              <div className="flex items-center justify-center gap-2 text-muted-foreground py-4">
+                <Loader2 size={16} className="animate-spin" />
+                <span>Loading skills...</span>
+              </div>
+            )}
+
+            {skillsQuery.isError && (
+              <Alert variant="destructive">
+                <AlertCircle size={16} />
+                <AlertDescription>
+                  Could not load the skill library. You can continue without extra skills.
+                </AlertDescription>
+              </Alert>
+            )}
+
+            {availableSkills.length > 0 && (
+              <div className="space-y-2 max-h-72 overflow-y-auto pr-1">
+                {availableSkills.map((skill) => {
+                  const checkboxId = `skill-${skill.name}`
+                  return (
+                    <label
+                      key={skill.name}
+                      htmlFor={checkboxId}
+                      className="flex items-start gap-3 rounded-lg border p-3 cursor-pointer hover:border-primary transition-colors"
+                    >
+                      <Checkbox
+                        id={checkboxId}
+                        className="mt-0.5"
+                        checked={selectedSkills.includes(skill.name)}
+                        onCheckedChange={(checked) => toggleSkill(skill.name, checked === true)}
+                      />
+                      <div className="flex-1 min-w-0">
+                        <div className="flex items-center gap-2 flex-wrap">
+                          <span className="font-semibold font-mono text-sm">{skill.name}</span>
+                          {skill.source === 'autoforge' && (
+                            <Badge variant="secondary">
+                              <Sparkles size={12} />
+                              Self-improving
+                            </Badge>
+                          )}
+                          {skill.source === 'user' && <Badge variant="outline">Your library</Badge>}
+                        </div>
+                        {skill.description && (
+                          <p className="text-sm text-muted-foreground mt-1 line-clamp-3">
+                            {skill.description}
+                          </p>
+                        )}
+                      </div>
+                    </label>
+                  )
+                })}
+              </div>
+            )}
+
+            <p className="text-xs text-muted-foreground">
+              Add your own skills to <span className="font-mono">~/.autoforge/skills/&lt;name&gt;/SKILL.md</span> to see them here.
+            </p>
+
+            <DialogFooter className="sm:justify-between">
+              <Button variant="ghost" onClick={handleBack}>
+                <ArrowLeft size={16} />
+                Back
+              </Button>
+              <Button onClick={() => changeStep('method')} disabled={skillsQuery.isLoading}>
+                Next
+                <ArrowRight size={16} />
+              </Button>
+            </DialogFooter>
+          </div>
+        )}
+
+        {/* Step 4: Spec Method */}
         {step === 'method' && (
           <div className="space-y-4">
             <DialogDescription>

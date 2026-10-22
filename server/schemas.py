@@ -29,6 +29,30 @@ class ProjectCreate(BaseModel):
     name: str = Field(..., min_length=1, max_length=50, pattern=r'^[a-zA-Z0-9_-]+$')
     path: str = Field(..., min_length=1, description="Absolute path to project directory")
     spec_method: Literal["claude", "manual"] = "claude"
+    skills: list[str] = Field(
+        default_factory=list,
+        max_length=50,
+        description="Skill names from GET /api/skills to install into the project's .claude/skills/",
+    )
+
+
+class SkillInfo(BaseModel):
+    """A Claude Code skill available in the library or installed in a project."""
+    name: str
+    description: str = ""
+    source: Literal["autoforge", "bundled", "user", "project"]
+    default: bool = False
+
+
+class ProjectSkillsInstall(BaseModel):
+    """Request schema for installing library skills into a project."""
+    skills: list[str] = Field(..., min_length=1, max_length=50)
+
+
+class ProjectSkillsInstallResponse(BaseModel):
+    """Response after installing skills into a project."""
+    installed: list[str]
+    skills: list[SkillInfo]
 
 
 class ProjectStats(BaseModel):

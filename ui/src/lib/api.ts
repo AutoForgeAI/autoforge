@@ -4,6 +4,7 @@
 
 import type {
   ProjectSummary,
+  SkillInfo,
   ProjectDetail,
   ProjectPrompts,
   ProjectSettingsUpdate,
@@ -70,12 +71,17 @@ export async function listProjects(): Promise<ProjectSummary[]> {
 export async function createProject(
   name: string,
   path: string,
-  specMethod: 'claude' | 'manual' = 'manual'
+  specMethod: 'claude' | 'manual' = 'manual',
+  skills: string[] = []
 ): Promise<ProjectSummary> {
   return fetchJSON('/projects', {
     method: 'POST',
-    body: JSON.stringify({ name, path, spec_method: specMethod }),
+    body: JSON.stringify({ name, path, spec_method: specMethod, skills }),
   })
+}
+
+export async function listSkills(): Promise<SkillInfo[]> {
+  return fetchJSON('/skills')
 }
 
 export async function getProject(name: string): Promise<ProjectDetail> {

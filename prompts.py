@@ -131,6 +131,41 @@ def _strip_browser_testing_sections(prompt: str) -> str:
     return prompt
 
 
+_LEARNINGS_INSTRUCTIONS = """
+
+---
+
+## PROJECT LEARNINGS (SELF-IMPROVING SKILL)
+
+This project has a `project-learnings` skill at `.claude/skills/project-learnings/SKILL.md`.
+
+**Before implementing:** read that file and follow what it says.
+
+**After each feature you mark as passing** (before the git commit for it), take a
+moment to reflect: did anything cost you time, surprise you, or need a retry?
+Did you settle a convention or architecture decision future sessions must follow?
+If so, edit `.claude/skills/project-learnings/SKILL.md`:
+- Add the lesson as one short, actionable bullet under the matching section
+- Refine or replace an existing bullet instead of adding a near-duplicate
+- Remove anything you found to be wrong or outdated
+- Keep the file under ~150 lines and do NOT change its frontmatter
+
+Skip the edit if you learned nothing new and project-specific. Include the file
+in the feature's commit. Other agents may update this file concurrently, so
+re-read it right before editing and make small, targeted edits.
+"""
+
+
+def _with_learnings_instructions(prompt: str, project_dir: Path | None) -> str:
+    """Append reflect/learn instructions if the project uses the learnings skill."""
+    if project_dir is None:
+        return prompt
+    from skills import has_learnings_skill
+    if not has_learnings_skill(project_dir):
+        return prompt
+    return prompt + _LEARNINGS_INSTRUCTIONS
+
+
 def get_coding_prompt(project_dir: Path | None = None, yolo_mode: bool = False) -> str:
     """Load the coding agent prompt (project-specific if available).
 
@@ -148,7 +183,7 @@ def get_coding_prompt(project_dir: Path | None = None, yolo_mode: bool = False) 
     if yolo_mode:
         prompt = _strip_browser_testing_sections(prompt)
 
-    return prompt
+    return _with_learnings_instructions(prompt, project_dir)
 
 
 def get_auto_improve_prompt(project_dir: Path | None = None, yolo_mode: bool = False) -> str:
@@ -172,7 +207,7 @@ def get_auto_improve_prompt(project_dir: Path | None = None, yolo_mode: bool = F
     if yolo_mode:
         prompt = _strip_browser_testing_sections(prompt)
 
-    return prompt
+    return _with_learnings_instructions(prompt, project_dir)
 
 
 def get_testing_prompt(
