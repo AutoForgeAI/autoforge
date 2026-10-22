@@ -82,6 +82,7 @@ class AgentProcessManager:
         self._output_task: asyncio.Task | None = None
         self.yolo_mode: bool = False  # YOLO mode for rapid prototyping
         self.model: str | None = None  # Model being used
+        self.testing_model: str | None = None  # Model for testing agents (None = same as model)
         self.parallel_mode: bool = False  # Parallel execution mode
         self.max_concurrency: int | None = None  # Max concurrent agents
         self.testing_agent_ratio: int = 1  # Regression testing agents (0-3)
@@ -377,13 +378,14 @@ class AgentProcessManager:
         batch_size: int = 3,
         testing_batch_size: int = 3,
         auto_improve: bool = False,
+        testing_model: str | None = None,
     ) -> tuple[bool, str]:
         """
         Start the agent as a subprocess.
 
         Args:
             yolo_mode: If True, run in YOLO mode (skip testing agents)
-            model: Model to use (e.g., claude-opus-4-6)
+            model: Model to use (e.g., claude-opus-4-7)
             parallel_mode: DEPRECATED - ignored, always uses unified orchestrator
             max_concurrency: Max concurrent coding agents (1-5, default 1)
             testing_agent_ratio: Number of regression testing agents (0-3, default 1)
@@ -392,6 +394,7 @@ class AgentProcessManager:
                 execution (concurrency=1, testing_ratio=0) and passes
                 --auto-improve to the subprocess so it runs exactly one
                 improvement session and exits.
+            testing_model: Model for regression testing agents (None = same as model)
 
         Returns:
             Tuple of (success, message)
@@ -423,6 +426,7 @@ class AgentProcessManager:
         # Store for status queries
         self.yolo_mode = yolo_mode
         self.model = model
+        self.testing_model = testing_model
         self.parallel_mode = True  # Always True now (unified orchestrator)
         self.max_concurrency = max_concurrency or 1
         self.testing_agent_ratio = testing_agent_ratio
@@ -440,6 +444,10 @@ class AgentProcessManager:
         # Add --model flag if model is specified
         if model:
             cmd.extend(["--model", model])
+
+        # Add --testing-model flag if testing agents should use a different model
+        if testing_model:
+            cmd.extend(["--testing-model", testing_model])
 
         # Add --yolo flag if YOLO mode is enabled
         if yolo_mode:
@@ -570,6 +578,7 @@ class AgentProcessManager:
             self.started_at = None
             self.yolo_mode = False  # Reset YOLO mode
             self.model = None  # Reset model
+            self.testing_model = None
             self.parallel_mode = False  # Reset parallel mode
             self.max_concurrency = None  # Reset concurrency
             self.testing_agent_ratio = 1  # Reset testing ratio

@@ -154,6 +154,7 @@ export interface AgentStatusResponse {
   started_at: string | null
   yolo_mode: boolean
   model: string | null  // Model being used by running agent
+  testing_model?: string | null  // Model used by regression testing agents (null = same as model)
   parallel_mode: boolean  // DEPRECATED: Always true now (unified orchestrator)
   max_concurrency: number | null
   testing_agent_ratio: number  // Regression testing agents (0-3)
@@ -658,6 +659,7 @@ export interface Settings {
   api_base_url: string | null
   api_has_auth_token: boolean
   api_model: string | null
+  testing_model: string | null  // null = testing agents use the coding model
 }
 
 export interface SettingsUpdate {
@@ -671,6 +673,7 @@ export interface SettingsUpdate {
   api_base_url?: string
   api_auth_token?: string
   api_model?: string
+  testing_model?: string  // '' clears the override
 }
 
 export interface ProjectSettingsUpdate {

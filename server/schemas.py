@@ -224,8 +224,9 @@ class AgentStartRequest(BaseModel):
     parallel_mode: bool | None = None  # DEPRECATED: Use max_concurrency instead
     max_concurrency: int | None = None  # Max concurrent coding agents (1-5)
     testing_agent_ratio: int | None = None  # Regression testing agents (0-3)
+    testing_model: str | None = None  # None means use global settings
 
-    @field_validator('model')
+    @field_validator('model', 'testing_model')
     @classmethod
     def validate_model(cls, v: str | None) -> str | None:
         """Validate model is in the allowed list (Claude) or allow any model for alternative providers."""
@@ -260,6 +261,7 @@ class AgentStatus(BaseModel):
     started_at: datetime | None = None
     yolo_mode: bool = False
     model: str | None = None  # Model being used by running agent
+    testing_model: str | None = None  # Model used by regression testing agents
     parallel_mode: bool = False  # DEPRECATED: Always True now (unified orchestrator)
     max_concurrency: int | None = None
     testing_agent_ratio: int = 1  # Regression testing agents (0-3)
@@ -489,6 +491,7 @@ class SettingsResponse(BaseModel):
     api_base_url: str | None = None
     api_has_auth_token: bool = False  # Never expose actual token
     api_model: str | None = None
+    testing_model: str | None = None  # None = same model as coding agents
 
 
 class ModelsResponse(BaseModel):
@@ -510,6 +513,8 @@ class SettingsUpdate(BaseModel):
     api_base_url: str | None = Field(None, max_length=500)
     api_auth_token: str | None = Field(None, max_length=500)  # Write-only, never returned
     api_model: str | None = Field(None, max_length=200)
+    # Empty string clears the override so testing agents use the coding model
+    testing_model: str | None = Field(None, max_length=200)
 
     @field_validator('api_base_url')
     @classmethod
@@ -534,6 +539,26 @@ class SettingsUpdate(BaseModel):
                 v = LEGACY_MODEL_MAP[v]
             if v not in VALID_MODELS:
                 raise ValueError(f"Invalid model. Must be one of: {VALID_MODELS}")
+        return v
+
+    @field_validator('testing_model')
+    @classmethod
+    def validate_testing_model(cls, v: str | None, info) -> str | None:
+        if v is None:
+            return v
+        v = v.strip()
+        if not v:
+            return v  # Empty string clears the override
+        api_provider = info.data.get("api_provider")
+        if api_provider is None:
+            from registry import get_all_settings
+            api_provider = get_all_settings().get("api_provider", "claude")
+        if api_provider != "claude":
+            return v
+        if v in LEGACY_MODEL_MAP:
+            v = LEGACY_MODEL_MAP[v]
+        if v not in VALID_MODELS:
+            raise ValueError(f"Invalid testing model. Must be one of: {VALID_MODELS}")
         return v
 
     @field_validator('testing_agent_ratio')

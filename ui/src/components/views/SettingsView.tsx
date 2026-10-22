@@ -50,6 +50,13 @@ export function SettingsView() {
     }
   }
 
+  // '' clears the override so testing agents use the coding model
+  const handleTestingModelChange = (modelId: string) => {
+    if (!updateSettings.isPending) {
+      updateSettings.mutate({ testing_model: modelId })
+    }
+  }
+
   const handleTestingRatioChange = (ratio: number) => {
     if (!updateSettings.isPending) {
       updateSettings.mutate({ testing_agent_ratio: ratio })
@@ -400,6 +407,33 @@ export function SettingsView() {
                     </div>
                   )}
                 </div>
+
+                {/* Testing Model Selection */}
+                {models.length > 0 && (
+                  <div className="space-y-2">
+                    <Label className="font-medium">Testing Model</Label>
+                    <p className="text-sm text-muted-foreground">
+                      Model used by regression testing agents
+                    </p>
+                    <div className="flex rounded-lg border overflow-hidden">
+                      {[{ id: '', name: 'Same as coding' }, ...models].map((model) => (
+                        <button
+                          key={model.id || 'same'}
+                          onClick={() => handleTestingModelChange(model.id)}
+                          disabled={isSaving}
+                          className={`flex-1 py-2 px-3 text-sm font-medium transition-colors ${
+                            (settings.testing_model || '') === model.id
+                              ? 'bg-primary text-primary-foreground'
+                              : 'bg-background text-foreground hover:bg-muted'
+                          } ${isSaving ? 'opacity-50 cursor-not-allowed' : ''}`}
+                        >
+                          <span className="block">{model.name}</span>
+                          {model.id && <span className="block text-xs opacity-60">{model.id}</span>}
+                        </button>
+                      ))}
+                    </div>
+                  </div>
+                )}
               </CardContent>
             </Card>
 

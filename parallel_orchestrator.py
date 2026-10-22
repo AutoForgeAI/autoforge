@@ -155,6 +155,7 @@ class ParallelOrchestrator:
         testing_agent_ratio: int = 1,
         testing_batch_size: int = DEFAULT_TESTING_BATCH_SIZE,
         batch_size: int = 3,
+        testing_model: str | None = None,
         on_output: Callable[[int, str], None] | None = None,
         on_status: Callable[[int, str], None] | None = None,
     ):
@@ -164,18 +165,21 @@ class ParallelOrchestrator:
             project_dir: Path to the project directory
             max_concurrency: Maximum number of concurrent coding agents (1-5).
                 Also caps testing agents at the same limit.
-            model: Claude model to use (or None for default)
+            model: Claude model for coding/initializer agents (or None for default)
             yolo_mode: Whether to run in YOLO mode (skip testing agents entirely)
             testing_agent_ratio: Number of regression testing agents to maintain (0-3).
                 0 = disabled, 1-3 = maintain that many testing agents running independently.
             testing_batch_size: Number of features to include per testing session (1-15).
                 Each testing agent receives this many features to regression test.
+            batch_size: Max features per coding agent batch (1-15).
+            testing_model: Claude model for testing agents (or None to use ``model``)
             on_output: Callback for agent output (feature_id, line)
             on_status: Callback for agent status changes (feature_id, status)
         """
         self.project_dir = project_dir
         self.max_concurrency = min(max(max_concurrency, 1), MAX_PARALLEL_AGENTS)
         self.model = model
+        self.testing_model = testing_model or model
         self.yolo_mode = yolo_mode
         self.testing_agent_ratio = min(max(testing_agent_ratio, 0), 3)  # Clamp 0-3
         self.testing_batch_size = min(max(testing_batch_size, 1), 15)  # Clamp 1-15
@@ -1008,8 +1012,8 @@ class ParallelOrchestrator:
                 "--agent-type", "testing",
                 "--testing-feature-ids", batch_str,
             ]
-            if self.model:
-                cmd.extend(["--model", self.model])
+            if self.testing_model:
+                cmd.extend(["--model", self.testing_model])
 
             try:
                 # CREATE_NO_WINDOW on Windows prevents console window pop-ups
@@ -1721,17 +1725,19 @@ async def run_parallel_orchestrator(
     testing_agent_ratio: int = 1,
     testing_batch_size: int = DEFAULT_TESTING_BATCH_SIZE,
     batch_size: int = 3,
+    testing_model: str | None = None,
 ) -> None:
     """Run the unified orchestrator.
 
     Args:
         project_dir: Path to the project directory
         max_concurrency: Maximum number of concurrent coding agents
-        model: Claude model to use
+        model: Claude model for coding agents
         yolo_mode: Whether to run in YOLO mode (skip testing agents)
         testing_agent_ratio: Number of regression agents to maintain (0-3)
         testing_batch_size: Number of features per testing batch (1-5)
         batch_size: Max features per coding agent batch (1-3)
+        testing_model: Claude model for testing agents (None = same as ``model``)
     """
     print(f"[ORCHESTRATOR] run_parallel_orchestrator called with max_concurrency={max_concurrency}", flush=True)
     orchestrator = ParallelOrchestrator(
@@ -1742,6 +1748,7 @@ async def run_parallel_orchestrator(
         testing_agent_ratio=testing_agent_ratio,
         testing_batch_size=testing_batch_size,
         batch_size=batch_size,
+        testing_model=testing_model,
     )
 
     # Set up cleanup to run on exit (handles normal exit, exceptions)
@@ -1807,7 +1814,13 @@ def main():
         "--model",
         type=str,
         default=DEFAULT_MODEL,
-        help=f"Claude model to use (default: {DEFAULT_MODEL})",
+        help=f"Claude model for coding agents (default: {DEFAULT_MODEL})",
+    )
+    parser.add_argument(
+        "--testing-model",
+        type=str,
+        default=None,
+        help="Claude model for regression testing agents (default: same as --model)",
     )
     parser.add_argument(
         "--yolo",
@@ -1861,6 +1874,7 @@ def main():
             testing_agent_ratio=args.testing_agent_ratio,
             testing_batch_size=args.testing_batch_size,
             batch_size=args.batch_size,
+            testing_model=args.testing_model,
         ))
     except KeyboardInterrupt:
         print("\n\nInterrupted by user", flush=True)

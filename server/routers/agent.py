@@ -17,11 +17,12 @@ from ..utils.project_helpers import get_project_path as _get_project_path
 from ..utils.validation import validate_project_name
 
 
-def _get_settings_defaults() -> tuple[bool, str, int, int, int]:
+def _get_settings_defaults() -> tuple[bool, str, int, int, int, str | None]:
     """Get defaults from global settings.
 
     Returns:
-        Tuple of (yolo_mode, model, testing_agent_ratio, batch_size, testing_batch_size)
+        Tuple of (yolo_mode, model, testing_agent_ratio, batch_size, testing_batch_size,
+        testing_model). testing_model is None when testing agents should use ``model``.
     """
     import sys
     root = Path(__file__).parent.parent.parent
@@ -33,6 +34,7 @@ def _get_settings_defaults() -> tuple[bool, str, int, int, int]:
     settings = get_all_settings()
     yolo_mode = (settings.get("yolo_mode") or "false").lower() == "true"
     model = settings.get("api_model") or settings.get("model", DEFAULT_MODEL)
+    testing_model = settings.get("testing_model") or None
 
     # Parse testing agent settings with defaults
     try:
@@ -50,7 +52,7 @@ def _get_settings_defaults() -> tuple[bool, str, int, int, int]:
     except (ValueError, TypeError):
         testing_batch_size = 3
 
-    return yolo_mode, model, testing_agent_ratio, batch_size, testing_batch_size
+    return yolo_mode, model, testing_agent_ratio, batch_size, testing_batch_size, testing_model
 
 
 router = APIRouter(prefix="/api/projects/{project_name}/agent", tags=["agent"])
@@ -84,6 +86,7 @@ async def get_agent_status(project_name: str):
         started_at=manager.started_at.isoformat() if manager.started_at else None,
         yolo_mode=manager.yolo_mode,
         model=manager.model,
+        testing_model=manager.testing_model,
         parallel_mode=manager.parallel_mode,
         max_concurrency=manager.max_concurrency,
         testing_agent_ratio=manager.testing_agent_ratio,
@@ -99,10 +102,18 @@ async def start_agent(
     manager = get_project_manager(project_name)
 
     # Get defaults from global settings if not provided in request
-    default_yolo, default_model, default_testing_ratio, default_batch_size, default_testing_batch_size = _get_settings_defaults()
+    (
+        default_yolo,
+        default_model,
+        default_testing_ratio,
+        default_batch_size,
+        default_testing_batch_size,
+        default_testing_model,
+    ) = _get_settings_defaults()
 
     yolo_mode = request.yolo_mode if request.yolo_mode is not None else default_yolo
     model = request.model if request.model else default_model
+    testing_model = request.testing_model if request.testing_model else default_testing_model
     max_concurrency = request.max_concurrency or 1
     testing_agent_ratio = request.testing_agent_ratio if request.testing_agent_ratio is not None else default_testing_ratio
 
@@ -113,6 +124,7 @@ async def start_agent(
     success, message = await manager.start(
         yolo_mode=yolo_mode,
         model=model,
+        testing_model=testing_model,
         max_concurrency=max_concurrency,
         testing_agent_ratio=testing_agent_ratio,
         playwright_headless=True,

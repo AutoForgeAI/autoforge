@@ -531,10 +531,13 @@ class SchedulerService:
             f"Starting agent for {project_name} "
             f"(schedule {schedule.id}, yolo={schedule.yolo_mode}, concurrency={schedule.max_concurrency})"
         )
+        from registry import get_setting
+
         success, msg = await manager.start(
             yolo_mode=schedule.yolo_mode,
             model=schedule.model,
             max_concurrency=schedule.max_concurrency,
+            testing_model=get_setting("testing_model") or None,
         )
 
         if success:

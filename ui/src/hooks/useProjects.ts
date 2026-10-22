@@ -308,6 +308,7 @@ const DEFAULT_SETTINGS: Settings = {
   api_base_url: null,
   api_has_auth_token: false,
   api_model: null,
+  testing_model: null,
 }
 
 const DEFAULT_PROVIDERS: ProvidersResponse = {

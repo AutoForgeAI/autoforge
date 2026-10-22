@@ -747,7 +747,7 @@ def get_all_settings() -> dict[str, str]:
 
             # Auto-migrate legacy model IDs
             migrated = False
-            for key in ("model", "api_model"):
+            for key in ("model", "api_model", "testing_model"):
                 old_id = result.get(key)
                 if old_id and old_id in LEGACY_MODEL_MAP:
                     new_id = LEGACY_MODEL_MAP[old_id]

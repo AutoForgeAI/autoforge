@@ -122,6 +122,7 @@ async def get_settings():
         api_base_url=all_settings.get("api_base_url"),
         api_has_auth_token=bool(all_settings.get("api_auth_token")),
         api_model=all_settings.get("api_model"),
+        testing_model=all_settings.get("testing_model") or None,
     )
 
 
@@ -164,6 +165,9 @@ async def update_settings(update: SettingsUpdate):
                 # Auto-set model to provider's default
                 if provider.get("default_model") and update.api_model is None:
                     set_setting("api_model", provider["default_model"])
+                # The testing model override belongs to the old provider's model list
+                if update.testing_model is None:
+                    set_setting("testing_model", "")
 
     if update.api_base_url is not None:
         set_setting("api_base_url", update.api_base_url)
@@ -173,6 +177,9 @@ async def update_settings(update: SettingsUpdate):
 
     if update.api_model is not None:
         set_setting("api_model", update.api_model)
+
+    if update.testing_model is not None:
+        set_setting("testing_model", update.testing_model)
 
     # Return updated settings
     all_settings = get_all_settings()
@@ -194,4 +201,5 @@ async def update_settings(update: SettingsUpdate):
         api_base_url=all_settings.get("api_base_url"),
         api_has_auth_token=bool(all_settings.get("api_auth_token")),
         api_model=all_settings.get("api_model"),
+        testing_model=all_settings.get("testing_model") or None,
     )
