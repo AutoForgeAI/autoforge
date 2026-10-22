@@ -31,6 +31,56 @@ EXTRA_READ_PATHS_VAR = "EXTRA_READ_PATHS"
 # this blocklist and the filesystem browser API share a single source of truth.
 EXTRA_READ_PATHS_BLOCKLIST = SENSITIVE_DIRECTORIES
 
+# The Claude Code CLI logs "Error in hook callback hook_N: ... [AbortError]"
+# followed by a Node stack trace whenever it cancels an in-flight hook call,
+# e.g. when a tool use is interrupted or a sibling parallel tool call fails.
+# The cancelled tool never runs and the agent carries on, so the trace is
+# noise (issue #38).
+_HOOK_ABORT_RE = re.compile(r"Error in hook callback (\S+?):.*AbortError")
+_STACK_FRAME_RE = re.compile(r"^\s+at\s|^\s*[{}]\s*$|^\s*$")
+
+
+class CliStderrFilter:
+    """
+    Stderr callback for the Claude Code CLI subprocess.
+
+    Forwards CLI stderr to our stderr unchanged, except that the benign
+    hook-callback AbortError trace is collapsed into a single short line.
+    """
+
+    def __init__(self, stream=None):
+        self._stream = stream
+        self._in_abort_trace = False
+
+    def __call__(self, text: str) -> None:
+        # The SDK passes raw (right-stripped) pipe reads, which can hold many
+        # lines, so filter line by line. Reads that end mid-line can't be
+        # detected (the SDK strips the trailing newline), so no carry-over.
+        for line in text.splitlines():
+            self._handle_line(line)
+
+    def _handle_line(self, line: str) -> None:
+        match = _HOOK_ABORT_RE.search(line)
+        if match:
+            self._in_abort_trace = True
+            self._write(
+                f"[Hook] Claude Code cancelled hook call {match.group(1)} (tool use aborted); "
+                "this is harmless and the agent continues."
+            )
+            return
+        if self._in_abort_trace:
+            if _STACK_FRAME_RE.match(line):
+                return
+            self._in_abort_trace = False
+        self._write(line)
+
+    def _write(self, text: str) -> None:
+        stream = self._stream or sys.stderr
+        try:
+            print(text, file=stream, flush=True)
+        except (OSError, ValueError):
+            pass  # stderr closed; nothing useful to do
+
 
 def convert_model_for_vertex(model: str) -> str:
     """
@@ -478,6 +528,8 @@ def create_client(
             cwd=str(project_dir.resolve()),
             settings=str(settings_file.resolve()),  # Use absolute path
             env=sdk_env,  # Pass API configuration overrides to CLI subprocess
+            # Pipe CLI stderr through a filter that collapses benign hook AbortError traces
+            stderr=CliStderrFilter(),
             # Enable extended context beta for better handling of long sessions.
             # This provides up to 1M tokens of context with automatic compaction.
             # See: https://docs.anthropic.com/en/api/beta-headers

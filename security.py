@@ -6,6 +6,7 @@ Pre-tool-use hooks that validate bash commands for security.
 Uses an allowlist approach - only explicitly permitted commands can run.
 """
 
+import asyncio
 import logging
 import os
 import re
@@ -897,11 +898,32 @@ async def bash_security_hook(input_data, tool_use_id=None, context=None):
     """
     Pre-tool-use hook that validates bash commands using an allowlist.
 
-    Only commands in ALLOWED_COMMANDS and project-specific commands are permitted.
+    Validation reads YAML config files and parses the command synchronously,
+    so it runs in a worker thread. Blocking the event loop here delays the
+    hook response to the Claude Code CLI (and every other pending control
+    message), which makes it more likely that the CLI aborts the hook call
+    and logs "Error in hook callback ... AbortError" (issue #38).
 
     Args:
         input_data: Dict containing tool_name and tool_input
         tool_use_id: Optional tool use ID
+        context: Optional context dict with 'project_dir' key
+
+    Returns:
+        Empty dict to allow, or {"decision": "block", "reason": "..."} to block
+    """
+    return await asyncio.to_thread(validate_bash_tool_use, input_data, context)
+
+
+def validate_bash_tool_use(input_data, context=None):
+    """
+    Validate a Bash tool use against the allowlist (synchronous core of
+    bash_security_hook).
+
+    Only commands in ALLOWED_COMMANDS and project-specific commands are permitted.
+
+    Args:
+        input_data: Dict containing tool_name and tool_input
         context: Optional context dict with 'project_dir' key
 
     Returns:

@@ -7,6 +7,7 @@ Tests for the client module utility functions.
 Run with: python test_client.py
 """
 
+import io
 import os
 import sys
 import tempfile
@@ -16,6 +17,7 @@ from pathlib import Path
 from client import (
     EXTRA_READ_PATHS_BLOCKLIST,
     EXTRA_READ_PATHS_VAR,
+    CliStderrFilter,
     convert_model_for_vertex,
     get_extra_read_paths,
 )
@@ -266,6 +268,62 @@ class TestExtraReadPathsBlocklist(unittest.TestCase):
         os.environ[EXTRA_READ_PATHS_VAR] = "relative/path"
         result = get_extra_read_paths()
         self.assertEqual(result, [])
+
+
+class TestCliStderrFilter(unittest.TestCase):
+    """Tests for the CLI stderr filter that collapses hook AbortError traces (issue #38)."""
+
+    ABORT_TRACE = [
+        "Error in hook callback hook_0: VJ [AbortError]",
+        "    at AbortSignal.Y (file:///usr/lib/node_modules/@anthropic-ai/claude-code/cli.js:4930:315)",
+        "    at [nodejs.internal.kHybridDispatch] (node:internal/event_target:845:20)",
+        "    at AbortSignal.dispatchEvent (node:internal/event_target:778:26)",
+        "    at runAbort (node:internal/abort_controller:488:10)",
+    ]
+
+    def _run(self, lines):
+        out = io.StringIO()
+        f = CliStderrFilter(stream=out)
+        for line in lines:
+            f(line)
+        return out.getvalue().splitlines()
+
+    def test_abort_trace_collapsed_to_one_line(self):
+        result = self._run(self.ABORT_TRACE)
+        self.assertEqual(len(result), 1)
+        self.assertIn("hook_0", result[0])
+        self.assertIn("harmless", result[0])
+        self.assertNotIn("AbortSignal", result[0])
+
+    def test_lines_after_trace_are_forwarded(self):
+        result = self._run(self.ABORT_TRACE + ["Some real CLI error", "    at foo (bar.js:1:1)"])
+        self.assertEqual(result[1:], ["Some real CLI error", "    at foo (bar.js:1:1)"])
+
+    def test_repeated_aborts_each_collapsed(self):
+        result = self._run(self.ABORT_TRACE + self.ABORT_TRACE)
+        self.assertEqual(len(result), 2)
+
+    def test_other_output_passes_through(self):
+        lines = ["Error in hook callback hook_1: TypeError: boom", "    at x (y.js:1:1)", "plain line"]
+        self.assertEqual(self._run(lines), lines)
+
+    def test_multiline_read_keeps_unrelated_lines(self):
+        # The SDK hands the callback raw pipe reads that can span many lines.
+        chunk = "\n".join(["REAL BEFORE", *self.ABORT_TRACE, "REAL AFTER"])
+        result = self._run([chunk])
+        self.assertEqual(len(result), 3)
+        self.assertEqual(result[0], "REAL BEFORE")
+        self.assertIn("hook_0", result[1])
+        self.assertEqual(result[2], "REAL AFTER")
+
+    def test_multiline_read_with_two_aborts_gives_two_summaries(self):
+        trace = "\n".join(self.ABORT_TRACE)
+        chunk = f"REAL 1\n{trace}\nREAL 2\n{trace.replace('hook_0', 'hook_1')}\nREAL 3"
+        result = self._run([chunk])
+        self.assertEqual(result[0::2], ["REAL 1", "REAL 2", "REAL 3"])
+        self.assertIn("hook_0", result[1])
+        self.assertIn("hook_1", result[3])
+        self.assertEqual(len(result), 5)
 
 
 if __name__ == "__main__":
