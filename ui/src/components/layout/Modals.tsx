@@ -21,6 +21,7 @@ export function Modals() {
   const {
     selectedProject,
     selectedFeature, setSelectedFeature,
+    setActiveView,
     showAddFeature, setShowAddFeature,
     showExpandProject, setShowExpandProject,
     showSpecChat, setShowSpecChat,
@@ -51,6 +52,10 @@ export function Modals() {
           feature={selectedFeature}
           projectName={selectedProject}
           onClose={() => setSelectedFeature(null)}
+          onOpenBrowsersView={() => {
+            setSelectedFeature(null)
+            setActiveView('browsers')
+          }}
         />
       )}
 

@@ -88,6 +88,9 @@ export function useProjectWebSocket(projectName: string | null) {
   const reconnectTimeoutRef = useRef<number | null>(null)
   const reconnectAttempts = useRef(0)
   const lastMessageAtRef = useRef<number>(Date.now())
+  // Number of mounted consumers that want browser screenshots (Browsers view, debug tab, feature modal).
+  // The server tracks a single subscribed flag per socket, so we only send subscribe/unsubscribe on 0 <-> 1.
+  const browserViewSubscribersRef = useRef(0)
 
   const connect = useCallback(() => {
     if (!projectName) return
@@ -127,6 +130,11 @@ export function useProjectWebSocket(projectName: string | null) {
         lastMessageAtRef.current = Date.now()
         setState(prev => ({ ...prev, isConnected: true }))
         reconnectAttempts.current = 0
+        // Subscriptions are per-socket on the server, so restore them after (re)connecting
+        if (browserViewSubscribersRef.current > 0) {
+          ws.send(JSON.stringify({ type: 'browser_view_subscribe' }))
+          setState(prev => ({ ...prev, browserViewSubscribed: true }))
+        }
       }
 
       ws.onmessage = (event) => {
@@ -223,7 +231,19 @@ export function useProjectWebSocket(projectName: string | null) {
                 )
 
                 let newAgents: ActiveAgent[]
+                let newScreenshots = prev.browserScreenshots
                 if (message.state === 'success' || message.state === 'error') {
+                  // Drop the finished agent's last browser frame so it doesn't linger as "live"
+                  const agentType = message.agentType || 'coding'
+                  const stale = Array.from(prev.browserScreenshots.values()).filter(s =>
+                    s.agentType === agentType &&
+                    (message.agentIndex === -1 ? s.featureId === message.featureId : s.agentIndex === message.agentIndex)
+                  )
+                  if (stale.length > 0) {
+                    newScreenshots = new Map(prev.browserScreenshots)
+                    stale.forEach(s => newScreenshots.delete(s.sessionName))
+                  }
+
                   // Remove agent from active list on completion (success or failure)
                   // But keep the logs in agentLogs map for debugging
                   if (message.agentIndex === -1) {
@@ -310,6 +330,7 @@ export function useProjectWebSocket(projectName: string | null) {
                   ...prev,
                   activeAgents: newAgents,
                   agentLogs: newAgentLogs,
+                  browserScreenshots: newScreenshots,
                   recentActivity: newActivity,
                   celebrationQueue: newCelebrationQueue,
                   celebration: newCelebration,
@@ -565,17 +586,19 @@ export function useProjectWebSocket(projectName: string | null) {
     })
   }, [])
 
-  // Subscribe to browser view screenshots
+  // Subscribe to browser view screenshots (ref-counted across consumers)
   const subscribeBrowserView = useCallback(() => {
-    if (wsRef.current?.readyState === WebSocket.OPEN) {
+    browserViewSubscribersRef.current += 1
+    if (browserViewSubscribersRef.current === 1 && wsRef.current?.readyState === WebSocket.OPEN) {
       wsRef.current.send(JSON.stringify({ type: 'browser_view_subscribe' }))
       setState(prev => ({ ...prev, browserViewSubscribed: true }))
     }
   }, [])
 
-  // Unsubscribe from browser view screenshots
+  // Unsubscribe from browser view screenshots (only stops streaming when the last consumer leaves)
   const unsubscribeBrowserView = useCallback(() => {
-    if (wsRef.current?.readyState === WebSocket.OPEN) {
+    browserViewSubscribersRef.current = Math.max(0, browserViewSubscribersRef.current - 1)
+    if (browserViewSubscribersRef.current === 0 && wsRef.current?.readyState === WebSocket.OPEN) {
       wsRef.current.send(JSON.stringify({ type: 'browser_view_unsubscribe' }))
       setState(prev => ({ ...prev, browserViewSubscribed: false }))
     }

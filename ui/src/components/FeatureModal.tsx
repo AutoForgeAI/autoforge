@@ -3,6 +3,7 @@ import { X, CheckCircle2, Circle, SkipForward, Trash2, Loader2, AlertCircle, Pen
 import { useSkipFeature, useDeleteFeature, useFeatures, useResolveHumanInput } from '../hooks/useProjects'
 import { EditFeatureForm } from './EditFeatureForm'
 import { HumanInputForm } from './HumanInputForm'
+import { FeatureBrowserPreview } from './FeatureBrowserPreview'
 import type { Feature } from '../lib/types'
 import {
   Dialog,
@@ -40,9 +41,10 @@ interface FeatureModalProps {
   feature: Feature
   projectName: string
   onClose: () => void
+  onOpenBrowsersView?: () => void
 }
 
-export function FeatureModal({ feature, projectName, onClose }: FeatureModalProps) {
+export function FeatureModal({ feature, projectName, onClose, onOpenBrowsersView }: FeatureModalProps) {
   const [error, setError] = useState<string | null>(null)
   const [showDeleteConfirm, setShowDeleteConfirm] = useState(false)
   const [showEdit, setShowEdit] = useState(false)
@@ -149,6 +151,11 @@ export function FeatureModal({ feature, projectName, onClose }: FeatureModalProp
                 <UserCircle size={24} className="text-amber-500" />
                 <span className="font-semibold text-amber-500">NEEDS YOUR INPUT</span>
               </>
+            ) : feature.in_progress ? (
+              <>
+                <Loader2 size={24} className="text-primary animate-spin" />
+                <span className="font-semibold text-primary">IN PROGRESS</span>
+              </>
             ) : (
               <>
                 <Circle size={24} className="text-muted-foreground" />
@@ -159,6 +166,11 @@ export function FeatureModal({ feature, projectName, onClose }: FeatureModalProp
               Priority: #{feature.priority}
             </span>
           </div>
+
+          {/* Live browser of any agent working on / testing this feature */}
+          {onOpenBrowsersView && (
+            <FeatureBrowserPreview featureId={feature.id} onOpenBrowsersView={onOpenBrowsersView} />
+          )}
 
           {/* Human Input Request */}
           {feature.needs_human_input && feature.human_input_request && (

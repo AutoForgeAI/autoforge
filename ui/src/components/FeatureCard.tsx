@@ -1,4 +1,4 @@
-import { CheckCircle2, Circle, Loader2, MessageCircle, UserCircle } from 'lucide-react'
+import { CheckCircle2, Circle, Loader2, MessageCircle, Monitor, UserCircle } from 'lucide-react'
 import type { Feature, ActiveAgent } from '../lib/types'
 import { DependencyBadge } from './DependencyBadge'
 import { AgentAvatar } from './AgentAvatar'
@@ -91,6 +91,13 @@ export function FeatureCard({ feature, onClick, isInProgress, allFeatures = [], 
                 </div>
               )}
             </div>
+            <span
+              className="flex items-center gap-1 text-[10px] text-muted-foreground shrink-0"
+              title="Open to watch the agent's browser live"
+            >
+              <Monitor size={12} />
+              Live
+            </span>
           </div>
         )}
 
