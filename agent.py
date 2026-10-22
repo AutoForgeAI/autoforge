@@ -245,14 +245,15 @@ async def run_autonomous_agent(
     while True:
         iteration += 1
 
-        # Check if all features are already complete (before starting a new session)
+        # Check if all features are already complete (before starting every session,
+        # so retries after errors/rate limits don't start sessions on a finished project)
         # Skip this check if running as initializer (needs to create features first)
         # or auto-improve mode (intentionally runs against finished projects)
-        if not is_initializer and not auto_improve and iteration == 1:
+        if not is_initializer and not auto_improve:
             passing, in_progress, total, _nhi = count_passing_tests(project_dir)
             if total > 0 and passing == total:
                 print("\n" + "=" * 70)
-                print("  ALL FEATURES ALREADY COMPLETE!")
+                print("  ALL FEATURES ALREADY COMPLETE!" if iteration == 1 else "  ALL FEATURES COMPLETE!")
                 print("=" * 70)
                 print(f"\nAll {total} features are passing. Nothing left to do.")
                 break

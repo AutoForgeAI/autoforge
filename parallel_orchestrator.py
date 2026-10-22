@@ -643,7 +643,34 @@ class ParallelOrchestrator:
                 session.close()
         return sum(1 for fd in feature_dicts if fd.get("passes"))
 
-    def _maintain_testing_agents(self, feature_dicts: list[dict] | None = None) -> None:
+    def has_coding_work(
+        self,
+        feature_dicts: list[dict] | None = None,
+        scheduling_scores: dict[int, float] | None = None,
+    ) -> bool:
+        """Check if coding work is running or can be started right now.
+
+        Returns False when every remaining feature is waiting for human input,
+        has permanently failed, or is blocked by dependencies that cannot be met.
+        In that state the project cannot progress, so regression testing would
+        only burn tokens re-verifying the same passing features.
+
+        Args:
+            feature_dicts: Pre-fetched list of feature dicts. If None, queries the database.
+            scheduling_scores: Pre-computed scheduling scores. If None, computed from feature_dicts.
+        """
+        with self._lock:
+            if self.running_coding_agents:
+                return True
+        if self.get_resumable_features(feature_dicts, scheduling_scores):
+            return True
+        return bool(self.get_ready_features(feature_dicts, scheduling_scores))
+
+    def _maintain_testing_agents(
+        self,
+        feature_dicts: list[dict] | None = None,
+        scheduling_scores: dict[int, float] | None = None,
+    ) -> None:
         """Maintain the desired count of testing agents independently.
 
         This runs every loop iteration and spawns testing agents as needed to maintain
@@ -657,9 +684,12 @@ class ParallelOrchestrator:
         - YOLO mode is enabled
         - testing_agent_ratio is 0
         - No passing features exist yet
+        - All features are complete
+        - No coding work is running or startable (project is stalled)
 
         Args:
             feature_dicts: Pre-fetched list of feature dicts. If None, queries the database.
+            scheduling_scores: Pre-computed scheduling scores. If None, computed from feature_dicts.
         """
         # Skip if testing is disabled
         if self.yolo_mode or self.testing_agent_ratio == 0:
@@ -672,6 +702,12 @@ class ParallelOrchestrator:
 
         # Don't spawn testing agents if all features are already complete
         if self.get_all_complete(feature_dicts):
+            return
+
+        # Don't spawn testing agents while no coding can happen (e.g. everything
+        # left awaits human input or is blocked) - that would re-test the same
+        # passing features in an endless loop
+        if not self.has_coding_work(feature_dicts, scheduling_scores):
             return
 
         # Spawn testing agents one at a time, re-checking limits each time
@@ -1484,6 +1520,7 @@ class ParallelOrchestrator:
 
         debug_log.section("FEATURE LOOP STARTING")
         loop_iteration = 0
+        stalled_notice_shown = False
         while self.is_running and not self._shutdown_requested:
             loop_iteration += 1
             if loop_iteration <= 3:
@@ -1549,7 +1586,7 @@ class ParallelOrchestrator:
                         continue
 
                 # Maintain testing agents independently (runs every iteration)
-                self._maintain_testing_agents(feature_dicts)
+                self._maintain_testing_agents(feature_dicts, scheduling_scores)
 
                 # Check capacity
                 with self._lock:
@@ -1602,10 +1639,59 @@ class ParallelOrchestrator:
                             print("\nAll features complete!", flush=True)
                             break
 
-                        # Still have pending features but all are blocked by dependencies
-                        print("No ready features available. All remaining features may be blocked by dependencies.", flush=True)
-                        await self._wait_for_agent_completion(timeout=POLL_INTERVAL * 2)
-                        continue
+                        # Features may have become ready since the snapshot was taken
+                        if self.has_coding_work(fresh_dicts):
+                            continue
+
+                        # Let running testing agents finish - a regression they find
+                        # makes its feature ready again
+                        with self._lock:
+                            testing_running = len(self.running_testing_agents)
+                        if testing_running > 0:
+                            await self._wait_for_agent_completion()
+                            continue
+
+                        # Features awaiting human input can be unblocked from the UI,
+                        # so keep polling (no agents are spawned while stalled)
+                        awaiting_human = [
+                            fd for fd in fresh_dicts
+                            if not fd.get("passes") and fd.get("needs_human_input")
+                        ]
+                        if awaiting_human:
+                            if not stalled_notice_shown:
+                                ids = ", ".join(f"#{fd['id']}" for fd in awaiting_human)
+                                print(f"No ready features available. Waiting for human input on feature(s) {ids}...",
+                                      flush=True)
+                                stalled_notice_shown = True
+                            await self._wait_for_agent_completion(timeout=POLL_INTERVAL * 2)
+                            continue
+
+                        # Nothing can ever become ready without outside changes - stop
+                        # instead of idling (or regression testing) indefinitely
+                        blocked = [
+                            fd for fd in fresh_dicts
+                            if not fd.get("passes")
+                            and self._failure_counts.get(fd["id"], 0) < MAX_FEATURE_RETRIES
+                        ]
+                        failed = [
+                            fd for fd in fresh_dicts
+                            if not fd.get("passes")
+                            and self._failure_counts.get(fd["id"], 0) >= MAX_FEATURE_RETRIES
+                        ]
+                        print("\nNo more work possible - remaining features cannot be started.", flush=True)
+                        if failed:
+                            failed_ids = ", ".join(f"#{fd['id']}" for fd in failed)
+                            print(f"  Failed after {MAX_FEATURE_RETRIES} attempts: {failed_ids}", flush=True)
+                        if blocked:
+                            blocked_ids = ", ".join(f"#{fd['id']}" for fd in blocked)
+                            print(f"  Blocked by unmet dependencies: {blocked_ids}", flush=True)
+                        print("Fix the blocking features or dependencies, then restart the agent.", flush=True)
+                        debug_log.log("COMPLETE_CHECK", "Stopping: no runnable features remain",
+                            failed=[fd["id"] for fd in failed],
+                            blocked=[fd["id"] for fd in blocked])
+                        break
+
+                stalled_notice_shown = False
 
                 # Build dependency-aware batches from ready features
                 slots = self.max_concurrency - current
