@@ -102,13 +102,21 @@ For each new capability, understand:
 
 ## Phase 3: Derive Features
 
-**Count the testable behaviors** for additions:
+**Count the atomic features** for additions:
 
-For each new capability, estimate features:
-- Each CRUD operation = 1 feature
-- Each UI interaction = 1 feature
-- Each validation/error case = 1 feature
-- Each visual requirement = 1 feature
+An **atomic feature** is one test case with a single Given / When / Then outcome (one primary assertion) whose location, trigger, and observable result are clear from the discussion.
+
+Place each behavior in exactly one bucket (when several seem to apply, the specific buckets win over the general Domain Behaviors and UI Composition & Navigation), then apply that bucket's counting rule:
+
+- **Domain Behaviors** - Does domain state change or is a business rule enforced? 1 per action + 1 per meaningful rule
+- **UI Composition & Navigation** - Is it about what the user can reach/see? 1 per screen/route + 1 per major section
+- **Input Constraints** - Is it about accepting/rejecting/transforming input? 1 per validation rule
+- **Authorization & Access Control** - Does it behave differently per role/user? 1 per permission rule (route, action, data scope are separate)
+- **Resilience & Error Recovery** - Is it only visible when something goes wrong? 1 per failure mode with a specified recovery
+- **Integration & Data Exchange** - Does it cross system boundaries? 1 per endpoint/job + 1 per critical mapping rule
+- **Presentation Quality** - Is it about how it looks/feels across devices? 1 per breakpoint/access pattern
+
+Split any feature that has multiple triggers, spans multiple areas without one primary assertion, mixes buckets, or needs several "Then" assertions.
 
 **Present breakdown for approval:**
 

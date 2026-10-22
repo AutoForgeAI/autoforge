@@ -246,22 +246,66 @@ If the app requires a database (Phase 3b answer was "Yes" or "Not sure"), you MU
 These features ensure the coding agent implements a real database, not mock data or in-memory storage.
 
 **How to count features:**
-For each feature area discussed, estimate the number of discrete, testable behaviors:
 
-- Each CRUD operation = 1 feature (create, read, update, delete)
-- Each UI interaction = 1 feature (click, drag, hover effect)
-- Each validation/error case = 1 feature
-- Each visual requirement = 1 feature (styling, animation, responsive behavior)
+Count **atomic features**, then group them into the MECE buckets below. Every behavior discussed belongs to exactly one bucket, so nothing is double-counted and nothing is left out.
+
+**Atomic feature** = one test case with a single Given / When / Then outcome (one primary assertion). It can be implemented without mockups because the spec states where it lives, what triggers it, and what observable result happens.
+
+**MECE buckets (hard boundaries):**
+
+| Bucket | Covers | Boundary question |
+|--------|--------|-------------------|
+| **Domain Behaviors** (state & business rules) | Create/Read/Update/Delete and non-CRUD workflows (approve, submit, publish, reconcile, etc.) | Does backend/domain state change, or is a domain rule enforced? |
+| **UI Composition & Navigation** (what exists where) | Routes/screens, page sections, component presence/visibility, navigation rules | Is this about what the user can reach/see (structure), not what the data rules do? |
+| **Input Constraints** (validation & normalization) | Required fields, formats, min/max, dedupe rules, sanitization, cross-field constraints | Is this about accepting/rejecting/transforming user input? |
+| **Authorization & Access Control** | Protected routes, action permissions, data scoping (own vs org vs public) | Would the same action behave differently for different roles/users? |
+| **Resilience & Error Recovery** | Network failure handling, retries, idempotency, conflict resolution, offline/timeout behavior | Is this behavior only visible when something goes wrong? |
+| **Integration & Data Exchange** | Import/export, external APIs, webhooks, background jobs, sync rules | Does it cross system boundaries? |
+| **Presentation Quality** (non-functional UI requirements) | Responsive breakpoints, accessibility (keyboard/ARIA), theming, performance constraints | Is it about how it looks/feels/works across devices rather than what it does? |
+
+Each behavior goes in exactly one bucket. If more than one boundary question seems to apply, either split it into separate atomic features or, if it really is one behavior, use the most specific bucket: Input Constraints, Authorization & Access Control, Resilience & Error Recovery, Integration & Data Exchange, and Presentation Quality take precedence over the general Domain Behaviors and UI Composition & Navigation buckets. The 5 mandatory Infrastructure features are counted separately and are not part of these buckets.
+
+**Required fields for every atomic feature:**
+
+- **Location:** route/screen + section (e.g., `/projects` → "Project list toolbar")
+- **Actor + preconditions:** role, logged-in state, data state
+- **Trigger:** click, submit, keyboard shortcut, schedule, incoming webhook, etc.
+- **Expected outcome:** what changes on screen + what changes in data
+- **Failure behavior (if applicable):** exact error state and recovery path
+
+If you cannot fill in Location, Trigger, and Expected outcome from what was discussed, the feature is under-specified: ask a follow-up question or make a reasonable assumption and state it when presenting the estimate.
+
+**Practical counting rules (so features stay atomic):**
+
+- **Domain Behaviors:** 1 feature per action + 1 per meaningful rule (e.g., "cannot delete if locked")
+- **UI Composition & Navigation:** 1 feature per screen/route + 1 per major section on that screen
+- **Input Constraints:** 1 feature per validation rule (a server-side rule counts even if the UI also validates)
+- **Authorization & Access Control:** 1 feature per permission rule (route access, action access, and data scope are separate)
+- **Resilience & Error Recovery:** 1 feature per distinct failure mode with a specified recovery
+- **Integration & Data Exchange:** 1 feature per integration endpoint/job + 1 per critical mapping/transform rule
+- **Presentation Quality:** 1 feature per breakpoint/access pattern (keep these small)
+
+**Atomicity checks (split or reject a feature if any fail):**
+
+A feature is NOT atomic if:
+
+- It describes multiple triggers ("click X and also drag Y")
+- It spans multiple routes/areas without a single primary assertion
+- It mixes buckets (e.g., validation + permission + error recovery)
+- Its acceptance test needs multiple "Then" assertions to be meaningful
 
 **Present your estimate to the user:**
 
 > "Based on what we discussed, here's my feature breakdown:
 >
 > - **Infrastructure (required)**: 5 features (database setup, persistence verification)
-> - [Category 1]: ~X features
-> - [Category 2]: ~Y features
-> - [Category 3]: ~Z features
-> - ...
+> - **Domain Behaviors**: ~A features
+> - **UI Composition & Navigation**: ~B features
+> - **Input Constraints**: ~C features
+> - **Authorization & Access Control**: ~D features
+> - **Resilience & Error Recovery**: ~E features
+> - **Integration & Data Exchange**: ~F features
+> - **Presentation Quality**: ~G features
 >
 > **Total: ~N features** (including 5 infrastructure)
 >
