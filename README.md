@@ -194,10 +194,10 @@ autoforge/
 │   │   └── lib/                 # API client and types
 │   ├── package.json
 │   └── vite.config.ts
-├── .claude/
-│   ├── commands/
-│   │   └── create-spec.md       # /create-spec slash command
-│   ├── skills/                  # Claude Code skills
+├── .claude/                     # See "Claude Code Extensions" below
+│   ├── agents/                  # Claude Code subagents (for AutoForge development)
+│   ├── commands/                # Slash commands (/create-spec, /expand-project, ...)
+│   ├── skills/                  # Claude Code skills (gsd-to-autoforge-spec, playwright-cli, ...)
 │   └── templates/               # Prompt templates
 ├── requirements.txt             # Python dependencies (development)
 ├── requirements-prod.txt        # Python dependencies (npm install)
@@ -368,6 +368,58 @@ Use the `/create-spec` command when creating a new project, or manually edit the
 ### Modifying Allowed Commands
 
 Edit `security.py` to add or remove commands from `ALLOWED_COMMANDS`.
+
+---
+
+## Claude Code Extensions (`.claude/` folder)
+
+The repository's `.claude/` folder contains slash commands, skills, agents and prompt templates. **You do not need to copy or link any of them into your personal `~/.claude` folder to use AutoForge.**
+
+### What works automatically
+
+| Item | How it is used |
+|------|----------------|
+| `templates/` | Loaded by AutoForge itself and copied into each new project's `.autoforge/prompts/` |
+| `commands/create-spec.md` | Used by the Web UI's "Create with Claude" spec chat |
+| `commands/expand-project.md` | Used by the Web UI's "Expand project with AI" chat |
+| `skills/playwright-cli/` | Copied into every generated project (`<project>/.claude/skills/playwright-cli/`) so the coding agent can drive a browser |
+
+### Available when you run `claude` inside the AutoForge folder
+
+Claude Code picks up project-level extensions from the `.claude/` folder of the directory it is started in. If you run `claude` from the AutoForge checkout, these are available right away:
+
+- Slash commands: `/create-spec`, `/expand-project`, `/gsd-to-autoforge-spec`, `/check-code`, `/checkpoint`, `/review-pr`
+- Skills: `gsd-to-autoforge-spec`, `frontend-design`, `playwright-cli`
+- Agents: `coder`, `code-review`, `deep-dive` (mostly useful for developing AutoForge itself)
+
+They are **not** visible when you run `claude` in another folder, such as an existing project of your own.
+
+### Using a skill in another project (e.g. `gsd-to-autoforge-spec`)
+
+The `gsd-to-autoforge-spec` skill runs inside your *existing* project (it reads `.planning/codebase/*.md` from `/gsd:map-codebase` and writes `.autoforge/prompts/app_spec.txt`), so Claude Code has to be able to find it there. Make it available once, in one of these ways:
+
+```bash
+# Option A: personal skill, available in every project (symlink keeps it up to date)
+mkdir -p ~/.claude/skills
+ln -s /path/to/autoforge/.claude/skills/gsd-to-autoforge-spec ~/.claude/skills/gsd-to-autoforge-spec
+
+# Option B: only for one project
+mkdir -p /path/to/your-project/.claude/skills
+cp -r /path/to/autoforge/.claude/skills/gsd-to-autoforge-spec /path/to/your-project/.claude/skills/
+```
+
+On Windows, copy the folder (or use `mklink /D` from an elevated prompt) instead of `ln -s`. If you installed AutoForge with npm, the skill lives in the global package folder: `$(npm root -g)/autoforge-ai/.claude/skills/gsd-to-autoforge-spec`.
+
+Then, in your existing project:
+
+```bash
+cd /path/to/your-project
+claude
+# > /gsd:map-codebase
+# > convert to autoforge      (the skill triggers on phrases like this)
+```
+
+Finally, register that folder as a project in AutoForge and start the agent. The same approach works for any other skill (`frontend-design`) or agent in `.claude/` you want to use elsewhere: copy or link it into `~/.claude/skills/` (or `~/.claude/agents/`, `~/.claude/commands/`).
 
 ---
 
