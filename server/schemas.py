@@ -123,6 +123,7 @@ class FeatureUpdate(BaseModel):
     steps: list[str] | None = None
     priority: int | None = None
     dependencies: list[int] | None = None  # Optional - can update dependencies
+    reopen: bool = False  # Mark the feature as pending again (e.g. after editing a completed one)
 
 
 class FeatureResponse(FeatureBase):

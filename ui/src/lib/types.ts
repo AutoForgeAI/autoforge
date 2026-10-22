@@ -143,6 +143,7 @@ export interface FeatureUpdate {
   steps?: string[]
   priority?: number
   dependencies?: number[]
+  reopen?: boolean
 }
 
 // Agent types

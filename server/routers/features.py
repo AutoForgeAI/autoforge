@@ -425,9 +425,12 @@ async def update_feature(project_name: str, feature_id: int, update: FeatureUpda
     """
     Update a feature's details.
 
-    Only features that are not yet completed (passes=False) can be edited.
-    This allows users to provide corrections or additional instructions
-    when the agent is stuck or implementing a feature incorrectly.
+    Any feature can be edited, including completed ones. This allows users to
+    provide corrections or additional instructions when the agent is stuck or
+    implementing a feature incorrectly, or to tweak a feature after the fact.
+
+    Editing a completed feature keeps it marked as passing unless ``reopen``
+    is set, in which case it goes back to pending so the agent re-implements it.
     """
     project_name = validate_project_name(project_name)
     project_dir = _get_project_path(project_name)
@@ -447,13 +450,6 @@ async def update_feature(project_name: str, feature_id: int, update: FeatureUpda
             if not feature:
                 raise HTTPException(status_code=404, detail=f"Feature {feature_id} not found")
 
-            # Prevent editing completed features
-            if feature.passes:
-                raise HTTPException(
-                    status_code=400,
-                    detail="Cannot edit a completed feature. Features marked as done are immutable."
-                )
-
             # Apply updates for non-None fields
             if update.category is not None:
                 feature.category = update.category
@@ -467,6 +463,9 @@ async def update_feature(project_name: str, feature_id: int, update: FeatureUpda
                 feature.priority = update.priority
             if update.dependencies is not None:
                 feature.dependencies = update.dependencies if update.dependencies else None
+            if update.reopen:
+                feature.passes = False
+                feature.in_progress = False
 
             session.commit()
             session.refresh(feature)

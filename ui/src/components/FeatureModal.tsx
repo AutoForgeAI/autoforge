@@ -269,7 +269,17 @@ export function FeatureModal({ feature, projectName, onClose }: FeatureModalProp
         </div>
 
         {/* Actions */}
-        {!feature.passes && (
+        {feature.passes ? (
+          <>
+            <Separator />
+            <DialogFooter className="p-4 bg-muted/50">
+              <Button onClick={() => setShowEdit(true)} className="w-full">
+                <Pencil size={18} />
+                Edit
+              </Button>
+            </DialogFooter>
+          </>
+        ) : (
           <>
             <Separator />
             <DialogFooter className="p-4 bg-muted/50">
