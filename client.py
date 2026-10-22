@@ -204,6 +204,56 @@ BUILTIN_TOOLS = [
     "WebSearch",
 ]
 
+# Error fragments the Claude Code CLI emits when Write/Edit is rejected because
+# the file was never Read in this session, or changed on disk after the last Read
+# (dev-server HMR, formatters, file watchers, a parallel agent). Agents tend to
+# loop on these errors, burning tokens (issue #30), so a PostToolUseFailure hook
+# feeds back concrete recovery steps when one is seen.
+STALE_FILE_ERROR_MARKERS = (
+    "has not been read yet",
+    "unexpectedly modified",
+    "modified since read",
+    "read cache",
+)
+
+# After this many stale-file failures on the same path, the guidance escalates
+# from "re-read and retry" to "stop retrying and remove the external writer".
+STALE_FILE_ESCALATION_THRESHOLD = 2
+
+
+def is_stale_file_error(error: str) -> bool:
+    """Return True if a tool error is a 'read before write' / 'file modified' rejection."""
+    lowered = error.lower()
+    return any(marker in lowered for marker in STALE_FILE_ERROR_MARKERS)
+
+
+def stale_file_recovery_guidance(file_path: str, failure_count: int) -> str:
+    """
+    Build recovery instructions for a Write/Edit rejected as stale.
+
+    Args:
+        file_path: The file the failed tool call targeted
+        failure_count: How many stale-file failures this session has hit on file_path
+
+    Returns:
+        Guidance text injected into the agent's context as additionalContext
+    """
+    target = file_path or "the file"
+    steps = [
+        f"Write/Edit on {target} was rejected because the editor's read snapshot is missing or stale.",
+        f"To recover: call the Read tool on {target} (reading via Bash cat/head does NOT count), "
+        "then issue your Write/Edit immediately as the very next tool call, with no other tool calls in between.",
+        "Base old_string on the content you just Read, not on earlier memory of the file.",
+    ]
+    if failure_count >= STALE_FILE_ESCALATION_THRESHOLD:
+        steps.append(
+            f"This has now failed {failure_count} times for {target}: something outside your edits is "
+            "rewriting it (a dev server, formatter-on-save, file watcher, or build step). Do NOT keep retrying "
+            "the same edit. Stop or restart the process touching the file, or make a single Write of the full "
+            "new content right after a fresh Read. If it still fails, skip this file and move on."
+        )
+    return "\n".join(steps)
+
 
 def create_client(
     project_dir: Path,
@@ -447,6 +497,33 @@ def create_client(
             }
         )
 
+    # PostToolUseFailure hook that turns "File has not been read yet" /
+    # "File has been unexpectedly modified" rejections into explicit recovery
+    # steps, escalating when the same file keeps failing (issue #30).
+    stale_file_failures: dict[str, int] = {}
+
+    async def stale_file_hook(
+        input_data: HookInput,
+        tool_use_id: str | None,
+        context: HookContext,
+    ) -> SyncHookJSONOutput:
+        error = str(input_data.get("error") or "")
+        if not is_stale_file_error(error):
+            return SyncHookJSONOutput()
+
+        tool_input = input_data.get("tool_input") or {}
+        file_path = str(tool_input.get("file_path") or "") if isinstance(tool_input, dict) else ""
+        stale_file_failures[file_path] = stale_file_failures.get(file_path, 0) + 1
+        count = stale_file_failures[file_path]
+        print(f"[Hook] Stale-file rejection #{count} for {file_path or '<unknown>'}; injecting recovery guidance")
+
+        return SyncHookJSONOutput(
+            hookSpecificOutput={
+                "hookEventName": "PostToolUseFailure",
+                "additionalContext": stale_file_recovery_guidance(file_path, count),
+            }
+        )
+
     # PROMPT CACHING: The Claude Code CLI applies cache_control breakpoints internally.
     # Our system_prompt benefits from automatic caching without explicit configuration.
     # If explicit cache_control is needed, the SDK would need to accept content blocks
@@ -466,6 +543,9 @@ def create_client(
             hooks={
                 "PreToolUse": [
                     HookMatcher(matcher="Bash", hooks=[bash_hook_with_context]),
+                ],
+                "PostToolUseFailure": [
+                    HookMatcher(matcher="Write|Edit|MultiEdit", hooks=[stale_file_hook]),
                 ],
                 # PreCompact hook for context management during long sessions.
                 # Compaction is automatic when context approaches token limits.

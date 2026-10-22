@@ -16,8 +16,11 @@ from pathlib import Path
 from client import (
     EXTRA_READ_PATHS_BLOCKLIST,
     EXTRA_READ_PATHS_VAR,
+    STALE_FILE_ESCALATION_THRESHOLD,
     convert_model_for_vertex,
     get_extra_read_paths,
+    is_stale_file_error,
+    stale_file_recovery_guidance,
 )
 
 
@@ -266,6 +269,37 @@ class TestExtraReadPathsBlocklist(unittest.TestCase):
         os.environ[EXTRA_READ_PATHS_VAR] = "relative/path"
         result = get_extra_read_paths()
         self.assertEqual(result, [])
+
+
+class TestStaleFileErrorHandling(unittest.TestCase):
+    """Tests for stale-file Write/Edit rejection detection and guidance (issue #30)."""
+
+    def test_detects_not_read_yet_error(self):
+        self.assertTrue(is_stale_file_error(
+            "<tool_use_error>File has not been read yet. Read it first before writing to it.</tool_use_error>"
+        ))
+
+    def test_detects_unexpectedly_modified_error(self):
+        self.assertTrue(is_stale_file_error(
+            "File has been unexpectedly modified. Read it again before attempting to write it."
+        ))
+
+    def test_ignores_unrelated_errors(self):
+        self.assertFalse(is_stale_file_error("String to replace not found in file."))
+        self.assertFalse(is_stale_file_error(""))
+
+    def test_first_failure_gives_reread_steps_without_escalation(self):
+        guidance = stale_file_recovery_guidance("/p/src/page.tsx", 1)
+        self.assertIn("/p/src/page.tsx", guidance)
+        self.assertIn("Read tool", guidance)
+        self.assertNotIn("Do NOT keep retrying", guidance)
+
+    def test_repeated_failures_escalate(self):
+        guidance = stale_file_recovery_guidance("/p/src/page.tsx", STALE_FILE_ESCALATION_THRESHOLD)
+        self.assertIn("Do NOT keep retrying", guidance)
+
+    def test_missing_path_still_produces_guidance(self):
+        self.assertIn("the file", stale_file_recovery_guidance("", 1))
 
 
 if __name__ == "__main__":

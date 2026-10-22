@@ -199,6 +199,25 @@ Before context fills up:
 
 ---
 
+## FILE EDITING RULES (AVOID TOKEN-BURNING RETRY LOOPS)
+
+The Write and Edit tools refuse to touch a file unless you have Read it with the
+**Read tool** in this session and it has not changed on disk since. Errors like
+`File has not been read yet` or `File has been unexpectedly modified` mean exactly that.
+
+- Always use the Read tool before Write/Edit on an existing file. `cat`/`head` via Bash
+  do NOT count as a read.
+- Make the Write/Edit the very next tool call after the Read. Running other commands in
+  between gives dev servers, formatters and file watchers a chance to rewrite the file.
+- On a rejection: Read the file once more, then retry once, basing `old_string` on what
+  you just read.
+- If the same file is rejected twice in a row, something else is rewriting it (dev server
+  HMR, formatter-on-save, a build/codegen step). Do NOT keep retrying the same edit: stop
+  or restart that process, or write the full new content with a single Write right after
+  a fresh Read. If it still fails, move on and note it in your progress notes.
+
+---
+
 ## BROWSER AUTOMATION
 
 Use `playwright-cli` commands for UI verification. Key commands: `open`, `goto`,
