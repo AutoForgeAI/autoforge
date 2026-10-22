@@ -27,6 +27,7 @@
     "auth.py",
     "autoforge_paths.py",
     "autonomous_agent_demo.py",
+    "billing_utils.py",
     "client.py",
     "env_constants.py",
     "parallel_orchestrator.py",

@@ -35,6 +35,14 @@ from sqlalchemy import text
 
 from api.database import Feature, create_database
 from api.dependency_resolver import are_dependencies_satisfied, compute_scheduling_scores
+from billing_utils import (
+    BILLING_ERROR_EXIT_CODE,
+    BUDGET_EXCEEDED_EXIT_CODE,
+    MAX_BUDGET_ENV_VAR,
+    get_max_budget_usd,
+    parse_session_cost_line,
+    uses_api_key_billing,
+)
 from progress import has_features
 from server.utils.process_utils import kill_process_tree
 
@@ -215,6 +223,13 @@ class ParallelOrchestrator:
 
         # Graceful pause (drain mode) flag
         self._drain_requested = False
+
+        # Spend safeguards (issue #162): estimated spend aggregated from agent
+        # output, optional cap from AUTOFORGE_MAX_BUDGET_USD, and the reason
+        # ("billing" or "budget") once the run has been halted for spend.
+        self.max_budget_usd = get_max_budget_usd()
+        self.total_cost_usd = 0.0
+        self._spend_stop_reason: str | None = None
 
         # Session tracking for logging/debugging
         self.session_start_time: datetime | None = None
@@ -713,6 +728,8 @@ class ParallelOrchestrator:
         Returns:
             Tuple of (success, message)
         """
+        if self._spend_stop_reason:
+            return False, "Run halted for spend safeguard"
         with self._lock:
             if feature_id in self.running_coding_agents:
                 return False, "Feature already running"
@@ -767,6 +784,8 @@ class ParallelOrchestrator:
         """
         if not feature_ids:
             return False, "No features to start"
+        if self._spend_stop_reason:
+            return False, "Run halted for spend safeguard"
 
         # Single feature falls back to start_feature
         if len(feature_ids) == 1:
@@ -970,6 +989,8 @@ class ParallelOrchestrator:
         Multiple testing agents can test the same feature concurrently - this is
         intentional and simplifies the architecture by removing claim coordination.
         """
+        if self._spend_stop_reason:
+            return False, "Run halted for spend safeguard"
         # Check limits first (under lock)
         with self._lock:
             current_testing_count = len(self.running_testing_agents)
@@ -1105,6 +1126,7 @@ class ParallelOrchestrator:
                     print(line.rstrip(), flush=True)
                     if self.on_output is not None:
                         self.on_output(0, line.rstrip())  # Use 0 as feature_id for initializer
+                    self._record_cost_from_line(line)
                 proc.wait()
 
             await asyncio.wait_for(stream_output(), timeout=INITIALIZER_TIMEOUT)
@@ -1123,6 +1145,8 @@ class ParallelOrchestrator:
             success=proc.returncode == 0)
 
         if proc.returncode != 0:
+            if proc.returncode in (BILLING_ERROR_EXIT_CODE, BUDGET_EXCEEDED_EXIT_CODE):
+                self._halt_for_spend("billing" if proc.returncode == BILLING_ERROR_EXIT_CODE else "budget")
             print(f"ERROR: Initializer failed with exit code {proc.returncode}", flush=True)
             return False
 
@@ -1150,6 +1174,7 @@ class ParallelOrchestrator:
                 if abort.is_set():
                     break
                 line = line.rstrip()
+                self._record_cost_from_line(line)
                 # Detect when a batch agent claims a new feature
                 claim_match = self._CLAIM_FEATURE_PATTERN.search(line)
                 if claim_match:
@@ -1170,6 +1195,48 @@ class ParallelOrchestrator:
             except Exception as e:
                 debug_log.log("CLEANUP", f"Error killing process tree for {agent_type} agent", error=str(e))
             self._on_agent_complete(feature_id, proc.returncode, agent_type, proc)
+
+    def _record_cost_from_line(self, line: str) -> None:
+        """Add a session cost reported by an agent to the run total and enforce the cap."""
+        cost = parse_session_cost_line(line)
+        if cost is None:
+            return
+        with self._lock:
+            self.total_cost_usd += cost
+            total = self.total_cost_usd
+        debug_log.log("COST", "Agent session cost reported", session_cost=cost, total_cost=total)
+        if self.max_budget_usd is not None and total >= self.max_budget_usd:
+            self._halt_for_spend("budget")
+
+    def _halt_for_spend(self, reason: Literal["billing", "budget"]) -> None:
+        """Halt the run because credits ran out or the spending cap was reached.
+
+        Safe to call from output reader threads: only sets flags and wakes the
+        main loop, which stops all running agents.
+        """
+        with self._lock:
+            if self._spend_stop_reason is not None:
+                return
+            self._spend_stop_reason = reason
+            total = self.total_cost_usd
+
+        print("=" * 70, flush=True)
+        if reason == "billing":
+            print("  BILLING ERROR - STOPPING ALL AGENTS", flush=True)
+            print("=" * 70, flush=True)
+            print("An agent reported that the API credit balance is exhausted.", flush=True)
+            print("Stopping all agents instead of retrying to avoid further charges.", flush=True)
+        else:
+            print("  SPENDING CAP REACHED - STOPPING ALL AGENTS", flush=True)
+            print("=" * 70, flush=True)
+            print(
+                f"Estimated spend ${total:.2f} reached {MAX_BUDGET_ENV_VAR}=${self.max_budget_usd or 0:.2f}.",
+                flush=True,
+            )
+        print(f"Estimated spend this run: ${total:.4f}", flush=True)
+        print("=" * 70, flush=True)
+        debug_log.log("SPEND", "Run halted for spend safeguard", reason=reason, total_cost=total)
+        self._signal_agent_completed()
 
     def _run_inter_session_cleanup(self):
         """Run lightweight cleanup between agent sessions.
@@ -1247,7 +1314,14 @@ class ParallelOrchestrator:
 
         For testing agents:
         - Remove from running dict (no claim to release - concurrent testing is allowed).
+
+        Agents exiting with BILLING_ERROR_EXIT_CODE or BUDGET_EXCEEDED_EXIT_CODE
+        halt the whole run.
         """
+        if return_code == BILLING_ERROR_EXIT_CODE:
+            self._halt_for_spend("billing")
+        elif return_code == BUDGET_EXCEEDED_EXIT_CODE:
+            self._halt_for_spend("budget")
         if agent_type == "testing":
             with self._lock:
                 # Remove by PID
@@ -1416,6 +1490,13 @@ class ParallelOrchestrator:
         print(f"YOLO mode: {self.yolo_mode}", flush=True)
         print(f"Regression agents: {self.testing_agent_ratio} (maintained independently)", flush=True)
         print(f"Batch size: {self.batch_size} features per agent", flush=True)
+        if self.max_budget_usd is not None:
+            print(f"Spending cap: ${self.max_budget_usd:.2f} (estimated, all agents)", flush=True)
+        if uses_api_key_billing():
+            print("Billing: ANTHROPIC_API_KEY/ANTHROPIC_AUTH_TOKEN is set - usage is billed per token", flush=True)
+            print("         to that Anthropic API account, not your Claude subscription.", flush=True)
+            if self.max_budget_usd is None:
+                print(f"         Set {MAX_BUDGET_ENV_VAR} to cap spend.", flush=True)
         print("=" * 70, flush=True)
         print(flush=True)
 
@@ -1515,6 +1596,11 @@ class ParallelOrchestrator:
                     _dump_database_state(feature_dicts, f"(iteration {loop_iteration})")
 
             try:
+                # Spend safeguard tripped (billing error or cap reached): stop everything
+                if self._spend_stop_reason:
+                    self.stop_all()
+                    break
+
                 # Check if all complete
                 if self.get_all_complete(feature_dicts):
                     print("\nAll features complete!", flush=True)
@@ -1656,6 +1742,8 @@ class ParallelOrchestrator:
             # Use short timeout since we're just waiting for final agents to finish
             await self._wait_for_agent_completion(timeout=1.0)
 
+        if self.total_cost_usd > 0:
+            print(f"Estimated spend this run: ${self.total_cost_usd:.4f}", flush=True)
         print("Orchestrator finished.", flush=True)
 
     def get_status(self) -> dict:
@@ -1721,7 +1809,7 @@ async def run_parallel_orchestrator(
     testing_agent_ratio: int = 1,
     testing_batch_size: int = DEFAULT_TESTING_BATCH_SIZE,
     batch_size: int = 3,
-) -> None:
+) -> int:
     """Run the unified orchestrator.
 
     Args:
@@ -1732,6 +1820,10 @@ async def run_parallel_orchestrator(
         testing_agent_ratio: Number of regression agents to maintain (0-3)
         testing_batch_size: Number of features per testing batch (1-5)
         batch_size: Max features per coding agent batch (1-3)
+
+    Returns:
+        Process exit code: BILLING_ERROR_EXIT_CODE if the run was halted
+        because credits ran out, otherwise 0.
     """
     print(f"[ORCHESTRATOR] run_parallel_orchestrator called with max_concurrency={max_concurrency}", flush=True)
     orchestrator = ParallelOrchestrator(
@@ -1775,6 +1867,8 @@ async def run_parallel_orchestrator(
         # CRITICAL: Always clean up database resources on exit
         # This forces WAL checkpoint and disposes connections
         orchestrator.cleanup()
+
+    return BILLING_ERROR_EXIT_CODE if orchestrator._spend_stop_reason == "billing" else 0
 
 
 def main():
@@ -1852,8 +1946,9 @@ def main():
             print(f"Error: Project '{project_dir_input}' not found in registry", flush=True)
             sys.exit(1)
 
+    exit_code = 0
     try:
-        asyncio.run(run_parallel_orchestrator(
+        exit_code = asyncio.run(run_parallel_orchestrator(
             project_dir=project_dir,
             max_concurrency=args.max_concurrency,
             model=args.model,
@@ -1864,6 +1959,9 @@ def main():
         ))
     except KeyboardInterrupt:
         print("\n\nInterrupted by user", flush=True)
+
+    if exit_code:
+        sys.exit(exit_code)
 
 
 if __name__ == "__main__":

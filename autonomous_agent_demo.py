@@ -45,8 +45,10 @@ from dotenv import load_dotenv
 load_dotenv()
 
 import os
+import sys
 
 from agent import run_autonomous_agent
+from billing_utils import MAX_BUDGET_ENV_VAR, parse_budget
 from registry import DEFAULT_MODEL, get_effective_sdk_env, get_project_path
 
 
@@ -197,6 +199,17 @@ Authentication:
         ),
     )
 
+    parser.add_argument(
+        "--max-budget-usd",
+        type=str,
+        default=None,
+        help=(
+            "Stop all agents once estimated spend reaches this many USD "
+            "(sets AUTOFORGE_MAX_BUDGET_USD for this run). Recommended when "
+            "using an Anthropic API key."
+        ),
+    )
+
     return parser.parse_args()
 
 
@@ -215,6 +228,14 @@ def main() -> None:
     for key, value in sdk_overrides.items():
         if value:  # Only set non-empty values (empty values are used to clear conflicts)
             os.environ.setdefault(key, value)
+
+    # Spending cap: exported via env so orchestrator-spawned agents inherit it
+    if args.max_budget_usd is not None:
+        budget = parse_budget(args.max_budget_usd)
+        if budget is None:
+            print(f"Error: --max-budget-usd must be a positive number, got: {args.max_budget_usd}")
+            sys.exit(2)
+        os.environ[MAX_BUDGET_ENV_VAR] = str(budget)
 
     # Handle deprecated --parallel flag
     if args.parallel is not None:
@@ -272,13 +293,14 @@ def main() -> None:
             print(f"Error: --feature-ids must be comma-separated integers, got: {args.feature_ids}")
             return
 
+    exit_code = 0
     try:
         if args.auto_improve:
             # Auto-improve mode: single agent session, one improvement per run.
             # Bypasses the parallel orchestrator entirely — auto-improve is
             # always single-agent, single-feature, and exits after one commit.
             print("[AUTO-IMPROVE] Starting single-session improvement run...", flush=True)
-            asyncio.run(
+            exit_code = asyncio.run(
                 run_autonomous_agent(
                     project_dir=project_dir,
                     model=args.model,
@@ -290,7 +312,7 @@ def main() -> None:
             )
         elif args.agent_type:
             # Subprocess mode - spawned by orchestrator for a specific role
-            asyncio.run(
+            exit_code = asyncio.run(
                 run_autonomous_agent(
                     project_dir=project_dir,
                     model=args.model,
@@ -323,7 +345,7 @@ def main() -> None:
             if concurrency != args.concurrency:
                 print(f"Clamping concurrency to valid range: {concurrency}", flush=True)
 
-            asyncio.run(
+            exit_code = asyncio.run(
                 run_parallel_orchestrator(
                     project_dir=project_dir,
                     max_concurrency=concurrency,
@@ -340,6 +362,9 @@ def main() -> None:
     except Exception as e:
         print(f"\nFatal error: {e}")
         raise
+
+    if exit_code:
+        sys.exit(exit_code)
 
 
 if __name__ == "__main__":
