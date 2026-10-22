@@ -4,7 +4,7 @@
  * Multi-step modal for creating new projects:
  * 1. Enter project name
  * 2. Select project folder
- * 3. Choose project template (blank or agentic starter)
+ * 3. Choose project template (blank, agentic starter, or existing codebase)
  * 4. Choose spec method (Claude or manual)
  * 5a. If Claude: Show SpecCreationChat
  * 5b. If manual: Create project and close
@@ -12,7 +12,7 @@
 
 import { useRef, useState } from 'react'
 import { createPortal } from 'react-dom'
-import { Bot, FileEdit, ArrowRight, ArrowLeft, Loader2, CheckCircle2, Folder, Zap, FileCode2, AlertCircle, RotateCcw } from 'lucide-react'
+import { Bot, FileEdit, ArrowRight, ArrowLeft, Loader2, CheckCircle2, Folder, FolderGit2, Zap, FileCode2, AlertCircle, RotateCcw } from 'lucide-react'
 import { useCreateProject } from '../hooks/useProjects'
 import { SpecCreationChat } from './SpecCreationChat'
 import { FolderBrowser } from './FolderBrowser'
@@ -55,6 +55,7 @@ export function NewProjectModal({
   const [projectName, setProjectName] = useState('')
   const [projectPath, setProjectPath] = useState<string | null>(null)
   const [_specMethod, setSpecMethod] = useState<SpecMethod | null>(null)
+  const [existingCodebase, setExistingCodebase] = useState(false)
   const [error, setError] = useState<string | null>(null)
   const [initializerStatus, setInitializerStatus] = useState<InitializerStatus>('idle')
   const [initializerError, setInitializerError] = useState<string | null>(null)
@@ -104,8 +105,12 @@ export function NewProjectModal({
     changeStep('name')
   }
 
-  const handleTemplateSelect = async (choice: 'blank' | 'agentic-starter') => {
-    if (choice === 'blank') {
+  const handleTemplateSelect = async (choice: 'blank' | 'agentic-starter' | 'existing') => {
+    // Only the "existing codebase" choice builds on code already in the folder;
+    // the starter template is treated like a fresh project (previous behavior).
+    setExistingCodebase(choice === 'existing')
+
+    if (choice === 'blank' || choice === 'existing') {
       changeStep('method')
       return
     }
@@ -191,6 +196,7 @@ export function NewProjectModal({
           name: projectName.trim(),
           path: projectPath,
           specMethod: 'manual',
+          existingCodebase,
         })
         changeStep('complete')
         setTimeout(() => {
@@ -207,6 +213,7 @@ export function NewProjectModal({
           name: projectName.trim(),
           path: projectPath,
           specMethod: 'claude',
+          existingCodebase,
         })
         changeStep('chat')
       } catch (err: unknown) {
@@ -261,6 +268,7 @@ export function NewProjectModal({
     setProjectName('')
     setProjectPath(null)
     setSpecMethod(null)
+    setExistingCodebase(false)
     setError(null)
     setInitializerStatus('idle')
     setInitializerError(null)
@@ -386,7 +394,7 @@ export function NewProjectModal({
             {scaffoldStatus === 'idle' && (
               <>
                 <DialogDescription>
-                  Start with a blank project or use a pre-configured template.
+                  Start with a blank project, use a pre-configured template, or build on code you already have.
                 </DialogDescription>
 
                 <div className="space-y-3">
@@ -425,6 +433,25 @@ export function NewProjectModal({
                           </div>
                           <p className="text-sm text-muted-foreground mt-1">
                             Pre-configured Next.js app with BetterAuth, Drizzle ORM, Postgres, and AI capabilities.
+                          </p>
+                        </div>
+                      </div>
+                    </CardContent>
+                  </Card>
+
+                  <Card
+                    className="cursor-pointer hover:border-primary transition-colors"
+                    onClick={() => handleTemplateSelect('existing')}
+                  >
+                    <CardContent className="p-4">
+                      <div className="flex items-start gap-4">
+                        <div className="p-2 bg-secondary rounded-lg">
+                          <FolderGit2 size={24} className="text-secondary-foreground" />
+                        </div>
+                        <div className="flex-1">
+                          <span className="font-semibold">Existing Codebase</span>
+                          <p className="text-sm text-muted-foreground mt-1">
+                            The folder already contains your app. Claude analyzes the code, then plans new features on top of it.
                           </p>
                         </div>
                       </div>
@@ -504,7 +531,9 @@ export function NewProjectModal({
         {step === 'method' && (
           <div className="space-y-4">
             <DialogDescription>
-              How would you like to define your project?
+              {existingCodebase
+                ? 'How would you like to define the new work for your existing codebase?'
+                : 'How would you like to define your project?'}
             </DialogDescription>
 
             <div className="space-y-3">
@@ -524,7 +553,9 @@ export function NewProjectModal({
                         <Badge>Recommended</Badge>
                       </div>
                       <p className="text-sm text-muted-foreground mt-1">
-                        Interactive conversation to define features and generate your app specification automatically.
+                        {existingCodebase
+                          ? 'Claude reviews your code, confirms what already exists, and helps you plan the features to add.'
+                          : 'Interactive conversation to define features and generate your app specification automatically.'}
                       </p>
                     </div>
                   </div>

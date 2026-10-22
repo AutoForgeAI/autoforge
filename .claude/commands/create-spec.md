@@ -57,6 +57,99 @@ There are two paths through this process:
 
 ---
 
+## EXISTING CODEBASE MODE
+
+Use this mode instead of the greenfield phases below when EITHER:
+
+- you were told to begin in **EXISTING CODEBASE MODE**, or
+- the file `$ARGUMENTS/.autoforge/.existing_codebase` exists
+
+In this mode the project directory already contains a working application. The user wants
+AutoForge to **add features to it**, not to build a new app. Never propose a different
+tech stack, never plan to rewrite or re-scaffold what exists.
+
+### Phase E1: Analyze the Codebase (do this BEFORE asking anything)
+
+Explore the project with Read, Glob and Grep (skip `node_modules`, virtualenvs, build output and `.autoforge/`):
+
+1. README, manifests (package.json, pyproject.toml, go.mod, ...), existing CLAUDE.md / docs
+2. Entry points, routing / pages / screens, API endpoints, data models / database schema
+3. Existing tests, lint and build commands, and how the app is started
+4. Code conventions (language, framework, styling, naming, folder layout)
+
+Keep it proportional - sample representative files, don't read everything in a large repo.
+
+### Phase E2: Confirm Your Understanding
+
+Present a concise summary and ask the user to confirm or correct it:
+
+> "Here's what I found in your codebase:
+>
+> **What it is:** [1-2 sentences]
+> **Stack:** [frontend / backend / database / tooling]
+> **How it runs:** [start command, port]
+> **Existing functionality:**
+> - [Feature area 1] - [short description]
+> - [Feature area 2] - [short description]
+>
+> Did I get that right? Anything important I missed?"
+
+**WAIT for the user to respond.**
+
+### Phase E3: What Should Be Built?
+
+Ask what they want to add or change. Then use **Phase 4 (Features)** techniques to drill into
+each new feature - but only for the NEW work, and phrase questions in terms of the existing app
+("Should the new export button live on the existing Reports page?").
+
+If the user has a GitHub issue, ticket or document describing the work, ask them to paste it
+(or its URL - you can use WebFetch for public pages) and use it as the starting point.
+
+### Phase E4: Existing Functionality
+
+Ask once:
+
+> "Should the agents also add regression checks for existing functionality?
+>
+> 1. **No, only the new work (Recommended)** - Faster; existing code is left alone
+> 2. **Yes, verify key existing flows** - Agents first confirm the existing features work, fixing what's broken"
+
+### Phase E5: Feature Count & Approval
+
+Derive the feature count from the NEW work only (plus the regression checks if chosen in E4).
+Do NOT add the 5 greenfield Infrastructure features - the existing app already has its foundation.
+Typical counts are much smaller than for new apps (e.g. 5-60 depending on the requested work).
+Present the count with a short breakdown, then do **Phase 7 (Review & Approval)**.
+
+### Existing Codebase Mode: File Generation
+
+Follow **FILE GENERATION** below with these differences:
+
+1. In `app_spec.txt`, add an `<existing_codebase>` section right after `<overview>`:
+
+   ```xml
+   <existing_codebase>
+     <summary>[What the app already does]</summary>
+     <structure>[Key directories / entry points and what they contain]</structure>
+     <conventions>[Language, framework, styling, naming, testing conventions to follow]</conventions>
+     <how_to_run>[Install + start commands, ports]</how_to_run>
+     <existing_features>
+       - [Existing feature area] - [short description]
+     </existing_features>
+   </existing_codebase>
+   ```
+
+   Fill `<technology_stack>` with the stack that is ACTUALLY in use. `<core_features>` lists ONLY the
+   new work. If the user chose regression checks in E4, add an
+   `<existing_functionality_to_verify>` section listing the flows to check. Omit sections that don't
+   apply (e.g. `<database_schema>` when the new work doesn't touch data) or describe only the changes.
+2. For `initializer_prompt.md`: if it does not exist, copy it from
+   `.claude/templates/initializer_prompt_existing.template.md` (not the greenfield template), then
+   replace `[FEATURE_COUNT]` as described below.
+3. Never modify, move or delete the user's existing files - only write inside `$ARGUMENTS/.autoforge/`.
+
+---
+
 ## Phase 1: Project Overview
 
 Start with simple questions anyone can answer:

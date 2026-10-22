@@ -31,6 +31,7 @@ from .chat_constants import (
     format_client_init_error,
     safe_receive_response,
 )
+from .claude_md_guard import release_session_claude_md, write_session_claude_md
 
 # Load environment variables from .env file if present
 load_dotenv()
@@ -208,6 +209,8 @@ class AssistantChatSession:
         self._client_entered: bool = False
         self.created_at = datetime.now()
         self._history_loaded: bool = False  # Track if we've loaded history for resumed conversations
+        self._owns_claude_md: bool = False  # Holds CLAUDE.md via claude_md_guard
+        self._system_prompt: str | None = None  # Written to CLAUDE.md for each turn
 
     async def close(self) -> None:
         """Clean up resources and close the Claude client."""
@@ -219,6 +222,19 @@ class AssistantChatSession:
             finally:
                 self._client_entered = False
                 self.client = None
+        self._release_claude_md()
+
+    def _hold_claude_md(self) -> None:
+        """Put the session prompt in CLAUDE.md while the CLI starts or answers a turn."""
+        if not self._owns_claude_md and self._system_prompt is not None:
+            write_session_claude_md(self.project_dir, self._system_prompt)
+            self._owns_claude_md = True
+
+    def _release_claude_md(self) -> None:
+        """Give CLAUDE.md back to the user once the current turn is over."""
+        if self._owns_claude_md:
+            self._owns_claude_md = False
+            release_session_claude_md(self.project_dir)
 
     async def start(self) -> AsyncGenerator[dict, None]:
         """
@@ -281,9 +297,10 @@ class AssistantChatSession:
 
         # Write system prompt to CLAUDE.md file to avoid Windows command line length limit
         # The SDK will read this via setting_sources=["project"]
+        # (backing up a CLAUDE.md the user already had and restoring it after each turn)
         claude_md_path = self.project_dir / "CLAUDE.md"
-        with open(claude_md_path, "w", encoding="utf-8") as f:
-            f.write(system_prompt)
+        self._system_prompt = system_prompt
+        self._hold_claude_md()
         logger.info(f"Wrote assistant system prompt to {claude_md_path}")
 
         # Use system Claude CLI
@@ -325,6 +342,10 @@ class AssistantChatSession:
             logger.exception("Failed to create Claude client")
             yield {"type": "error", "content": format_client_init_error(e)}
             return
+        finally:
+            # The greeting below is static, so the CLI needs the prompt again only
+            # when the first message is sent
+            self._release_claude_md()
 
         # Send initial greeting only for NEW conversations
         # Resumed conversations already have history loaded from the database
@@ -398,13 +419,17 @@ class AssistantChatSession:
                 message_to_send = "\n".join(history_lines)
                 logger.info(f"Loaded {len(history)} messages from conversation history")
 
+        self._hold_claude_md()
         try:
             async for chunk in self._query_claude(message_to_send):
                 yield chunk
-            yield {"type": "response_done"}
         except Exception as e:
             logger.exception("Error during Claude query")
             yield {"type": "error", "content": f"Error: {str(e)}"}
+            return
+        finally:
+            self._release_claude_md()
+        yield {"type": "response_done"}
 
     async def _query_claude(self, message: str) -> AsyncGenerator[dict, None]:
         """

@@ -33,6 +33,7 @@ from auth import is_auth_error, print_auth_error_help
 load_dotenv()
 
 from prompts import (
+    detect_existing_codebase,
     get_project_prompts_dir,
     has_project_prompts,
     scaffold_project_prompts,
@@ -190,7 +191,7 @@ def get_new_project_info() -> tuple[str, Path] | None:
     return name, project_path
 
 
-def ensure_project_scaffolded(project_name: str, project_dir: Path) -> Path:
+def ensure_project_scaffolded(project_name: str, project_dir: Path, existing_codebase: bool = False) -> Path:
     """
     Ensure project directory exists with prompt templates and is registered.
 
@@ -199,6 +200,7 @@ def ensure_project_scaffolded(project_name: str, project_dir: Path) -> Path:
     Args:
         project_name: Name of the project
         project_dir: Absolute path to the project directory
+        existing_codebase: Onboard code already in the directory instead of starting fresh
 
     Returns:
         The project directory path
@@ -209,7 +211,7 @@ def ensure_project_scaffolded(project_name: str, project_dir: Path) -> Path:
     # Scaffold prompts (copies templates if they don't exist)
     print(f"\nSetting up project: {project_name}")
     print(f"Location: {project_dir}")
-    scaffold_project_prompts(project_dir)
+    scaffold_project_prompts(project_dir, existing_codebase=existing_codebase)
 
     # Register in registry
     register_project(project_name, project_dir)
@@ -356,8 +358,17 @@ def create_new_project_flow() -> tuple[str, Path] | None:
 
     project_name, project_path = project_info
 
+    # Offer to build on top of code that is already in the folder
+    existing_codebase = False
+    if detect_existing_codebase(project_path):
+        print("\nThis folder already contains code.")
+        print("AutoForge can analyze it and plan new features on top of it,")
+        print("instead of scaffolding a new app from scratch.")
+        answer = input("Onboard it as an existing codebase? [Y/n]: ").strip().lower()
+        existing_codebase = answer in ("", "y", "yes")
+
     # Create project directory and scaffold prompts FIRST
-    project_dir = ensure_project_scaffolded(project_name, project_path)
+    project_dir = ensure_project_scaffolded(project_name, project_path, existing_codebase=existing_codebase)
 
     # Ask user how they want to handle spec creation
     choice = ask_spec_creation_choice()

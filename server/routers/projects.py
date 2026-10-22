@@ -30,13 +30,14 @@ _imports_initialized = False
 _check_spec_exists: Callable[..., Any] | None = None
 _scaffold_project_prompts: Callable[..., Any] | None = None
 _get_project_prompts_dir: Callable[..., Any] | None = None
+_detect_existing_codebase: Callable[..., Any] | None = None
 _count_passing_tests: Callable[..., Any] | None = None
 
 
 def _init_imports():
     """Lazy import of project-level modules."""
     global _imports_initialized, _check_spec_exists
-    global _scaffold_project_prompts, _get_project_prompts_dir
+    global _scaffold_project_prompts, _get_project_prompts_dir, _detect_existing_codebase
     global _count_passing_tests
 
     if _imports_initialized:
@@ -48,12 +49,13 @@ def _init_imports():
         sys.path.insert(0, str(root))
 
     from progress import count_passing_tests
-    from prompts import get_project_prompts_dir, scaffold_project_prompts
+    from prompts import detect_existing_codebase, get_project_prompts_dir, scaffold_project_prompts
     from start import check_spec_exists
 
     _check_spec_exists = check_spec_exists
     _scaffold_project_prompts = scaffold_project_prompts
     _get_project_prompts_dir = get_project_prompts_dir
+    _detect_existing_codebase = detect_existing_codebase
     _count_passing_tests = count_passing_tests
     _imports_initialized = True
 
@@ -158,6 +160,7 @@ async def create_project(project: ProjectCreate):
     """Create a new project at the specified path."""
     _init_imports()
     assert _scaffold_project_prompts is not None  # guaranteed by _init_imports()
+    assert _detect_existing_codebase is not None
     (register_project, _, get_project_path, list_registered_projects,
      _, _, _, _, _) = _get_registry_functions()
 
@@ -213,8 +216,14 @@ async def create_project(project: ProjectCreate):
                 detail=f"Failed to create directory: {e}"
             )
 
+    # Decide whether to onboard code that is already in the folder.
+    # Must run before scaffolding, which adds AutoForge's own files.
+    existing_codebase = project.existing_codebase
+    if existing_codebase is None:
+        existing_codebase = bool(_detect_existing_codebase(project_path))
+
     # Scaffold prompts
-    _scaffold_project_prompts(project_path)
+    _scaffold_project_prompts(project_path, existing_codebase=existing_codebase)
 
     # Register in registry
     try:

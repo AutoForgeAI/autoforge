@@ -70,11 +70,12 @@ export async function listProjects(): Promise<ProjectSummary[]> {
 export async function createProject(
   name: string,
   path: string,
-  specMethod: 'claude' | 'manual' = 'manual'
+  specMethod: 'claude' | 'manual' = 'manual',
+  existingCodebase?: boolean
 ): Promise<ProjectSummary> {
   return fetchJSON('/projects', {
     method: 'POST',
-    body: JSON.stringify({ name, path, spec_method: specMethod }),
+    body: JSON.stringify({ name, path, spec_method: specMethod, existing_codebase: existingCodebase }),
   })
 }
 

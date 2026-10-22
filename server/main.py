@@ -64,6 +64,7 @@ from .services.dev_server_manager import (
 from .services.expand_chat_session import cleanup_all_expand_sessions
 from .services.process_manager import cleanup_all_managers, cleanup_orphaned_locks
 from .services.scheduler_service import cleanup_scheduler, get_scheduler
+from .services.spec_chat_session import cleanup_all_sessions as cleanup_spec_sessions
 from .services.terminal_manager import cleanup_all_terminals
 from .utils.ws_security import WebSocketOriginMiddleware
 from .websocket import project_websocket
@@ -101,6 +102,7 @@ async def lifespan(app: FastAPI):
     # Then cleanup all running agents, sessions, terminals, and dev servers
     await cleanup_all_managers()
     await cleanup_assistant_sessions()
+    await cleanup_spec_sessions()
     await cleanup_all_expand_sessions()
     await cleanup_all_terminals()
     await cleanup_all_devservers()

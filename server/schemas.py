@@ -29,6 +29,13 @@ class ProjectCreate(BaseModel):
     name: str = Field(..., min_length=1, max_length=50, pattern=r'^[a-zA-Z0-9_-]+$')
     path: str = Field(..., min_length=1, description="Absolute path to project directory")
     spec_method: Literal["claude", "manual"] = "claude"
+    existing_codebase: bool | None = Field(
+        None,
+        description=(
+            "True to onboard code already in the folder (plan new work on top of it), "
+            "False to start from scratch, None to auto-detect from the folder contents"
+        ),
+    )
 
 
 class ProjectStats(BaseModel):

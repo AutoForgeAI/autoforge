@@ -120,6 +120,15 @@ You'll see options to:
 
 For new projects, you can use the built-in `/create-spec` command to interactively create your app specification with Claude's help.
 
+### Adding Features to an Existing Codebase
+
+AutoForge can also build on an app you already have:
+
+- **Web UI:** create a project, select the folder that contains your code, and choose the **Existing Codebase** template.
+- **CLI:** create a new project pointing at your code's folder; AutoForge detects the existing code and asks whether to onboard it.
+
+In this mode, Claude first analyzes the codebase (stack, structure, conventions, existing features) and asks you to confirm its understanding. It then helps you plan only the *new* work, optionally starting from a pasted GitHub issue or ticket. The initializer uses a dedicated prompt (`initializer_prompt_existing.template.md`) that creates features only for that new work, reuses your existing setup and start commands, and never re-initializes your git repository or rewrites existing code.
+
 ---
 
 ## How It Works

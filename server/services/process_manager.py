@@ -25,6 +25,8 @@ from auth import AUTH_ERROR_HELP_SERVER as AUTH_ERROR_HELP  # noqa: E402
 from auth import is_auth_error
 from server.utils.process_utils import kill_process_tree
 
+from .claude_md_guard import restore_leftover_claude_md
+
 logger = logging.getLogger(__name__)
 
 # Patterns for sensitive data that should be redacted from output
@@ -413,6 +415,10 @@ class AgentProcessManager:
 
         # Clean up features stuck from a previous crash/stop
         self._cleanup_stale_features()
+
+        # Never let the agent load a chat session's prompt as the project's
+        # CLAUDE.md: put back a user file a crashed chat session left backed up
+        restore_leftover_claude_md(self.project_dir)
 
         # Auto-improve mode forces single-agent execution and skips testing
         # agents — the subprocess bypasses the orchestrator entirely.

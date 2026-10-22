@@ -327,7 +327,101 @@ def get_app_spec(project_dir: Path) -> str:
     raise FileNotFoundError(f"No app_spec.txt found for project: {project_dir}")
 
 
-def scaffold_project_prompts(project_dir: Path) -> Path:
+# Marker file (inside .autoforge/) recording that a project was onboarded from
+# an existing codebase rather than started from scratch.
+EXISTING_CODEBASE_MARKER = ".existing_codebase"
+
+# Directories that never count as "the user's code" when detecting an existing
+# codebase: VCS metadata, dependency/build output, and AutoForge's own files.
+_DETECTION_IGNORED_DIRS = frozenset({
+    ".git", ".hg", ".svn", ".autoforge", ".claude", ".playwright", ".playwright-cli",
+    "prompts", "node_modules", "venv", ".venv", "env", "__pycache__", ".mypy_cache",
+    ".ruff_cache", ".pytest_cache", ".idea", ".vscode", "dist", "build", ".next",
+    "target", "vendor", ".gradle", ".tox",
+})
+
+# Files AutoForge itself may create in a project root; ignored during detection.
+_DETECTION_IGNORED_FILES = frozenset({
+    "CLAUDE.md", "app_spec.txt", "features.db", ".gitignore", ".claude_settings.json",
+    ".claude_assistant_settings.json", ".DS_Store", "Thumbs.db",
+})
+
+# Manifest files that on their own mark a directory as an existing project.
+_PROJECT_MANIFESTS = frozenset({
+    "package.json", "pyproject.toml", "requirements.txt", "setup.py", "Pipfile",
+    "go.mod", "Cargo.toml", "pom.xml", "build.gradle", "build.gradle.kts", "Gemfile",
+    "composer.json", "mix.exs", "pubspec.yaml", "Package.swift", "deno.json",
+    "CMakeLists.txt", "Makefile",
+})
+
+_SOURCE_EXTENSIONS = frozenset({
+    ".py", ".js", ".jsx", ".ts", ".tsx", ".mjs", ".cjs", ".vue", ".svelte", ".go",
+    ".rs", ".java", ".kt", ".kts", ".scala", ".rb", ".php", ".cs", ".fs", ".swift",
+    ".m", ".c", ".h", ".cc", ".cpp", ".hpp", ".ex", ".exs", ".erl", ".dart", ".lua",
+    ".html", ".css", ".scss", ".sql", ".sh",
+})
+
+
+def detect_existing_codebase(project_dir: Path, max_entries: int = 5000) -> bool:
+    """
+    Heuristically decide whether a directory already contains a codebase.
+
+    A directory counts as an existing codebase if it holds a known project
+    manifest (package.json, pyproject.toml, go.mod, ...) at its root, or at
+    least three source files anywhere below it. AutoForge's own scaffolding,
+    VCS metadata and dependency/build directories are ignored, so a freshly
+    scaffolded project is never mistaken for existing code.
+
+    Args:
+        project_dir: Directory to inspect
+        max_entries: Upper bound on directory entries visited, so huge trees
+            stay cheap to inspect
+
+    Returns:
+        True if the directory looks like an existing codebase
+    """
+    project_dir = Path(project_dir)
+    if not project_dir.is_dir():
+        return False
+
+    source_files = 0
+    visited = 0
+    stack = [project_dir]
+    while stack:
+        current = stack.pop()
+        try:
+            entries = list(current.iterdir())
+        except (OSError, PermissionError):
+            continue
+        for entry in entries:
+            visited += 1
+            if visited > max_entries:
+                return source_files > 0
+            try:
+                if entry.is_dir():
+                    if entry.name not in _DETECTION_IGNORED_DIRS and not entry.is_symlink():
+                        stack.append(entry)
+                    continue
+            except OSError:
+                continue
+            if entry.name in _DETECTION_IGNORED_FILES:
+                continue
+            if current == project_dir and entry.name in _PROJECT_MANIFESTS:
+                return True
+            if entry.suffix.lower() in _SOURCE_EXTENSIONS:
+                source_files += 1
+                if source_files >= 3:
+                    return True
+    return False
+
+
+def is_existing_codebase_project(project_dir: Path) -> bool:
+    """Return True if the project was onboarded from an existing codebase."""
+    from autoforge_paths import get_autoforge_dir
+    return (get_autoforge_dir(project_dir) / EXISTING_CODEBASE_MARKER).exists()
+
+
+def scaffold_project_prompts(project_dir: Path, existing_codebase: bool = False) -> Path:
     """
     Create the project prompts directory and copy base templates.
 
@@ -335,6 +429,11 @@ def scaffold_project_prompts(project_dir: Path) -> Path:
 
     Args:
         project_dir: The absolute path to the project directory
+        existing_codebase: True when the directory already contains code that
+            AutoForge should build on. Uses the existing-codebase initializer
+            prompt (which plans new work on top of the code instead of
+            scaffolding a fresh app) and records the mode in
+            ``.autoforge/.existing_codebase`` so spec creation can adapt.
 
     Returns:
         The path to the project prompts directory
@@ -346,11 +445,30 @@ def scaffold_project_prompts(project_dir: Path) -> Path:
     from autoforge_paths import ensure_autoforge_dir
     autoforge_dir = ensure_autoforge_dir(project_dir)
 
+    initializer_template = "initializer_prompt.template.md"
+    if existing_codebase:
+        initializer_template = "initializer_prompt_existing.template.md"
+        (autoforge_dir / EXISTING_CODEBASE_MARKER).write_text(
+            "This project was onboarded from an existing codebase.\n", encoding="utf-8"
+        )
+        # Swap in the existing-codebase initializer unless the user already customized it
+        initializer_dest = project_prompts / "initializer_prompt.md"
+        default_initializer = TEMPLATES_DIR / "initializer_prompt.template.md"
+        try:
+            if (
+                initializer_dest.exists()
+                and default_initializer.exists()
+                and initializer_dest.read_bytes() == default_initializer.read_bytes()
+            ):
+                initializer_dest.unlink()
+        except OSError:
+            pass
+
     # Define template mappings: (source_template, destination_name)
     templates = [
         ("app_spec.template.txt", "app_spec.txt"),
         ("coding_prompt.template.md", "coding_prompt.md"),
-        ("initializer_prompt.template.md", "initializer_prompt.md"),
+        (initializer_template, "initializer_prompt.md"),
         ("testing_prompt.template.md", "testing_prompt.md"),
     ]
 
