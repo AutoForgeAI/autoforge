@@ -136,7 +136,7 @@ Features are stored in SQLite via SQLAlchemy and managed through an MCP server t
 - `feature_get_stats` - Progress statistics
 - `feature_get_next` - Get highest-priority pending feature
 - `feature_get_for_regression` - Random passing features for regression testing
-- `feature_mark_passing` - Mark feature complete
+- `feature_mark_passing` - Mark feature complete (with optional test evidence: summary, test log, screenshots)
 - `feature_skip` - Move feature to end of queue
 - `feature_create_bulk` - Initialize all features (used by initializer)
 

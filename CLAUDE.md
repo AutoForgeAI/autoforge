@@ -173,6 +173,7 @@ Publishing: `npm publish` (triggers `prepublishOnly` which builds UI, then publi
 - `env_constants.py` - Shared environment variable constants (API_ENV_VARS) used by client.py and chat sessions
 - `rate_limit_utils.py` - Rate limit detection, retry parsing, exponential backoff with jitter
 - `api/database.py` - SQLAlchemy models (Feature, Schedule, ScheduleOverride)
+- `api/test_evidence.py` - Test evidence normalization; screenshots copied to `.autoforge/evidence/feature_<id>/`, shown in the feature modal
 - `api/dependency_resolver.py` - Cycle detection (Kahn's algorithm + DFS) and dependency validation
 - `api/migration.py` - JSON-to-SQLite migration utility
 
@@ -235,8 +236,9 @@ MCP tools available to the agent:
 - `feature_get_graph` - Get full dependency graph
 - `feature_claim_and_get` - Atomically claim next available feature (for parallel mode)
 - `feature_mark_in_progress` - Mark feature as in progress
-- `feature_mark_passing` - Mark feature complete
-- `feature_mark_failing` - Mark feature as failing
+- `feature_mark_passing` - Mark feature complete (optional test evidence: `summary`, `test_log`, `screenshots`)
+- `feature_mark_failing` - Mark feature as failing (same optional test evidence)
+- `feature_record_evidence` - Attach test evidence to a feature without changing its status
 - `feature_skip` - Move feature to end of queue
 - `feature_clear_in_progress` - Clear in-progress status
 - `feature_create_bulk` - Initialize all features (used by initializer)

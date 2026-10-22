@@ -144,6 +144,17 @@ export async function createFeature(projectName: string, feature: FeatureCreate)
   })
 }
 
+export function getEvidenceScreenshotUrl(
+  projectName: string,
+  featureId: number,
+  index: number,
+  version?: string
+): string {
+  const url = `${API_BASE}/projects/${encodeURIComponent(projectName)}/features/${featureId}/evidence/screenshots/${index}`
+  // Version busts the browser cache when the agent records new evidence
+  return version ? `${url}?v=${encodeURIComponent(version)}` : url
+}
+
 export async function getFeature(projectName: string, featureId: number): Promise<Feature> {
   return fetchJSON(`/projects/${encodeURIComponent(projectName)}/features/${featureId}`)
 }

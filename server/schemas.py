@@ -136,6 +136,7 @@ class FeatureResponse(FeatureBase):
     needs_human_input: bool = False
     human_input_request: dict | None = None
     human_input_response: dict | None = None
+    test_evidence: dict | None = None  # {result, summary, test_log, screenshots, recorded_at}
 
     class Config:
         from_attributes = True

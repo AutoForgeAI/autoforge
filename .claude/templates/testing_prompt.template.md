@@ -62,15 +62,19 @@ For the feature returned:
 
 #### If the feature PASSES:
 
-The feature still works correctly. **DO NOT** call feature_mark_passing again -- it's already passing. End your session.
+The feature still works correctly. **DO NOT** call feature_mark_passing again -- it's already passing.
+Record what you verified so the user can review it, then end your session:
+```
+Use the feature_record_evidence tool with feature_id={id}, summary="...", test_log=["step -> result", ...], screenshots=[".playwright-cli/<file>.png"]
+```
 
 #### If the feature FAILS (regression found):
 
 A regression has been introduced. You MUST fix it:
 
-1. **Mark the feature as failing:**
+1. **Mark the feature as failing, describing the regression:**
    ```
-   Use the feature_mark_failing tool with feature_id={id}
+   Use the feature_mark_failing tool with feature_id={id}, summary="what is broken", test_log=["step -> result", ...], screenshots=[".playwright-cli/<file>.png"]
    ```
 
 2. **Investigate the root cause:**
@@ -87,9 +91,9 @@ A regression has been introduced. You MUST fix it:
    - Run through all verification steps again
    - Take screenshots and read them to confirm the fix
 
-5. **Mark as passing after fix:**
+5. **Mark as passing after fix, with evidence of the fix:**
    ```
-   Use the feature_mark_passing tool with feature_id={id}
+   Use the feature_mark_passing tool with feature_id={id}, summary="...", test_log=[...], screenshots=[...]
    ```
 
 6. **Commit the fix:**
@@ -111,6 +115,7 @@ A regression has been introduced. You MUST fix it:
 - `feature_get_by_id` - Get your assigned feature details
 - `feature_mark_failing` - Mark a feature as failing (when you find a regression)
 - `feature_mark_passing` - Mark a feature as passing (after fixing a regression)
+- `feature_record_evidence` - Record how you verified a still-passing feature (summary, test_log, screenshots)
 
 ### Browser Automation (Playwright CLI)
 Use `playwright-cli` commands for browser interaction. Key commands:

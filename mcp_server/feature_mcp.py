@@ -11,6 +11,7 @@ Tools:
 - feature_get_summary: Get minimal feature info (id, name, status, deps)
 - feature_mark_passing: Mark a feature as passing
 - feature_mark_failing: Mark a feature as failing (regression detected)
+- feature_record_evidence: Attach test evidence to a feature without changing its status
 - feature_skip: Skip a feature (move to end of queue)
 - feature_mark_in_progress: Mark a feature as in-progress
 - feature_claim_and_get: Atomically claim and get feature details
@@ -48,6 +49,7 @@ from api.dependency_resolver import (
     would_create_circular_dependency,
 )
 from api.migration import migrate_json_to_sqlite
+from api.test_evidence import build_test_evidence
 
 # Configuration from environment
 PROJECT_DIR = Path(os.environ.get("PROJECT_DIR", ".")).resolve()
@@ -90,6 +92,33 @@ class FeatureCreateItem(BaseModel):
 class BulkCreateInput(BaseModel):
     """Input for bulk creating features."""
     features: list[FeatureCreateItem] = Field(..., min_length=1, description="List of features to create")
+
+
+# Shared parameter types for test evidence (feature_mark_passing/failing, feature_record_evidence)
+EvidenceSummary = Annotated[
+    str | None,
+    Field(
+        description="Short summary of what you verified and what you found (shown on the feature card)",
+    ),
+]
+EvidenceTestLog = Annotated[
+    list[str] | None,
+    Field(
+        description="Ordered log of the testing steps you performed and the observed result of each",
+    ),
+]
+EvidenceScreenshots = Annotated[
+    list[str] | None,
+    Field(
+        description="Paths to screenshots captured during verification (relative to the project directory)",
+    ),
+]
+
+
+def _evidence_json(feature_id: int, result: str, summary, test_log, screenshots) -> tuple[str | None, list[str]]:
+    """Build serialized evidence for an UPDATE statement (None when nothing was supplied)."""
+    evidence, warnings = build_test_evidence(PROJECT_DIR, feature_id, result, summary, test_log, screenshots)
+    return (json.dumps(evidence) if evidence is not None else None), warnings
 
 
 # Global database session maker (initialized on startup)
@@ -233,27 +262,38 @@ def feature_get_summary(
 
 @mcp.tool()
 def feature_mark_passing(
-    feature_id: Annotated[int, Field(description="The ID of the feature to mark as passing", ge=1)]
+    feature_id: Annotated[int, Field(description="The ID of the feature to mark as passing", ge=1)],
+    summary: EvidenceSummary = None,
+    test_log: EvidenceTestLog = None,
+    screenshots: EvidenceScreenshots = None,
 ) -> str:
     """Mark a feature as passing after successful implementation.
 
     Updates the feature's passes field to true and clears the in_progress flag.
     Use this after you have implemented the feature and verified it works correctly.
 
+    Always include test evidence so a human can review how the feature was verified:
+    a short summary of findings, a step-by-step test log, and the paths of any
+    screenshots you captured (e.g. under .playwright-cli/).
+
     Args:
         feature_id: The ID of the feature to mark as passing
+        summary: Short summary of what was verified and what was found
+        test_log: Ordered list of the testing steps performed and their outcomes
+        screenshots: Screenshot paths relative to the project directory
 
     Returns:
-        JSON with success confirmation: {success, feature_id, name}
+        JSON with success confirmation: {success, feature_id, name, evidence_recorded}
     """
+    evidence_json, warnings = _evidence_json(feature_id, "passing", summary, test_log, screenshots)
     session = get_session()
     try:
         # Atomic update with state guard - prevents double-pass in parallel mode
         result = session.execute(text("""
             UPDATE features
-            SET passes = 1, in_progress = 0
+            SET passes = 1, in_progress = 0, test_evidence = COALESCE(:evidence, test_evidence)
             WHERE id = :id AND passes = 0
-        """), {"id": feature_id})
+        """), {"id": feature_id, "evidence": evidence_json})
         session.commit()
 
         if result.rowcount == 0:
@@ -267,7 +307,15 @@ def feature_mark_passing(
 
         # Get the feature name for the response
         feature = session.query(Feature).filter(Feature.id == feature_id).first()
-        return json.dumps({"success": True, "feature_id": feature_id, "name": feature.name})
+        response: dict = {
+            "success": True,
+            "feature_id": feature_id,
+            "name": feature.name,
+            "evidence_recorded": evidence_json is not None,
+        }
+        if warnings:
+            response["warnings"] = warnings
+        return json.dumps(response)
     except Exception as e:
         session.rollback()
         return json.dumps({"error": f"Failed to mark feature passing: {str(e)}"})
@@ -277,7 +325,10 @@ def feature_mark_passing(
 
 @mcp.tool()
 def feature_mark_failing(
-    feature_id: Annotated[int, Field(description="The ID of the feature to mark as failing", ge=1)]
+    feature_id: Annotated[int, Field(description="The ID of the feature to mark as failing", ge=1)],
+    summary: EvidenceSummary = None,
+    test_log: EvidenceTestLog = None,
+    screenshots: EvidenceScreenshots = None,
 ) -> str:
     """Mark a feature as failing after finding a regression.
 
@@ -291,12 +342,19 @@ def feature_mark_failing(
     3. Verify the fix
     4. Call feature_mark_passing once fixed
 
+    Include test evidence describing the regression (what you tested, what
+    failed, and screenshots) so a human can review it on the feature card.
+
     Args:
         feature_id: The ID of the feature to mark as failing
+        summary: Short summary of the regression that was found
+        test_log: Ordered list of the testing steps performed and their outcomes
+        screenshots: Screenshot paths relative to the project directory
 
     Returns:
         JSON with the updated feature details, or error if not found.
     """
+    evidence_json, warnings = _evidence_json(feature_id, "failing", summary, test_log, screenshots)
     session = get_session()
     try:
         # Check if feature exists first
@@ -307,21 +365,77 @@ def feature_mark_failing(
         # Atomic update for parallel safety
         session.execute(text("""
             UPDATE features
-            SET passes = 0, in_progress = 0
+            SET passes = 0, in_progress = 0, test_evidence = COALESCE(:evidence, test_evidence)
             WHERE id = :id
-        """), {"id": feature_id})
+        """), {"id": feature_id, "evidence": evidence_json})
         session.commit()
 
         # Refresh to get updated state
         session.refresh(feature)
 
-        return json.dumps({
+        response: dict = {
             "message": f"Feature #{feature_id} marked as failing - regression detected",
-            "feature": feature.to_dict()
-        })
+            "feature": feature.to_dict(),
+            "evidence_recorded": evidence_json is not None,
+        }
+        if warnings:
+            response["warnings"] = warnings
+        return json.dumps(response)
     except Exception as e:
         session.rollback()
         return json.dumps({"error": f"Failed to mark feature failing: {str(e)}"})
+    finally:
+        session.close()
+
+
+@mcp.tool()
+def feature_record_evidence(
+    feature_id: Annotated[int, Field(description="The ID of the feature the evidence belongs to", ge=1)],
+    summary: EvidenceSummary = None,
+    test_log: EvidenceTestLog = None,
+    screenshots: EvidenceScreenshots = None,
+) -> str:
+    """Attach test evidence to a feature without changing its status.
+
+    Use this after re-verifying a feature that is already passing (e.g. during
+    regression testing) so the feature card shows the latest verification.
+    Replaces any previously recorded evidence for the feature.
+
+    Args:
+        feature_id: The ID of the feature
+        summary: Short summary of what was verified and what was found
+        test_log: Ordered list of the testing steps performed and their outcomes
+        screenshots: Screenshot paths relative to the project directory
+
+    Returns:
+        JSON with {success, feature_id, evidence_recorded} or an error.
+    """
+    session = get_session()
+    try:
+        feature = session.query(Feature).filter(Feature.id == feature_id).first()
+        if feature is None:
+            return json.dumps({"error": f"Feature with ID {feature_id} not found"})
+
+        result = "passing" if feature.passes else "failing"
+        evidence_json, warnings = _evidence_json(feature_id, result, summary, test_log, screenshots)
+        if evidence_json is None:
+            return json.dumps({
+                "error": "No evidence provided: pass at least one of summary, test_log, or screenshots",
+                **({"warnings": warnings} if warnings else {}),
+            })
+
+        session.execute(text("""
+            UPDATE features SET test_evidence = :evidence WHERE id = :id
+        """), {"id": feature_id, "evidence": evidence_json})
+        session.commit()
+
+        response: dict = {"success": True, "feature_id": feature_id, "evidence_recorded": True}
+        if warnings:
+            response["warnings"] = warnings
+        return json.dumps(response)
+    except Exception as e:
+        session.rollback()
+        return json.dumps({"error": f"Failed to record evidence: {str(e)}"})
     finally:
         session.close()
 

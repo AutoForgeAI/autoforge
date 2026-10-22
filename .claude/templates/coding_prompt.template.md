@@ -139,12 +139,21 @@ For any feature involving CRUD or data persistence: create unique test data (e.g
 
 **YOU CAN ONLY MODIFY ONE FIELD: "passes"**
 
-After thorough verification, mark the feature as passing:
+After thorough verification, mark the feature as passing **and attach your test evidence** so the
+user can review how you verified it from the feature card:
 
 ```
 # Mark feature #42 as passing (replace 42 with the actual feature ID)
-Use the feature_mark_passing tool with feature_id=42
+Use the feature_mark_passing tool with:
+  feature_id=42
+  summary="Created a todo via the form, it appeared in the list and persisted after reload and server restart. No console errors."
+  test_log=["Opened /todos and clicked 'Add'", "Filled title 'TEST_12345' and saved -> item shown in list", "Reloaded page -> item still present", "Deleted item -> removed from list and API"]
+  screenshots=[".playwright-cli/page-2025-01-01T12-00-00.png"]
 ```
+
+- `summary`: what you verified and what you found (one short paragraph)
+- `test_log`: the steps you actually performed, each with its observed outcome
+- `screenshots`: paths (relative to the project root) of the key screenshots you took while verifying
 
 **NEVER:**
 
@@ -229,11 +238,11 @@ feature_get_by_id with feature_id={your_assigned_id}
 # 3. Mark a feature as in-progress
 feature_mark_in_progress with feature_id={id}
 
-# 4. Mark a feature as passing (after verification)
-feature_mark_passing with feature_id={id}
+# 4. Mark a feature as passing (after verification) - include test evidence
+feature_mark_passing with feature_id={id}, summary, test_log, screenshots
 
-# 5. Mark a feature as failing (if you discover it's broken)
-feature_mark_failing with feature_id={id}
+# 5. Mark a feature as failing (if you discover it's broken) - include what failed
+feature_mark_failing with feature_id={id}, summary, test_log, screenshots
 
 # 6. Skip a feature (moves to end of queue) - ONLY when blocked by external dependency
 feature_skip with feature_id={id}

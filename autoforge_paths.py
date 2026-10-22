@@ -45,6 +45,7 @@ assistant.db-shm
 .claude_settings.expand.*.json
 .progress_cache
 .migration_version
+evidence/
 """
 
 

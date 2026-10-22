@@ -274,7 +274,7 @@ Process them IN ORDER: {ids_str}
 1. Call `feature_claim_and_get` with the feature ID to get its details
 2. Implement the feature fully
 3. Verify it works (browser testing if applicable)
-4. Call `feature_mark_passing` to mark it complete
+4. Call `feature_mark_passing` to mark it complete, including test evidence (`summary`, `test_log`, `screenshots`)
 5. Git commit the changes
 6. Move to the next feature
 

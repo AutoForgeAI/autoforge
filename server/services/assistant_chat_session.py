@@ -82,6 +82,7 @@ DISALLOWED_ASSISTANT_TOOLS = [
     # Feature MCP tools reserved for coding agents
     "mcp__features__feature_mark_passing",
     "mcp__features__feature_mark_failing",
+    "mcp__features__feature_record_evidence",
     "mcp__features__feature_mark_in_progress",
     "mcp__features__feature_claim_and_get",
     "mcp__features__feature_clear_in_progress",

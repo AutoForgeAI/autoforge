@@ -11,6 +11,7 @@ from pathlib import Path
 from typing import Literal
 
 from fastapi import APIRouter, HTTPException
+from fastapi.responses import FileResponse
 
 from ..schemas import (
     DependencyGraphEdge,
@@ -108,6 +109,7 @@ def feature_to_response(f, passing_ids: set[int] | None = None) -> FeatureRespon
         needs_human_input=getattr(f, 'needs_human_input', False) or False,
         human_input_request=getattr(f, 'human_input_request', None),
         human_input_response=getattr(f, 'human_input_response', None),
+        test_evidence=getattr(f, 'test_evidence', None),
     )
 
 
@@ -418,6 +420,55 @@ async def get_feature(project_name: str, feature_id: int):
     except Exception:
         logger.exception("Database error in get_feature")
         raise HTTPException(status_code=500, detail="Database error occurred")
+
+
+@router.get("/{feature_id}/evidence/screenshots/{index}")
+async def get_evidence_screenshot(project_name: str, feature_id: int, index: int):
+    """Serve a screenshot recorded as test evidence for a feature.
+
+    Screenshots are addressed by their index in the feature's evidence list
+    (never by a client-supplied path), and the stored path is re-validated to
+    be an image inside the project directory before it is served.
+    """
+    project_name = validate_project_name(project_name)
+    project_dir = _get_project_path(project_name)
+
+    if not project_dir:
+        raise HTTPException(status_code=404, detail=f"Project '{project_name}' not found in registry")
+
+    if not project_dir.exists():
+        raise HTTPException(status_code=404, detail="Project directory not found")
+
+    from autoforge_paths import get_features_db_path
+    if not get_features_db_path(project_dir).exists():
+        raise HTTPException(status_code=404, detail="No features database found")
+
+    from api.test_evidence import resolve_screenshot_path
+
+    _, Feature = _get_db_classes()
+
+    try:
+        with get_db_session(project_dir) as session:
+            feature = session.query(Feature).filter(Feature.id == feature_id).first()
+            if not feature:
+                raise HTTPException(status_code=404, detail=f"Feature {feature_id} not found")
+            evidence = feature.test_evidence if isinstance(feature.test_evidence, dict) else {}
+    except HTTPException:
+        raise
+    except Exception:
+        logger.exception("Database error in get_evidence_screenshot")
+        raise HTTPException(status_code=500, detail="Database error occurred")
+
+    screenshots = evidence.get("screenshots") or []
+    if not isinstance(screenshots, list) or index < 0 or index >= len(screenshots):
+        raise HTTPException(status_code=404, detail="Screenshot not found")
+
+    raw_path = screenshots[index]
+    path = resolve_screenshot_path(project_dir, raw_path) if isinstance(raw_path, str) else None
+    if path is None or not path.is_file():
+        raise HTTPException(status_code=404, detail="Screenshot not found")
+
+    return FileResponse(path)
 
 
 @router.patch("/{feature_id}", response_model=FeatureResponse)
