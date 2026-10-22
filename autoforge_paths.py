@@ -43,6 +43,7 @@ assistant.db-shm
 .claude_settings.json
 .claude_assistant_settings.json
 .claude_settings.expand.*.json
+.system_prompt.*.md
 .progress_cache
 .migration_version
 """
@@ -176,6 +177,16 @@ def get_expand_settings_path(project_dir: Path, uuid_hex: str) -> Path:
     These files are short-lived and always stored in ``.autoforge/``.
     """
     return project_dir / ".autoforge" / f".claude_settings.expand.{uuid_hex}.json"
+
+
+def get_system_prompt_path(project_dir: Path, session_kind: str, uuid_hex: str) -> Path:
+    """Return the path for an ephemeral chat-session system prompt file.
+
+    The prompt is handed to the Claude CLI via ``--system-prompt-file`` rather
+    than on the command line, which would exceed the Windows ~8191 character
+    limit.  These files are short-lived and always stored in ``.autoforge/``.
+    """
+    return project_dir / ".autoforge" / f".system_prompt.{session_kind}.{uuid_hex}.md"
 
 
 # ---------------------------------------------------------------------------

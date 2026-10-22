@@ -26,7 +26,9 @@ from .chat_constants import (
     check_rate_limit_error,
     format_client_init_error,
     make_multimodal_message,
+    remove_system_prompt_file,
     safe_receive_response,
+    write_system_prompt_file,
 )
 
 # Load environment variables from .env file if present
@@ -64,6 +66,7 @@ class SpecChatSession:
         self.created_at = datetime.now()
         self._conversation_id: Optional[str] = None
         self._client_entered: bool = False  # Track if context manager is active
+        self._system_prompt_file: Optional[Path] = None
 
     async def close(self) -> None:
         """Clean up resources and close the Claude client."""
@@ -75,6 +78,9 @@ class SpecChatSession:
             finally:
                 self._client_entered = False
                 self.client = None
+
+        remove_system_prompt_file(self._system_prompt_file, logger)
+        self._system_prompt_file = None
 
     async def start(self) -> AsyncGenerator[dict, None]:
         """
@@ -135,12 +141,9 @@ class SpecChatSession:
         project_path = str(self.project_dir.resolve())
         system_prompt = skill_content.replace("$ARGUMENTS", project_path)
 
-        # Write system prompt to CLAUDE.md file to avoid Windows command line length limit
-        # The SDK will read this via setting_sources=["project"]
-        claude_md_path = self.project_dir / "CLAUDE.md"
-        with open(claude_md_path, "w", encoding="utf-8") as f:
-            f.write(system_prompt)
-        logger.info(f"Wrote system prompt to {claude_md_path}")
+        # Pass the system prompt via --system-prompt-file: the create-spec skill is far
+        # longer than the Windows command line limit (~8191 chars)
+        self._system_prompt_file = write_system_prompt_file(self.project_dir, "spec", system_prompt)
 
         # Create Claude SDK client with limited tools for spec creation
         # Use Opus for best quality spec generation
@@ -161,7 +164,7 @@ class SpecChatSession:
                     model=model,
                     effort=effort,  # type: ignore[arg-type]  # SDK 0.1.61 Literal omits "xhigh"
                     cli_path=system_cli,
-                    # System prompt loaded from CLAUDE.md via setting_sources
+                    system_prompt={"type": "file", "path": str(self._system_prompt_file.resolve())},
                     # Include "user" for global skills and subagents from ~/.claude/
                     setting_sources=["project", "user"],
                     allowed_tools=[

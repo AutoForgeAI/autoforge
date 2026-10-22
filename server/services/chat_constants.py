@@ -96,6 +96,35 @@ def format_client_init_error(exc: Exception) -> str:
     return f"Failed to initialize Claude: {exc}"
 
 
+def write_system_prompt_file(project_dir: Path, session_kind: str, system_prompt: str) -> Path:
+    """Write a chat session's system prompt to a unique file under ``.autoforge/``.
+
+    Passing a long prompt via ``--system-prompt`` exceeds the Windows command
+    line limit (~8191 chars) and fails with "The command line is too long".
+    Callers pass the returned path to the SDK as
+    ``system_prompt={"type": "file", "path": ...}`` (``--system-prompt-file``)
+    and remove it with :func:`remove_system_prompt_file` when the session closes.
+    """
+    import uuid
+
+    from autoforge_paths import get_system_prompt_path
+
+    path = get_system_prompt_path(project_dir, session_kind, uuid.uuid4().hex)
+    path.parent.mkdir(parents=True, exist_ok=True)
+    path.write_text(system_prompt, encoding="utf-8")
+    return path
+
+
+def remove_system_prompt_file(path: Path | None, log: logging.Logger) -> None:
+    """Delete a system prompt file created by :func:`write_system_prompt_file`."""
+    if path is None:
+        return
+    try:
+        path.unlink(missing_ok=True)
+    except Exception as e:
+        log.warning(f"Error removing system prompt file: {e}")
+
+
 async def safe_receive_response(client: Any, log: logging.Logger) -> AsyncGenerator:
     """Wrap ``client.receive_response()`` to skip ``MessageParseError``.
 

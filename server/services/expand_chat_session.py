@@ -29,7 +29,9 @@ from .chat_constants import (
     check_rate_limit_error,
     format_client_init_error,
     make_multimodal_message,
+    remove_system_prompt_file,
     safe_receive_response,
+    write_system_prompt_file,
 )
 
 # Load environment variables from .env file if present
@@ -74,6 +76,7 @@ class ExpandChatSession:
         self.features_created: int = 0
         self.created_feature_ids: list[int] = []
         self._settings_file: Optional[Path] = None
+        self._system_prompt_file: Optional[Path] = None
         self._query_lock = asyncio.Lock()
 
     async def close(self) -> None:
@@ -93,6 +96,9 @@ class ExpandChatSession:
                 self._settings_file.unlink()
             except Exception as e:
                 logger.warning(f"Error removing settings file: {e}")
+
+        remove_system_prompt_file(self._system_prompt_file, logger)
+        self._system_prompt_file = None
 
     async def start(self) -> AsyncGenerator[dict, None]:
         """
@@ -162,6 +168,10 @@ class ExpandChatSession:
         project_path = str(self.project_dir.resolve())
         system_prompt = skill_content.replace("$ARGUMENTS", project_path)
 
+        # Pass the system prompt via --system-prompt-file to stay under the
+        # Windows command line limit (~8191 chars)
+        self._system_prompt_file = write_system_prompt_file(self.project_dir, "expand", system_prompt)
+
         # Build environment overrides for API configuration
         from registry import DEFAULT_MODEL, get_effective_sdk_env, get_effort_setting
         sdk_env = get_effective_sdk_env()
@@ -189,7 +199,7 @@ class ExpandChatSession:
                     model=model,
                     effort=effort,  # type: ignore[arg-type]  # SDK 0.1.61 Literal omits "xhigh"
                     cli_path=system_cli,
-                    system_prompt=system_prompt,
+                    system_prompt={"type": "file", "path": str(self._system_prompt_file.resolve())},
                     allowed_tools=[
                         "Read",
                         "Glob",
