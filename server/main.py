@@ -65,6 +65,7 @@ from .services.expand_chat_session import cleanup_all_expand_sessions
 from .services.process_manager import cleanup_all_managers, cleanup_orphaned_locks
 from .services.scheduler_service import cleanup_scheduler, get_scheduler
 from .services.terminal_manager import cleanup_all_terminals
+from .utils.mime_types import register_web_mime_types
 from .utils.ws_security import WebSocketOriginMiddleware
 from .websocket import project_websocket
 
@@ -244,6 +245,10 @@ async def setup_status():
 # ============================================================================
 # Static File Serving (Production)
 # ============================================================================
+
+# Windows registry often maps .css/.js to text/plain, which makes browsers
+# refuse the UI's stylesheet and scripts (issue #37). Pin the correct types.
+register_web_mime_types()
 
 # Serve React build files if they exist
 if UI_DIST_DIR.exists():
