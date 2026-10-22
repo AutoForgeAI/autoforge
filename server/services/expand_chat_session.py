@@ -44,6 +44,19 @@ EXPAND_FEATURE_TOOLS = [
     "mcp__features__feature_get_stats",
 ]
 
+# Read-only built-in tools for the expand session. WebFetch/WebSearch let the
+# assistant open reference links the user shares (e.g. design examples).
+# The session uses its own generated settings file, so these must be listed
+# here -- the user's ~/.claude/settings.json and the project's
+# .claude_settings.json do not apply to this chat.
+EXPAND_BUILTIN_TOOLS = [
+    "Read",
+    "Glob",
+    "Grep",
+    "WebFetch",
+    "WebSearch",
+]
+
 
 class ExpandChatSession:
     """
@@ -146,6 +159,9 @@ class ExpandChatSession:
                 "allow": [
                     "Read(./**)",
                     "Glob(./**)",
+                    "Grep(./**)",
+                    "WebFetch",
+                    "WebSearch",
                     *EXPAND_FEATURE_TOOLS,
                 ],
                 "deny": ["Write", "Edit", "MultiEdit", "NotebookEdit", "Bash"],
@@ -190,14 +206,7 @@ class ExpandChatSession:
                     effort=effort,  # type: ignore[arg-type]  # SDK 0.1.61 Literal omits "xhigh"
                     cli_path=system_cli,
                     system_prompt=system_prompt,
-                    allowed_tools=[
-                        "Read",
-                        "Glob",
-                        "Grep",
-                        "WebFetch",
-                        "WebSearch",
-                        *EXPAND_FEATURE_TOOLS,
-                    ],
+                    allowed_tools=[*EXPAND_BUILTIN_TOOLS, *EXPAND_FEATURE_TOOLS],
                     disallowed_tools=["Write", "Edit", "MultiEdit", "NotebookEdit", "Bash"],
                     mcp_servers=mcp_servers,  # type: ignore[arg-type]  # SDK accepts dict config at runtime
                     permission_mode="bypassPermissions",

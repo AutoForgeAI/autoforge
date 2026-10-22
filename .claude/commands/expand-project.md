@@ -80,6 +80,8 @@ Start with open questions:
 - What happens as a result
 - What errors could occur
 
+**Reference material:** If the user shares a link (e.g. design examples, a competitor's page, API docs), open it with the `WebFetch` tool and use what you find to make the features concrete. You may also use `WebSearch` to look up references the user mentions by name. These tools are available to you in this session — do not tell the user you cannot browse the web. You can read files in the project (`Read`, `Glob`, `Grep`), but you cannot write files or run commands; features are created only through the feature tools.
+
 ## Phase 2: Clarify Details
 
 For each new capability, understand:
