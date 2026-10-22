@@ -147,6 +147,38 @@ Features are stored in SQLite via SQLAlchemy and managed through an MCP server t
 - The agent auto-continues between sessions (3 second delay)
 - Press `Ctrl+C` to pause; run the start script again to resume
 
+### Parallel Agents (Finish Projects Faster)
+
+AutoForge can run several Claude coding agents at once, each working on a different feature. An orchestrator hands features to agents atomically (no two agents claim the same feature) and only schedules a feature once its dependencies are passing.
+
+**Web UI:** Before starting the agent, drag the concurrency slider (branch icon, `1x`–`5x`) next to the start button. The value is saved per project. While running, the **Mission Control** panel shows each active agent and what it is working on.
+
+**CLI:**
+
+```bash
+# 3 coding agents working in parallel (max 5)
+python autonomous_agent_demo.py --project-dir my-app --concurrency 3
+
+# Combine with batching: each agent implements up to 3 features per session
+python autonomous_agent_demo.py --project-dir my-app --concurrency 3 --batch-size 3
+
+# Disable the regression-testing agents that run alongside coding agents
+python autonomous_agent_demo.py --project-dir my-app --concurrency 3 --testing-ratio 0
+```
+
+| Flag | Default | Description |
+|------|---------|-------------|
+| `--concurrency`, `-c` | `1` | Concurrent coding agents (1-5). `--parallel N` is a deprecated alias. |
+| `--batch-size` | `3` | Max features each coding agent implements per session (1-15) |
+| `--testing-ratio` | `1` | Regression-testing agents per coding agent (0-3); ignored in YOLO mode |
+| `--testing-batch-size` | `3` | Features per regression-testing batch (1-15) |
+
+**Things to keep in mind:**
+- Every agent is a separate Claude session, so token usage and rate-limit pressure scale with concurrency.
+- Speed-up depends on the dependency graph: features waiting on unfinished dependencies cannot start, so a long linear chain limits parallelism. Use the Graph view (`G`) to inspect it.
+- Agents share one working directory. Each agent gets an isolated browser session, but heavy concurrency on a small codebase can lead to more edit conflicts; 2-3 agents is a good starting point.
+- Total child processes are capped at 10 (5 coding + 5 testing).
+
 ---
 
 ## Important Timing Expectations

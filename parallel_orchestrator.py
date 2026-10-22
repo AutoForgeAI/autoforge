@@ -124,7 +124,7 @@ def _dump_database_state(feature_dicts: list[dict], label: str = ""):
 #
 # Stress test verification:
 #   1. Note baseline: tasklist | findstr python | find /c /v ""
-#   2. Run: python autonomous_agent_demo.py --project-dir test --parallel --max-concurrency 5
+#   2. Run: python autonomous_agent_demo.py --project-dir test --concurrency 5
 #   3. During run: count should never exceed baseline + 11 (1 orchestrator + 10 agents)
 #   4. After stop: should return to baseline
 # =============================================================================
@@ -1825,13 +1825,13 @@ def main():
         "--testing-batch-size",
         type=int,
         default=DEFAULT_TESTING_BATCH_SIZE,
-        help=f"Number of features per testing batch (1-5, default: {DEFAULT_TESTING_BATCH_SIZE})",
+        help=f"Number of features per testing batch (1-15, default: {DEFAULT_TESTING_BATCH_SIZE})",
     )
     parser.add_argument(
         "--batch-size",
         type=int,
         default=3,
-        help="Max features per coding agent batch (1-5, default: 3)",
+        help="Max features per coding agent batch (1-15, default: 3)",
     )
 
     args = parser.parse_args()

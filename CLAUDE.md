@@ -63,13 +63,13 @@ python autonomous_agent_demo.py --project-dir my-app  # if registered
 python autonomous_agent_demo.py --project-dir my-app --yolo
 
 # Parallel mode: run multiple agents concurrently (1-5 agents)
-python autonomous_agent_demo.py --project-dir my-app --parallel --max-concurrency 3
+python autonomous_agent_demo.py --project-dir my-app --concurrency 3
 
 # Batch mode: implement multiple features per agent session (1-15)
 python autonomous_agent_demo.py --project-dir my-app --batch-size 3
 
 # Batch specific features by ID
-python autonomous_agent_demo.py --project-dir my-app --batch-features 1,2,3
+python autonomous_agent_demo.py --project-dir my-app --feature-ids 1,2,3
 ```
 
 ### YOLO Mode (Rapid Prototyping)
@@ -160,7 +160,7 @@ Publishing: `npm publish` (triggers `prepublishOnly` which builds UI, then publi
 ### Core Python Modules
 
 - `start.py` - CLI launcher with project creation/selection menu
-- `autonomous_agent_demo.py` - Entry point for running the agent (supports `--yolo`, `--parallel`, `--batch-size`, `--batch-features`)
+- `autonomous_agent_demo.py` - Entry point for running the agent (supports `--yolo`, `--concurrency`, `--batch-size`, `--feature-ids`)
 - `autoforge_paths.py` - Central path resolution with dual-path backward compatibility and migration
 - `agent.py` - Agent session loop using Claude Agent SDK
 - `client.py` - ClaudeSDKClient configuration with security hooks, feature MCP server, and Vertex AI support
@@ -479,8 +479,8 @@ The UI receives updates via WebSocket (`/ws/projects/{project_name}`):
 
 ### Parallel Mode
 
-When running with `--parallel`, the orchestrator:
-1. Spawns multiple Claude agents as subprocesses (up to `--max-concurrency`)
+When running with `--concurrency N` (N > 1; `--parallel` is a deprecated alias), the orchestrator:
+1. Spawns multiple Claude agents as subprocesses (up to `--concurrency`)
 2. Each agent claims features atomically via `feature_claim_and_get`
 3. Features blocked by unmet dependencies are skipped
 4. Browser sessions are isolated per agent via `PLAYWRIGHT_CLI_SESSION` environment variable
@@ -499,8 +499,8 @@ The orchestrator enforces strict bounds on concurrent processes:
 Agents can implement multiple features per session using `--batch-size` (1-15, default: 3):
 - `--batch-size N` - Max features per coding agent batch
 - `--testing-batch-size N` - Features per testing batch (1-15, default: 3)
-- `--batch-features 1,2,3` - Specific feature IDs for batch implementation
-- `--testing-batch-features 1,2,3` - Specific feature IDs for batch regression testing
+- `--feature-ids 1,2,3` - Specific feature IDs for batch implementation
+- `--testing-feature-ids 1,2,3` - Specific feature IDs for batch regression testing
 - `prompts.py` provides `get_batch_feature_prompt()` for multi-feature prompt generation
 - Configurable in UI via settings panel
 
