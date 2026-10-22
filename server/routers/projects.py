@@ -213,6 +213,12 @@ async def create_project(project: ProjectCreate):
                 detail=f"Failed to create directory: {e}"
             )
 
+    # Bring an existing (e.g. AutoCoder-era) project up to the current layout
+    # before scaffolding, so legacy files are moved into .autoforge/ rather
+    # than shadowed by freshly scaffolded ones.
+    from autoforge_paths import migrate_project_layout
+    migrate_project_layout(project_path)
+
     # Scaffold prompts
     _scaffold_project_prompts(project_path)
 

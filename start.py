@@ -32,6 +32,7 @@ from auth import is_auth_error, print_auth_error_help
 # Load environment variables from .env file if present
 load_dotenv()
 
+from autoforge_paths import migrate_project_layout
 from prompts import (
     get_project_prompts_dir,
     has_project_prompts,
@@ -209,6 +210,7 @@ def ensure_project_scaffolded(project_name: str, project_dir: Path) -> Path:
     # Scaffold prompts (copies templates if they don't exist)
     print(f"\nSetting up project: {project_name}")
     print(f"Location: {project_dir}")
+    migrate_project_layout(project_dir)
     scaffold_project_prompts(project_dir)
 
     # Register in registry

@@ -208,6 +208,31 @@ def has_agent_running(project_dir: Path) -> bool:
 # Migration
 # ---------------------------------------------------------------------------
 
+def _merge_autocoder_dir(old_dir: Path, new_dir: Path) -> list[str]:
+    """Move entries from a legacy ``.autocoder/`` into an existing ``.autoforge/``.
+
+    Entries already present in ``.autoforge/`` are left untouched (the new
+    location wins).  ``.autocoder/`` is removed once it is empty.
+    """
+    migrated: list[str] = []
+    for entry in sorted(old_dir.iterdir()):
+        dest = new_dir / entry.name
+        if dest.exists():
+            continue
+        try:
+            shutil.move(str(entry), str(dest))
+            migrated.append(f".autocoder/{entry.name} -> .autoforge/{entry.name}")
+            logger.info("Migrated .autocoder/%s -> .autoforge/%s", entry.name, entry.name)
+        except Exception:
+            logger.warning("Failed to migrate .autocoder/%s", entry.name, exc_info=True)
+    try:
+        old_dir.rmdir()
+        logger.info("Removed empty .autocoder/ directory")
+    except OSError:
+        pass  # Not empty (conflicting entries remain) -- leave it in place
+    return migrated
+
+
 def migrate_project_layout(project_dir: Path) -> list[str]:
     """Migrate a project from the legacy root-level layout to ``.autoforge/``.
 
@@ -234,16 +259,18 @@ def migrate_project_layout(project_dir: Path) -> list[str]:
     # --- 0. Migrate .autocoder/ → .autoforge/ directory -------------------
     old_autocoder_dir = project_dir / ".autocoder"
     new_autoforge_dir = project_dir / ".autoforge"
-    if old_autocoder_dir.exists() and old_autocoder_dir.is_dir() and not new_autoforge_dir.exists():
+    migrated: list[str] = []
+    if old_autocoder_dir.is_dir() and not new_autoforge_dir.exists():
         try:
             old_autocoder_dir.rename(new_autoforge_dir)
             logger.info("Migrated .autocoder/ -> .autoforge/")
-            migrated: list[str] = [".autocoder/ -> .autoforge/"]
+            migrated.append(".autocoder/ -> .autoforge/")
         except Exception:
             logger.warning("Failed to migrate .autocoder/ -> .autoforge/", exc_info=True)
-            migrated = []
-    else:
-        migrated = []
+    elif old_autocoder_dir.is_dir():
+        # .autoforge/ already exists (e.g. created by the UI or an earlier
+        # partial run) -- merge legacy entries into it instead of skipping.
+        migrated.extend(_merge_autocoder_dir(old_autocoder_dir, new_autoforge_dir))
 
     autoforge_dir = ensure_autoforge_dir(project_dir)
 

@@ -17,7 +17,7 @@ from pathlib import Path
 TEMPLATES_DIR = Path(__file__).parent / ".claude" / "templates"
 
 # Migration version — bump when adding new migration steps
-CURRENT_MIGRATION_VERSION = 1
+CURRENT_MIGRATION_VERSION = 2
 
 
 def get_project_prompts_dir(project_dir: Path) -> Path:
@@ -344,7 +344,7 @@ def scaffold_project_prompts(project_dir: Path) -> Path:
 
     # Create .autoforge directory with .gitignore for runtime files
     from autoforge_paths import ensure_autoforge_dir
-    autoforge_dir = ensure_autoforge_dir(project_dir)
+    ensure_autoforge_dir(project_dir)
 
     # Define template mappings: (source_template, destination_name)
     templates = [
@@ -368,15 +368,8 @@ def scaffold_project_prompts(project_dir: Path) -> Path:
                 print(f"  Warning: Could not copy {dest_name}: {e}")
 
     # Copy allowed_commands.yaml template to .autoforge/
-    examples_dir = Path(__file__).parent / "examples"
-    allowed_commands_template = examples_dir / "project_allowed_commands.yaml"
-    allowed_commands_dest = autoforge_dir / "allowed_commands.yaml"
-    if allowed_commands_template.exists() and not allowed_commands_dest.exists():
-        try:
-            shutil.copy(allowed_commands_template, allowed_commands_dest)
-            copied_files.append(".autoforge/allowed_commands.yaml")
-        except (OSError, PermissionError) as e:
-            print(f"  Warning: Could not copy allowed_commands.yaml: {e}")
+    if _ensure_allowed_commands_file(project_dir):
+        copied_files.append(".autoforge/allowed_commands.yaml")
 
     # Copy Playwright CLI skill for browser automation
     skills_src = Path(__file__).parent / ".claude" / "skills" / "playwright-cli"
@@ -439,10 +432,36 @@ def scaffold_project_prompts(project_dir: Path) -> Path:
     if copied_files:
         print(f"  Created project files: {', '.join(copied_files)}")
 
-    # Stamp new projects at the current migration version so they never trigger migration
-    _set_migration_version(project_dir, CURRENT_MIGRATION_VERSION)
+    # Stamp new projects at the current migration version so they never trigger
+    # migration.  Existing projects (prompts already present) keep their version
+    # so pending migrations still run on the next agent start.
+    if "coding_prompt.md" in copied_files:
+        _set_migration_version(project_dir, CURRENT_MIGRATION_VERSION)
 
     return project_prompts
+
+
+def _ensure_allowed_commands_file(project_dir: Path) -> bool:
+    """Copy the allowed_commands.yaml template into ``.autoforge/`` if missing.
+
+    Skipped when the project already has a config at the legacy
+    ``.autocoder/`` location, since ``security.py`` still reads it there.
+
+    Returns:
+        True if the file was created, False otherwise.
+    """
+    template = Path(__file__).parent / "examples" / "project_allowed_commands.yaml"
+    dest = project_dir / ".autoforge" / "allowed_commands.yaml"
+    legacy = project_dir / ".autocoder" / "allowed_commands.yaml"
+    if not template.exists() or dest.exists() or legacy.exists():
+        return False
+    try:
+        dest.parent.mkdir(parents=True, exist_ok=True)
+        shutil.copy(template, dest)
+        return True
+    except (OSError, PermissionError) as e:
+        print(f"  Warning: Could not copy allowed_commands.yaml: {e}")
+        return False
 
 
 def has_project_prompts(project_dir: Path) -> bool:
@@ -821,6 +840,17 @@ def _migrate_v0_to_v1(project_dir: Path) -> list[str]:
     return migrated
 
 
+def _migrate_v1_to_v2(project_dir: Path) -> list[str]:
+    """Migrate from v1 to v2: scaffold ``.autoforge/allowed_commands.yaml``.
+
+    Projects created before the per-project allowlist existed (including
+    projects carried over from AutoCoder) never received the template.
+    """
+    if _ensure_allowed_commands_file(project_dir):
+        return ["Created .autoforge/allowed_commands.yaml"]
+    return []
+
+
 def migrate_project_to_current(project_dir: Path) -> list[str]:
     """Migrate an existing project to the current AutoForge version.
 
@@ -836,7 +866,10 @@ def migrate_project_to_current(project_dir: Path) -> list[str]:
     if current < 1:
         migrated.extend(_migrate_v0_to_v1(project_dir))
 
-    # Future: if current < 2: migrated.extend(_migrate_v1_to_v2(project_dir))
+    if current < 2:
+        migrated.extend(_migrate_v1_to_v2(project_dir))
+
+    # Future: if current < 3: migrated.extend(_migrate_v2_to_v3(project_dir))
 
     _set_migration_version(project_dir, CURRENT_MIGRATION_VERSION)
     return migrated
