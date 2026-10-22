@@ -147,6 +147,34 @@ Features are stored in SQLite via SQLAlchemy and managed through an MCP server t
 - The agent auto-continues between sessions (3 second delay)
 - Press `Ctrl+C` to pause; run the start script again to resume
 
+### Parallel Mode (Multiple Agents)
+
+To finish a project faster, you can run up to **5 coding agents at once**. Each agent is its own Claude session running as a separate process. An orchestrator hands out features so that no two agents work on the same one. A feature only starts once all of its dependencies pass, so independent features get built side by side.
+
+**Web UI:** while the agent is stopped, drag the slider next to the Start button (the branch icon) from `1x` to `5x`. Then start the agent. The value is saved per project. The **Mission Control** panel shows what each agent is doing.
+
+**CLI:**
+
+```bash
+# 3 coding agents in parallel
+python autonomous_agent_demo.py --project-dir my-app --concurrency 3
+
+# Max parallelism, no regression testing (fastest, least verified)
+python autonomous_agent_demo.py --project-dir my-app --concurrency 5 --yolo
+```
+
+How it works:
+- The **initializer** always runs alone first and creates the feature list. Parallel coding starts after it finishes.
+- Agents claim features atomically, so two agents never work on the same feature. A feature that keeps failing is given up on after 3 attempts.
+- Each agent gets its own browser session (`PLAYWRIGHT_CLI_SESSION`), so browser tests don't interfere with each other.
+- **Regression testing agents** re-check features that already pass, alongside the coding agents. Set how many (0-3) under **Settings → Regression Agents**, or with `--testing-ratio N` on the CLI. YOLO mode turns them off.
+- Hard limits: at most 5 coding agents and at most 10 agent processes in total.
+- **Batching** works with parallel mode. Each coding agent can take up to N related features per session (`--batch-size N`, 1-15, default 3; also in Settings).
+
+Trade-offs:
+- Every agent uses its own API/subscription quota, so N agents use about N times the tokens and hit rate limits sooner.
+- All agents edit the same project folder and git repository. Projects with many independent features (and well-defined dependencies) gain the most. Tightly coupled specs gain less.
+
 ---
 
 ## Important Timing Expectations
