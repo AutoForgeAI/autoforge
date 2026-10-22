@@ -73,6 +73,17 @@ Use the feature_skip tool with feature_id={id}
 
 Document the SPECIFIC external blocker in `claude-progress.txt`. "Functionality not built" is NEVER a valid reason.
 
+#### When a Feature Is Too Large: SPLIT IT (never skip or partially pass it)
+
+If the feature is too large to fully implement AND verify in this session, do NOT skip it, and do NOT implement part of it and mark it passing. Break it down instead:
+
+```
+Use the feature_split tool with feature_id={id}, a reason, and 2-10 sub_features
+(each with category, name, description, steps, and optional depends_on_indices)
+```
+
+Each sub-feature must be small enough to implement and verify end-to-end in one session, and together they must cover ALL of the original feature's steps. The original feature automatically depends on the new sub-features and will be re-verified as a whole once they all pass. After splitting, commit any work in progress, note the split in `claude-progress.txt`, and end the session.
+
 ### STEP 4: IMPLEMENT THE FEATURE
 
 Implement the chosen feature thoroughly:
@@ -116,6 +127,13 @@ when you need to verify visual appearance or find element refs.
 - Skip visual verification
 - Mark tests passing without thorough verification
 
+#### If the browser cannot be opened or verification cannot run
+
+A feature you could not verify is NOT passing. **NEVER assume it works.**
+
+1. Read the error output and fix the cause (e.g. start the dev server, wait for it to be ready, check the port, `playwright-cli close` and `open` again).
+2. If verification is still impossible, do NOT call `feature_mark_passing`. Commit your code, document the exact error in `claude-progress.txt`, call `feature_clear_in_progress` with your feature ID, and end the session so the feature is retried later.
+
 ### STEP 5.5: MANDATORY VERIFICATION CHECKLIST (BEFORE MARKING ANY TEST PASSING)
 
 **Complete ALL applicable checks before marking any feature as passing:**
@@ -155,6 +173,8 @@ Use the feature_mark_passing tool with feature_id=42
 - Reorder features
 
 **ONLY MARK A FEATURE AS PASSING AFTER VERIFICATION WITH BROWSER AUTOMATION.**
+
+**NEVER mark a feature passing if you implemented only part of it or skipped any of its steps. Use `feature_split` instead.**
 
 ### STEP 7: COMMIT YOUR PROGRESS
 
@@ -240,6 +260,9 @@ feature_skip with feature_id={id}
 
 # 7. Clear in-progress status (when abandoning a feature)
 feature_clear_in_progress with feature_id={id}
+
+# 8. Split a feature that is too large into smaller sub-features
+feature_split with feature_id={id}, sub_features=[...], reason="..."
 ```
 
 ### RULES:

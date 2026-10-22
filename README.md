@@ -138,6 +138,7 @@ Features are stored in SQLite via SQLAlchemy and managed through an MCP server t
 - `feature_get_for_regression` - Random passing features for regression testing
 - `feature_mark_passing` - Mark feature complete
 - `feature_skip` - Move feature to end of queue
+- `feature_split` - Break a too-large feature into smaller sub-features (original then depends on them)
 - `feature_create_bulk` - Initialize all features (used by initializer)
 
 ### Session Management

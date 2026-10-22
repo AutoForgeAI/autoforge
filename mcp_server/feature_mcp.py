@@ -12,6 +12,7 @@ Tools:
 - feature_mark_passing: Mark a feature as passing
 - feature_mark_failing: Mark a feature as failing (regression detected)
 - feature_skip: Skip a feature (move to end of queue)
+- feature_split: Break a too-large feature into smaller sub-features
 - feature_mark_in_progress: Mark a feature as in-progress
 - feature_claim_and_get: Atomically claim and get feature details
 - feature_clear_in_progress: Clear in-progress status
@@ -238,7 +239,11 @@ def feature_mark_passing(
     """Mark a feature as passing after successful implementation.
 
     Updates the feature's passes field to true and clears the in_progress flag.
-    Use this after you have implemented the feature and verified it works correctly.
+    Use this ONLY after you have implemented the WHOLE feature and actually
+    verified every step works. If verification could not be performed (e.g. the
+    browser would not open) or only part of the feature was implemented, do NOT
+    call this -- fix the verification problem, or use feature_split for a
+    feature that is too large.
 
     Args:
         feature_id: The ID of the feature to mark as passing
@@ -337,6 +342,9 @@ def feature_skip(
     - External blockers (missing assets, unclear requirements)
     - Technical prerequisites that need to be addressed first
 
+    Do NOT skip a feature just because it is large -- use feature_split to
+    break it into smaller sub-features instead.
+
     The feature's priority is set to max_priority + 1, so it will be
     worked on after all other pending features. Also clears the in_progress
     flag so the feature returns to "pending" status.
@@ -386,6 +394,118 @@ def feature_skip(
         return json.dumps({"error": f"Failed to skip feature: {str(e)}"})
     finally:
         session.close()
+
+
+MIN_SUB_FEATURES = 2
+MAX_SUB_FEATURES = 10
+
+
+@mcp.tool()
+def feature_split(
+    feature_id: Annotated[int, Field(description="The ID of the feature that is too large to complete in one session", ge=1)],
+    sub_features: Annotated[list[dict], Field(description="Smaller features to create, each with category, name, description, and steps")],
+    reason: Annotated[str, Field(min_length=1, description="Why the feature is too large to implement and verify in one session")]
+) -> str:
+    """Break a feature that is too large into smaller sub-features.
+
+    Use this INSTEAD of skipping a feature or marking it passing when it is too
+    large to fully implement AND verify in one session. NEVER mark a large
+    feature passing after implementing only part of it.
+
+    Each sub-feature is created as a new pending feature at the same priority
+    as the original. The original feature is made to depend on every
+    sub-feature, so it will only be picked up again (to verify the integrated
+    result end-to-end) after all sub-features pass. Its in_progress flag is
+    cleared.
+
+    Args:
+        feature_id: The ID of the feature to split (must not be passing)
+        sub_features: 2-10 sub-features, each with:
+            - category (str): Feature category
+            - name (str): Feature name
+            - description (str): Detailed description
+            - steps (list[str]): Implementation/verification steps
+            - depends_on_indices (list[int], optional): 0-based indices of EARLIER
+              sub-features in this list that this sub-feature depends on
+        reason: Why the feature needs to be broken down
+
+    Returns:
+        JSON with: success, feature_id, sub_feature_ids, dependencies (of the original)
+    """
+    if not MIN_SUB_FEATURES <= len(sub_features) <= MAX_SUB_FEATURES:
+        return json.dumps({
+            "error": f"Provide between {MIN_SUB_FEATURES} and {MAX_SUB_FEATURES} sub-features (got {len(sub_features)})"
+        })
+
+    for i, sub in enumerate(sub_features):
+        try:
+            FeatureCreateItem.model_validate({k: sub.get(k) for k in ("category", "name", "description", "steps")})
+        except Exception:
+            return json.dumps({
+                "error": f"Sub-feature at index {i} is invalid: requires non-empty category, name, description, and steps"
+            })
+        indices = sub.get("depends_on_indices") or []
+        if not isinstance(indices, list) or len(indices) != len(set(indices)):
+            return json.dumps({"error": f"Sub-feature at index {i} has invalid depends_on_indices"})
+        for idx in indices:
+            if not isinstance(idx, int) or isinstance(idx, bool) or idx < 0 or idx >= i:
+                return json.dumps({
+                    "error": f"Sub-feature at index {i} has invalid dependency index {idx} (must reference an earlier sub-feature)"
+                })
+
+    try:
+        with atomic_transaction(_session_maker) as session:
+            feature = session.query(Feature).filter(Feature.id == feature_id).first()
+            if feature is None:
+                return json.dumps({"error": f"Feature with ID {feature_id} not found"})
+            if feature.passes:
+                return json.dumps({"error": f"Feature with ID {feature_id} is already passing"})
+
+            parent_deps = feature.get_dependencies_safe()
+            if len(parent_deps) + len(sub_features) > MAX_DEPENDENCIES_PER_FEATURE:
+                return json.dumps({
+                    "error": f"Splitting would give feature {feature_id} more than "
+                             f"{MAX_DEPENDENCIES_PER_FEATURE} dependencies; use fewer sub-features"
+                })
+
+            created: list[Feature] = []
+            for sub in sub_features:
+                db_feature = Feature(
+                    priority=feature.priority,
+                    category=sub["category"],
+                    name=sub["name"],
+                    description=sub["description"],
+                    steps=sub["steps"],
+                    passes=False,
+                    in_progress=False,
+                )
+                session.add(db_feature)
+                created.append(db_feature)
+            session.flush()
+
+            # Sub-features inherit the original's prerequisites plus any sibling deps.
+            for sub, db_feature in zip(sub_features, created):
+                deps = set(parent_deps)
+                deps.update(created[idx].id for idx in (sub.get("depends_on_indices") or []))
+                if deps:
+                    db_feature.dependencies = sorted(deps)  # type: ignore[assignment]
+
+            sub_ids = [f.id for f in created]
+            new_parent_deps = sorted(set(parent_deps) | set(sub_ids))
+            feature.dependencies = new_parent_deps
+            feature.in_progress = False
+
+            return json.dumps({
+                "success": True,
+                "feature_id": feature_id,
+                "sub_feature_ids": sub_ids,
+                "dependencies": new_parent_deps,
+                "reason": reason,
+                "message": f"Feature #{feature_id} split into {len(sub_ids)} sub-features; "
+                           f"it will be re-verified after they all pass",
+            })
+    except Exception as e:
+        return json.dumps({"error": f"Failed to split feature: {str(e)}"})
 
 
 @mcp.tool()

@@ -34,6 +34,8 @@ For the feature returned:
 4. Take screenshots and read them to verify visual appearance
 5. Check for console errors
 
+**If the browser cannot be opened or a verification step cannot be executed, you have NOT verified the feature.** Never assume it still works. Fix the cause (e.g. start the dev server, retry `playwright-cli open`); if it is still impossible, do not call `feature_mark_passing` or `feature_mark_failing` -- document the exact error in `claude-progress.txt` and end the session.
+
 ### Browser Automation (Playwright CLI)
 
 **Navigation & Screenshots:**

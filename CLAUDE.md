@@ -238,6 +238,7 @@ MCP tools available to the agent:
 - `feature_mark_passing` - Mark feature complete
 - `feature_mark_failing` - Mark feature as failing
 - `feature_skip` - Move feature to end of queue
+- `feature_split` - Break a too-large feature into smaller sub-features (original then depends on them)
 - `feature_clear_in_progress` - Clear in-progress status
 - `feature_create_bulk` - Initialize all features (used by initializer)
 - `feature_create` - Create a single feature
