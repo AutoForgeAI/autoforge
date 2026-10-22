@@ -482,14 +482,48 @@ def has_project_prompts(project_dir: Path) -> bool:
         return False
 
 
+_SPEC_REFERENCING_PROMPTS = ("initializer_prompt.md", "coding_prompt.md", "testing_prompt.md")
+
+
+def prompts_need_root_spec(project_dir: Path) -> bool:
+    """
+    Check whether the project's prompts still read app_spec.txt from the project root.
+
+    Current templates read the spec from ``.autoforge/prompts/app_spec.txt`` so that
+    AutoForge's files stay out of the application's source tree. Projects scaffolded
+    with older templates (or with customized prompts) tell the agent to
+    ``cat app_spec.txt`` in the working directory and therefore still need a root copy.
+
+    Args:
+        project_dir: The project directory
+
+    Returns:
+        True if any project prompt references a root-level app_spec.txt
+    """
+    project_prompts = get_project_prompts_dir(project_dir)
+    for name in _SPEC_REFERENCING_PROMPTS:
+        prompt_path = project_prompts / name
+        if not prompt_path.exists():
+            continue
+        try:
+            content = prompt_path.read_text(encoding="utf-8")
+        except (OSError, PermissionError):
+            continue
+        # Legacy prompts mention app_spec.txt but never its .autoforge/prompts/ path
+        normalized = content.replace("\\", "/")
+        if "app_spec.txt" in normalized and "prompts/app_spec.txt" not in normalized:
+            return True
+    return False
+
+
 def copy_spec_to_project(project_dir: Path) -> None:
     """
-    Copy the app spec file into the project root directory for the agent to read.
+    Copy the app spec file into the project root directory for legacy prompts.
 
-    This maintains backwards compatibility - the agent expects app_spec.txt
-    in the project root directory.
-
-    The spec is sourced from: {project_dir}/prompts/app_spec.txt
+    New projects read the spec directly from ``.autoforge/prompts/app_spec.txt``,
+    so no copy is made and the project root only contains the application itself.
+    Projects whose prompts still expect ``app_spec.txt`` in the project root
+    (see ``prompts_need_root_spec``) get a copy for backwards compatibility.
 
     Args:
         project_dir: The project directory
@@ -498,6 +532,9 @@ def copy_spec_to_project(project_dir: Path) -> None:
 
     # Don't overwrite if already exists
     if spec_dest.exists():
+        return
+
+    if not prompts_need_root_spec(project_dir):
         return
 
     # Copy from project prompts directory

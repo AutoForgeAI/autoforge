@@ -292,7 +292,7 @@ Projects can be stored in any directory (registered in `~/.autoforge/registry.db
 - `.playwright/cli.config.json` - Browser configuration (headless, viewport, etc.)
 - `.playwright-cli/` - Playwright CLI daemon artifacts (screenshots, snapshots) - gitignored
 - `CLAUDE.md` - Stays at project root (SDK convention)
-- `app_spec.txt` - Root copy for agent template compatibility
+- `app_spec.txt` - Root copy, only created for legacy projects whose prompts still read the spec from the project root (current templates read `.autoforge/prompts/app_spec.txt` directly)
 
 Legacy projects with files at root level (e.g., `features.db`, `prompts/`) are auto-migrated to `.autoforge/` on next agent start. Dual-path resolution ensures old and new layouts work transparently.
 

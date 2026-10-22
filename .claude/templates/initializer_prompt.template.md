@@ -5,9 +5,13 @@ Your job is to set up the foundation for all future coding agents.
 
 ### FIRST: Read the Project Specification
 
-Start by reading `app_spec.txt` in your working directory. This file contains
+Start by reading `.autoforge/prompts/app_spec.txt`. This file contains
 the complete specification for what you need to build. Read it carefully
 before proceeding.
+
+**Project layout:** Build the application in your working directory (the project root).
+The `.autoforge/` directory belongs to AutoForge (spec, prompts, feature database) -
+never put application code there or modify its files by hand.
 
 ---
 
