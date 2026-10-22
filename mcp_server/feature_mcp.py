@@ -22,6 +22,7 @@ Tools:
 - feature_get_ready: Get features ready to implement
 - feature_get_blocked: Get features blocked by dependencies (with limit)
 - feature_get_graph: Get the dependency graph
+- feature_verify_quality: Run the project's linters/type checkers (only when quality gates are enabled)
 
 Note: Feature selection (which feature to work on) is handled by the
 orchestrator, not by agents. Agents receive pre-assigned feature IDs.
@@ -48,6 +49,7 @@ from api.dependency_resolver import (
     would_create_circular_dependency,
 )
 from api.migration import migrate_json_to_sqlite
+from quality_gates import format_failure_reason, load_config, run_quality_checks
 
 # Configuration from environment
 PROJECT_DIR = Path(os.environ.get("PROJECT_DIR", ".")).resolve()
@@ -240,20 +242,64 @@ def feature_mark_passing(
     Updates the feature's passes field to true and clears the in_progress flag.
     Use this after you have implemented the feature and verified it works correctly.
 
+    If quality gates are enabled for the project (.autoforge/config.json), the
+    project's linters and type checkers run first. In strict mode the feature is
+    NOT marked passing when a check fails: fix the reported errors and call this
+    tool again.
+
     Args:
         feature_id: The ID of the feature to mark as passing
 
     Returns:
-        JSON with success confirmation: {success, feature_id, name}
+        JSON with success confirmation: {success, feature_id, name}, plus
+        quality_gate details when quality gates are enabled.
     """
     session = get_session()
     try:
+        config = load_config(PROJECT_DIR)
+        quality_report = None
+        if config.enabled:
+            # Check state first so we don't run slow checks for nothing
+            feature = session.query(Feature).filter(Feature.id == feature_id).first()
+            if feature is None:
+                return json.dumps({"error": f"Feature with ID {feature_id} not found"})
+            if feature.passes:
+                return json.dumps({"error": f"Feature with ID {feature_id} is already passing"})
+            # Release the read transaction while checks run (they can take minutes)
+            session.rollback()
+
+            quality_report = run_quality_checks(PROJECT_DIR, config)
+            if not quality_report.passed and config.strict_mode:
+                session.execute(text("""
+                    UPDATE features
+                    SET quality_result = :quality_result,
+                        failure_reason = :failure_reason,
+                        failure_count = COALESCE(failure_count, 0) + 1
+                    WHERE id = :id
+                """), {
+                    "id": feature_id,
+                    "quality_result": json.dumps(quality_report.to_dict()),
+                    "failure_reason": format_failure_reason(quality_report),
+                })
+                session.commit()
+                return json.dumps({
+                    "error": (
+                        f"Quality gate failed for feature #{feature_id}: {quality_report.summary()}. "
+                        "Fix the errors below, then call feature_mark_passing again."
+                    ),
+                    "quality_gate": quality_report.to_dict(),
+                })
+
         # Atomic update with state guard - prevents double-pass in parallel mode
         result = session.execute(text("""
             UPDATE features
-            SET passes = 1, in_progress = 0
+            SET passes = 1, in_progress = 0, failure_reason = NULL,
+                quality_result = COALESCE(:quality_result, quality_result)
             WHERE id = :id AND passes = 0
-        """), {"id": feature_id})
+        """), {
+            "id": feature_id,
+            "quality_result": json.dumps(quality_report.to_dict()) if quality_report else None,
+        })
         session.commit()
 
         if result.rowcount == 0:
@@ -267,7 +313,18 @@ def feature_mark_passing(
 
         # Get the feature name for the response
         feature = session.query(Feature).filter(Feature.id == feature_id).first()
-        return json.dumps({"success": True, "feature_id": feature_id, "name": feature.name})
+        response: dict = {"success": True, "feature_id": feature_id, "name": feature.name}
+        if quality_report is not None:
+            response["quality_gate"] = {
+                "passed": quality_report.passed,
+                "summary": quality_report.summary(),
+            }
+            if not quality_report.passed:
+                response["warning"] = (
+                    f"Quality checks failed ({quality_report.summary()}) but strict mode is off. "
+                    "Fix the reported errors (see feature_verify_quality)."
+                )
+        return json.dumps(response)
     except Exception as e:
         session.rollback()
         return json.dumps({"error": f"Failed to mark feature passing: {str(e)}"})
@@ -277,7 +334,11 @@ def feature_mark_passing(
 
 @mcp.tool()
 def feature_mark_failing(
-    feature_id: Annotated[int, Field(description="The ID of the feature to mark as failing", ge=1)]
+    feature_id: Annotated[int, Field(description="The ID of the feature to mark as failing", ge=1)],
+    reason: Annotated[
+        str | None,
+        Field(description="Why the feature is failing (stored for retry tracking)", max_length=2000),
+    ] = None,
 ) -> str:
     """Mark a feature as failing after finding a regression.
 
@@ -291,8 +352,12 @@ def feature_mark_failing(
     3. Verify the fix
     4. Call feature_mark_passing once fixed
 
+    Each call increments the feature's failure_count, and the optional reason
+    is stored in failure_reason so later sessions know what went wrong.
+
     Args:
         feature_id: The ID of the feature to mark as failing
+        reason: Optional description of what is broken
 
     Returns:
         JSON with the updated feature details, or error if not found.
@@ -307,9 +372,11 @@ def feature_mark_failing(
         # Atomic update for parallel safety
         session.execute(text("""
             UPDATE features
-            SET passes = 0, in_progress = 0
+            SET passes = 0, in_progress = 0,
+                failure_count = COALESCE(failure_count, 0) + 1,
+                failure_reason = COALESCE(:reason, failure_reason)
             WHERE id = :id
-        """), {"id": feature_id})
+        """), {"id": feature_id, "reason": reason.strip() if reason and reason.strip() else None})
         session.commit()
 
         # Refresh to get updated state
@@ -322,6 +389,61 @@ def feature_mark_failing(
     except Exception as e:
         session.rollback()
         return json.dumps({"error": f"Failed to mark feature failing: {str(e)}"})
+    finally:
+        session.close()
+
+
+@mcp.tool()
+def feature_verify_quality(
+    feature_id: Annotated[
+        int | None,
+        Field(description="Feature to store the results on as evidence (optional)", ge=1),
+    ] = None
+) -> str:
+    """Run the project's linters and type checkers and report the results.
+
+    Only works when quality gates are enabled for the project in
+    .autoforge/config.json; otherwise it returns an error and runs nothing.
+
+    Auto-detects ESLint or Biome, TypeScript (tsc), ruff or flake8, and mypy
+    from the project's config files. Use this before feature_mark_passing to
+    catch lint/type errors early. When feature_id is given, the report is
+    stored on the feature as evidence (quality_result).
+
+    Args:
+        feature_id: Optional feature ID to attach the results to
+
+    Returns:
+        JSON with: passed (bool), summary, checks (name, command, passed, output)
+    """
+    # The checks run project tooling outside the bash sandbox, so they must
+    # stay behind the same opt-in as feature_mark_passing.
+    if not load_config(PROJECT_DIR).enabled:
+        return json.dumps({
+            "error": "Quality gates are not enabled for this project (.autoforge/config.json)"
+        })
+
+    session = get_session()
+    try:
+        if feature_id is not None:
+            feature = session.query(Feature).filter(Feature.id == feature_id).first()
+            if feature is None:
+                return json.dumps({"error": f"Feature with ID {feature_id} not found"})
+            session.rollback()
+
+        report = run_quality_checks(PROJECT_DIR)
+        report_dict = report.to_dict()
+
+        if feature_id is not None:
+            session.execute(text("""
+                UPDATE features SET quality_result = :quality_result WHERE id = :id
+            """), {"id": feature_id, "quality_result": json.dumps(report_dict)})
+            session.commit()
+
+        return json.dumps(report_dict)
+    except Exception as e:
+        session.rollback()
+        return json.dumps({"error": f"Failed to run quality checks: {str(e)}"})
     finally:
         session.close()
 

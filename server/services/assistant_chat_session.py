@@ -85,6 +85,8 @@ DISALLOWED_ASSISTANT_TOOLS = [
     "mcp__features__feature_mark_in_progress",
     "mcp__features__feature_claim_and_get",
     "mcp__features__feature_clear_in_progress",
+    # Runs project tooling (linters/type checkers) and writes evidence
+    "mcp__features__feature_verify_quality",
 ]
 
 

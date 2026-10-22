@@ -120,6 +120,7 @@ python test_security_integration.py   # Integration tests (9 tests)
 python -m pytest test_client.py       # Client tests (20 tests)
 python -m pytest test_dependency_resolver.py  # Dependency resolver tests (12 tests)
 python -m pytest test_rate_limit_utils.py     # Rate limit tests (22 tests)
+python -m pytest test_quality_gates.py        # Quality gates tests (30 tests)
 ```
 
 ### React UI
@@ -175,6 +176,7 @@ Publishing: `npm publish` (triggers `prepublishOnly` which builds UI, then publi
 - `api/database.py` - SQLAlchemy models (Feature, Schedule, ScheduleOverride)
 - `api/dependency_resolver.py` - Cycle detection (Kahn's algorithm + DFS) and dependency validation
 - `api/migration.py` - JSON-to-SQLite migration utility
+- `quality_gates.py` - Lint/type-check auto-detection and enforcement before `feature_mark_passing`
 
 ### Project Registry
 
@@ -235,8 +237,9 @@ MCP tools available to the agent:
 - `feature_get_graph` - Get full dependency graph
 - `feature_claim_and_get` - Atomically claim next available feature (for parallel mode)
 - `feature_mark_in_progress` - Mark feature as in progress
-- `feature_mark_passing` - Mark feature complete
-- `feature_mark_failing` - Mark feature as failing
+- `feature_mark_passing` - Mark feature complete (runs quality gates first when enabled)
+- `feature_mark_failing` - Mark feature as failing (optional `reason`; increments `failure_count`)
+- `feature_verify_quality` - Run detected linters/type checkers and store results as evidence (only when quality gates are enabled)
 - `feature_skip` - Move feature to end of queue
 - `feature_clear_in_progress` - Clear in-progress status
 - `feature_create_bulk` - Initialize all features (used by initializer)
@@ -244,6 +247,27 @@ MCP tools available to the agent:
 - `feature_add_dependency` - Add dependency between features (with cycle detection)
 - `feature_remove_dependency` - Remove a dependency
 - `feature_set_dependencies` - Set all dependencies for a feature at once
+
+### Quality Gates
+
+Opt-in per project via `.autoforge/config.json` (disabled by default):
+
+```json
+{
+  "quality_gates": {
+    "enabled": true,
+    "strict_mode": true,
+    "checks": {"lint": true, "type_check": true},
+    "timeout_seconds": 300
+  }
+}
+```
+
+- Auto-detects ESLint or Biome, TypeScript (`tsc`), ruff or flake8, and mypy. A tool runs only if the project both configures it and has it installed (`node_modules/.bin`, `.venv`/`venv`, or PATH). Commands are never read from config.
+- When enabled, `feature_mark_passing` runs the checks first. Strict mode (default) refuses to mark the feature passing on failure; non-strict marks it passing and returns a warning.
+- Results are stored on the feature (`quality_result`), along with `failure_reason` and `failure_count`.
+- `feature_verify_quality` is only offered to coding/testing agents when gates are enabled, and refuses to run anything when they are disabled.
+- The MCP server runs outside the bash sandbox, and linters load agent-written config files (e.g. `eslint.config.js`), so only enable this for projects you trust the agent with.
 
 ### React UI (ui/)
 
