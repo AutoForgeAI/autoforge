@@ -122,6 +122,7 @@ async def get_settings():
         api_base_url=all_settings.get("api_base_url"),
         api_has_auth_token=bool(all_settings.get("api_auth_token")),
         api_model=all_settings.get("api_model"),
+        git_auto_push=_parse_bool(all_settings.get("git_auto_push")),
     )
 
 
@@ -148,6 +149,9 @@ async def update_settings(update: SettingsUpdate):
 
     if update.effort is not None:
         set_setting("effort", update.effort)
+
+    if update.git_auto_push is not None:
+        set_setting("git_auto_push", "true" if update.git_auto_push else "false")
 
     # API provider settings
     if update.api_provider is not None:
@@ -194,4 +198,5 @@ async def update_settings(update: SettingsUpdate):
         api_base_url=all_settings.get("api_base_url"),
         api_has_auth_token=bool(all_settings.get("api_auth_token")),
         api_model=all_settings.get("api_model"),
+        git_auto_push=_parse_bool(all_settings.get("git_auto_push")),
     )

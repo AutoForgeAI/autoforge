@@ -332,6 +332,25 @@ When test progress increases, the agent sends:
 }
 ```
 
+### GitHub / Git Remote Integration (Auto-Push)
+
+The agent commits its work to the project's local git repository after every feature. AutoForge can optionally push those commits to a remote (GitHub, GitLab, etc.) at the end of each successful coding session:
+
+- **Settings UI:** gear icon > **Auto-push to Git Remote**
+- **CLI / `.env`:** `AUTOFORGE_GIT_AUTO_PUSH=1` (overrides the UI setting)
+
+The **current branch** is pushed to its upstream, or to `origin` (setting it as upstream) if it has none. Auto-push never force-pushes, never creates repositories or remotes, and runs non-interactively, so the remote and credentials must already work from the project directory (e.g. `gh auth login` / `gh auth setup-git`, an SSH key, or a credential helper). Skipped or failed pushes are reported in the agent log with a `[GIT]` prefix and never stop the agent.
+
+A typical feature-branch workflow:
+
+```bash
+cd /path/to/my-project
+gh repo create my-project --private --source=. --push   # one-time: create remote and push existing commits
+git checkout -b feature/new-dashboard                    # work on a branch instead of main
+```
+
+Then use **Expand Project** (or add features) in the UI and start the agent — with auto-push on, each coding session's commits land on `feature/new-dashboard` on GitHub, ready for you to open a pull request.
+
 ### Alternative API Providers (GLM, Ollama, Kimi, Custom)
 
 Alternative providers are configured via the **Settings UI** (gear icon > API Provider). Select your provider, set the base URL, auth token, and model directly in the UI — no `.env` changes needed.

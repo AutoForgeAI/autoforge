@@ -120,6 +120,7 @@ python test_security_integration.py   # Integration tests (9 tests)
 python -m pytest test_client.py       # Client tests (20 tests)
 python -m pytest test_dependency_resolver.py  # Dependency resolver tests (12 tests)
 python -m pytest test_rate_limit_utils.py     # Rate limit tests (22 tests)
+python -m pytest test_git_sync.py             # Git auto-push tests
 ```
 
 ### React UI
@@ -172,6 +173,7 @@ Publishing: `npm publish` (triggers `prepublishOnly` which builds UI, then publi
 - `auth.py` - Authentication error detection for Claude CLI
 - `env_constants.py` - Shared environment variable constants (API_ENV_VARS) used by client.py and chat sessions
 - `rate_limit_utils.py` - Rate limit detection, retry parsing, exponential backoff with jitter
+- `git_sync.py` - Optional auto-push of the project's current branch to its git remote after each successful coding session (`git_auto_push` setting / `AUTOFORGE_GIT_AUTO_PUSH`)
 - `api/database.py` - SQLAlchemy models (Feature, Schedule, ScheduleOverride)
 - `api/dependency_resolver.py` - Cycle detection (Kahn's algorithm + DFS) and dependency validation
 - `api/migration.py` - JSON-to-SQLite migration utility

@@ -1327,10 +1327,26 @@ class ParallelOrchestrator:
         else:
             print(f"Feature #{feature_id} {status}", flush=True)
 
+        # Optionally push the agent's commits to the git remote
+        if return_code == 0:
+            self._maybe_push_to_remote()
+
         # Run lightweight cleanup between sessions
         self._run_inter_session_cleanup()
         # Signal main loop that an agent slot is available
         self._signal_agent_completed()
+
+    def _maybe_push_to_remote(self) -> None:
+        """Push the project's current branch if auto-push is enabled (never raises)."""
+        try:
+            from git_sync import is_auto_push_enabled, push_current_branch
+            if not is_auto_push_enabled():
+                return
+            ok, message = push_current_branch(self.project_dir)
+            print(f"[GIT] {'Auto-push: ' if ok else 'Auto-push skipped: '}{message}", flush=True)
+            debug_log.log("GIT", f"Auto-push result: {message}", success=ok)
+        except Exception as e:
+            debug_log.log("GIT", f"Auto-push failed (non-fatal): {e}")
 
     def stop_feature(self, feature_id: int) -> tuple[bool, str]:
         """Stop a running coding agent and all its child processes."""

@@ -489,6 +489,7 @@ class SettingsResponse(BaseModel):
     api_base_url: str | None = None
     api_has_auth_token: bool = False  # Never expose actual token
     api_model: str | None = None
+    git_auto_push: bool = False  # Push current branch to git remote after each coding session
 
 
 class ModelsResponse(BaseModel):
@@ -510,6 +511,7 @@ class SettingsUpdate(BaseModel):
     api_base_url: str | None = Field(None, max_length=500)
     api_auth_token: str | None = Field(None, max_length=500)  # Write-only, never returned
     api_model: str | None = Field(None, max_length=200)
+    git_auto_push: bool | None = None
 
     @field_validator('api_base_url')
     @classmethod

@@ -46,6 +46,12 @@ export function SettingsModal({ isOpen, onClose }: SettingsModalProps) {
     }
   }
 
+  const handleGitAutoPushToggle = () => {
+    if (settings && !updateSettings.isPending) {
+      updateSettings.mutate({ git_auto_push: !settings.git_auto_push })
+    }
+  }
+
   const handleModelChange = (modelId: string) => {
     if (!updateSettings.isPending) {
       updateSettings.mutate({ api_model: modelId })
@@ -486,6 +492,27 @@ export function SettingsModal({ isOpen, onClose }: SettingsModalProps) {
                 max={15}
                 value={settings.testing_batch_size ?? 3}
                 onChange={handleTestingBatchSizeChange}
+                disabled={isSaving}
+              />
+            </div>
+
+            <hr className="border-border" />
+
+            {/* Git Auto-Push Toggle */}
+            <div className="flex items-center justify-between">
+              <div className="space-y-0.5">
+                <Label htmlFor="git-auto-push" className="font-medium">
+                  Auto-push to Git Remote
+                </Label>
+                <p className="text-sm text-muted-foreground">
+                  Push the project&apos;s current branch after each coding session (requires an upstream or
+                  &quot;origin&quot; remote with saved credentials)
+                </p>
+              </div>
+              <Switch
+                id="git-auto-push"
+                checked={settings.git_auto_push ?? false}
+                onCheckedChange={handleGitAutoPushToggle}
                 disabled={isSaving}
               />
             </div>

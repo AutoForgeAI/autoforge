@@ -658,6 +658,7 @@ export interface Settings {
   api_base_url: string | null
   api_has_auth_token: boolean
   api_model: string | null
+  git_auto_push: boolean  // Push current branch to git remote after each coding session
 }
 
 export interface SettingsUpdate {
@@ -671,6 +672,7 @@ export interface SettingsUpdate {
   api_base_url?: string
   api_auth_token?: string
   api_model?: string
+  git_auto_push?: boolean
 }
 
 export interface ProjectSettingsUpdate {
