@@ -29,6 +29,8 @@ function getStateText(state: OrchestratorState): string {
       return 'Draining agents...'
     case 'paused':
       return 'Paused'
+    case 'usage_limited':
+      return 'Usage limit reached'
     default:
       return 'Orchestrating...'
   }
@@ -47,6 +49,7 @@ function getStateColor(state: OrchestratorState): string {
     case 'initializing':
       return 'text-yellow-600 dark:text-yellow-400'
     case 'draining':
+    case 'usage_limited':
       return 'text-amber-600 dark:text-amber-400'
     case 'paused':
       return 'text-muted-foreground'

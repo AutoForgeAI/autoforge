@@ -6,13 +6,20 @@ functions from rate_limit_utils.py (shared module).
 """
 
 import unittest
+from datetime import datetime, timedelta, timezone
+from zoneinfo import ZoneInfo
 
 from rate_limit_utils import (
+    USAGE_LIMIT_RESUME_BUFFER_SECONDS,
     calculate_error_backoff,
     calculate_rate_limit_backoff,
     clamp_retry_delay,
+    format_usage_limit_banner,
     is_rate_limit_error,
+    is_usage_limit_message,
+    parse_reset_time,
     parse_retry_after,
+    usage_limit_delay_seconds,
 )
 
 
@@ -199,6 +206,125 @@ class TestBackoffFunctions(unittest.TestCase):
         # Values above maximum get clamped to 3600
         assert clamp_retry_delay(7200) == 3600
         assert clamp_retry_delay(86400) == 3600
+
+
+class TestUsageLimitDetection(unittest.TestCase):
+    """Tests for is_usage_limit_message() (Claude subscription caps, issue #19)."""
+
+    def test_cli_usage_limit_messages(self):
+        """Messages the Claude CLI prints when a plan limit is hit."""
+        messages = [
+            "Limit reached · resets 6pm (America/New_York) · /upgrade to Max or turn on /extra-usage",
+            "5-hour limit reached ∙ resets 3am",
+            "Claude AI usage limit reached|1751234567",
+            "You've hit your limit · resets 9pm (Europe/London)",
+            "Weekly limit reached ∙ resets Oct 9, 10am",
+            "Session limit reached ∙ resets 3pm",
+            "Opus limit reached · resets 11am (UTC)",
+        ]
+        for message in messages:
+            assert is_usage_limit_message(message) is True, message
+            # Usage limits are also rate limits so existing handling kicks in
+            assert is_rate_limit_error(message) is True, message
+
+    def test_usage_limit_within_longer_output(self):
+        """The limit line can appear after other agent output."""
+        text = "Working on feature...\nLimit reached · resets 6pm (America/New_York)"
+        assert is_usage_limit_message(text) is True
+
+    def test_prose_about_limits_does_not_trigger(self):
+        """Agent prose mentioning limits must not pause the agent."""
+        assert is_usage_limit_message("File size limit reached") is False
+        assert is_usage_limit_message("Memory limit reached, consider optimization") is False
+        assert is_usage_limit_message("The retry limit reached its maximum") is False
+        assert is_usage_limit_message("Show an error when the user has hit your limit") is False
+        assert is_usage_limit_message("") is False
+
+
+class TestParseResetTime(unittest.TestCase):
+    """Tests for parse_reset_time()."""
+
+    NY = ZoneInfo("America/New_York")
+
+    def test_reset_later_today(self):
+        now = datetime(2026, 10, 22, 13, 15, tzinfo=self.NY)
+        target = parse_reset_time("Limit reached · resets 6pm (America/New_York) · /upgrade", now)
+        assert target == datetime(2026, 10, 22, 18, 0, tzinfo=self.NY)
+
+    def test_reset_rolls_to_tomorrow(self):
+        now = datetime(2026, 10, 22, 19, 0, tzinfo=self.NY)
+        target = parse_reset_time("Limit reached · resets 6pm (America/New_York)", now)
+        assert target == datetime(2026, 10, 23, 18, 0, tzinfo=self.NY)
+
+    def test_minutes_and_at(self):
+        now = datetime(2026, 10, 22, 1, 0, tzinfo=self.NY)
+        target = parse_reset_time("resets at 6:30 am (America/New_York)", now)
+        assert target == datetime(2026, 10, 22, 6, 30, tzinfo=self.NY)
+
+    def test_twelve_am_and_pm(self):
+        now = datetime(2026, 10, 22, 1, 0, tzinfo=self.NY)
+        assert parse_reset_time("resets 12am (America/New_York)", now) == datetime(2026, 10, 23, 0, 0, tzinfo=self.NY)
+        assert parse_reset_time("resets 12pm (America/New_York)", now) == datetime(2026, 10, 22, 12, 0, tzinfo=self.NY)
+
+    def test_timezone_conversion(self):
+        """Reset timezone differs from the local one."""
+        now = datetime(2026, 10, 22, 12, 0, tzinfo=timezone.utc)
+        target = parse_reset_time("resets 6pm (Europe/London)", now)
+        assert target is not None
+        assert target.astimezone(timezone.utc) == datetime(2026, 10, 22, 17, 0, tzinfo=timezone.utc)
+
+    def test_missing_or_unknown_timezone_uses_local(self):
+        now = datetime(2026, 10, 22, 1, 0, tzinfo=timezone.utc)
+        assert parse_reset_time("5-hour limit reached ∙ resets 3am", now) == datetime(
+            2026, 10, 22, 3, 0, tzinfo=timezone.utc
+        )
+        assert parse_reset_time("resets 3am (Not/AZone)", now) == datetime(2026, 10, 22, 3, 0, tzinfo=timezone.utc)
+
+    def test_explicit_date(self):
+        now = datetime(2026, 10, 6, 9, 0, tzinfo=timezone.utc)
+        target = parse_reset_time("Weekly limit reached ∙ resets Oct 9, 10am (UTC)", now)
+        assert target == datetime(2026, 10, 9, 10, 0, tzinfo=ZoneInfo("UTC"))
+
+    def test_explicit_date_across_new_year(self):
+        now = datetime(2026, 12, 30, 9, 0, tzinfo=timezone.utc)
+        target = parse_reset_time("resets Jan 2, 10am (UTC)", now)
+        assert target == datetime(2027, 1, 2, 10, 0, tzinfo=ZoneInfo("UTC"))
+
+    def test_epoch_timestamp(self):
+        now = datetime(2026, 10, 22, 12, 0, tzinfo=timezone.utc)
+        reset = now + timedelta(hours=2)
+        target = parse_reset_time(f"Claude AI usage limit reached|{int(reset.timestamp())}", now)
+        assert target == reset
+
+    def test_unparseable_or_out_of_range(self):
+        now = datetime(2026, 10, 22, 12, 0, tzinfo=timezone.utc)
+        assert parse_reset_time("Rate limit exceeded", now) is None
+        assert parse_reset_time("resets 25pm", now) is None
+        assert parse_reset_time("resets Foo 9, 10am", now) is None
+        # Epoch in the past or too far in the future is ignored
+        assert parse_reset_time("usage limit reached|1000000000", now) is None
+        far = int((now + timedelta(days=30)).timestamp())
+        assert parse_reset_time(f"usage limit reached|{far}", now) is None
+
+
+class TestUsageLimitDelay(unittest.TestCase):
+    """Tests for usage_limit_delay_seconds() and the warning banner."""
+
+    def test_delay_until_reset_plus_buffer(self):
+        now = datetime(2026, 10, 22, 12, 0, tzinfo=timezone.utc)
+        reset = now + timedelta(hours=4, minutes=45)
+        expected = 4 * 3600 + 45 * 60 + USAGE_LIMIT_RESUME_BUFFER_SECONDS
+        assert usage_limit_delay_seconds(reset, now) == expected
+
+    def test_delay_never_below_one(self):
+        now = datetime(2026, 10, 22, 12, 0, tzinfo=timezone.utc)
+        assert usage_limit_delay_seconds(now - timedelta(hours=1), now) == 1
+
+    def test_banner_mentions_reset(self):
+        banner = format_usage_limit_banner("6:00 PM EDT (Oct 22)", 2 * 3600 + 5 * 60)
+        assert "USAGE LIMIT REACHED" in banner
+        assert "6:00 PM EDT (Oct 22)" in banner
+        assert "2h 5m" in banner
 
 
 if __name__ == "__main__":

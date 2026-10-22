@@ -244,6 +244,7 @@ export type OrchestratorState =
   | 'complete'
   | 'draining'
   | 'paused'
+  | 'usage_limited'
 
 // Orchestrator event for recent activity
 export interface OrchestratorEvent {

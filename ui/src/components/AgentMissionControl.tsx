@@ -78,9 +78,11 @@ export function AgentMissionControl({
                   ? 'Draining'
                   : orchestratorStatus?.state === 'paused'
                     ? 'Paused'
-                    : orchestratorStatus?.state === 'complete'
-                      ? 'Complete'
-                      : 'Orchestrating'
+                    : orchestratorStatus?.state === 'usage_limited'
+                      ? 'Usage limit'
+                      : orchestratorStatus?.state === 'complete'
+                        ? 'Complete'
+                        : 'Orchestrating'
             }
           </Badge>
         </div>

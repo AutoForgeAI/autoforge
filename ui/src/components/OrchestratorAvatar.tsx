@@ -106,6 +106,7 @@ function getStateAnimation(state: OrchestratorState): string {
     case 'draining':
       return 'animate-thinking'
     case 'paused':
+    case 'usage_limited':
       return ''
     case 'complete':
       return 'animate-celebrate'
@@ -126,6 +127,7 @@ function getStateGlow(state: OrchestratorState): string {
     case 'monitoring':
       return 'shadow-[0_0_8px_rgba(167,139,250,0.4)]'
     case 'draining':
+    case 'usage_limited':
       return 'shadow-[0_0_10px_rgba(251,191,36,0.5)]'
     case 'paused':
       return ''
@@ -153,6 +155,8 @@ function getStateDescription(state: OrchestratorState): string {
       return 'draining active agents'
     case 'paused':
       return 'paused'
+    case 'usage_limited':
+      return 'waiting for the Claude usage limit to reset'
     case 'complete':
       return 'all features complete'
     default:

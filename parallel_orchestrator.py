@@ -27,7 +27,7 @@ import signal
 import subprocess
 import sys
 import threading
-from datetime import datetime, timezone
+from datetime import datetime, timedelta, timezone
 from pathlib import Path
 from typing import Any, Callable, Literal
 
@@ -36,6 +36,13 @@ from sqlalchemy import text
 from api.database import Feature, create_database
 from api.dependency_resolver import are_dependencies_satisfied, compute_scheduling_scores
 from progress import has_features
+from rate_limit_utils import (
+    calculate_rate_limit_backoff,
+    format_reset_time,
+    is_usage_limit_message,
+    parse_reset_time,
+    usage_limit_delay_seconds,
+)
 from server.utils.process_utils import kill_process_tree
 
 logger = logging.getLogger(__name__)
@@ -215,6 +222,12 @@ class ParallelOrchestrator:
 
         # Graceful pause (drain mode) flag
         self._drain_requested = False
+
+        # Claude usage limit pause: when an agent reports "Limit reached · resets ...",
+        # no new sessions are started until this time (set from output reader threads)
+        self._usage_limit_until: datetime | None = None
+        # Consecutive usage-limit hits without a parseable reset time (for backoff)
+        self._usage_limit_unknown_hits = 0
 
         # Session tracking for logging/debugging
         self.session_start_time: datetime | None = None
@@ -1161,6 +1174,8 @@ class ParallelOrchestrator:
                 else:
                     # Both coding and testing agents now use [Feature #X] format
                     print(f"[Feature #{current_feature_id}] {line}", flush=True)
+                if is_usage_limit_message(line):
+                    self._record_usage_limit(line)
             proc.wait()
         finally:
             # CRITICAL: Kill the process tree to clean up any child processes (e.g., Claude CLI)
@@ -1170,6 +1185,64 @@ class ParallelOrchestrator:
             except Exception as e:
                 debug_log.log("CLEANUP", f"Error killing process tree for {agent_type} agent", error=str(e))
             self._on_agent_complete(feature_id, proc.returncode, agent_type, proc)
+
+    def _record_usage_limit(self, line: str) -> None:
+        """Pause scheduling after an agent reports a Claude usage limit.
+
+        Called from output reader threads. Uses the reset time from the message
+        when present, otherwise falls back to exponential backoff.
+        """
+        now = datetime.now(timezone.utc)
+        reset_at = parse_reset_time(line)
+        with self._lock:
+            if reset_at is not None:
+                self._usage_limit_unknown_hits = 0
+                until = now + timedelta(seconds=usage_limit_delay_seconds(reset_at, now))
+            else:
+                until = now + timedelta(seconds=calculate_rate_limit_backoff(self._usage_limit_unknown_hits))
+                self._usage_limit_unknown_hits += 1
+            # Several agents usually hit the limit together; keep the latest reset
+            if self._usage_limit_until is None or until > self._usage_limit_until:
+                self._usage_limit_until = until
+        debug_log.log("USAGE_LIMIT", "Agent reported usage limit", line=line[:200], until=until.isoformat())
+
+    async def _wait_for_usage_limit_reset(self) -> None:
+        """Hold off on spawning agents until the usage limit resets."""
+        with self._lock:
+            until = self._usage_limit_until
+        if until is None:
+            return
+
+        local_until = until.astimezone()
+        delay_seconds = max(int((until - datetime.now(timezone.utc)).total_seconds()), 0)
+        print("=" * 70, flush=True)
+        print(
+            f"Claude usage limit reached - pausing new agent sessions until "
+            f"{format_reset_time(local_until)} ({delay_seconds // 60}m)",
+            flush=True,
+        )
+        print("Running agents will finish on their own; stop the agent to cancel.", flush=True)
+        print("=" * 70, flush=True)
+
+        while self.is_running and not self._shutdown_requested:
+            with self._lock:
+                # Another agent may have pushed the reset time further out
+                until = self._usage_limit_until or until
+            remaining = (until - datetime.now(timezone.utc)).total_seconds()
+            if remaining <= 0:
+                break
+            if self._check_drain_signal():
+                # Let the main loop handle the graceful pause; the usage limit
+                # pause picks up again afterwards if it hasn't expired yet
+                return
+            await asyncio.sleep(min(remaining, 5.0))
+
+        with self._lock:
+            if self._usage_limit_until is not None and self._usage_limit_until <= datetime.now(timezone.utc):
+                self._usage_limit_until = None
+        if self.is_running and not self._shutdown_requested:
+            print("Usage limit reset - resuming feature scheduling", flush=True)
+            debug_log.log("USAGE_LIMIT", "Usage limit pause over, resuming")
 
     def _run_inter_session_cleanup(self):
         """Run lightweight cleanup between agent sessions.
@@ -1547,6 +1620,13 @@ class ParallelOrchestrator:
                         debug_log.log("DRAIN", f"Waiting for agents to finish: coding={coding_count}, testing={testing_count}")
                         await self._wait_for_agent_completion()
                         continue
+
+                # --- Claude usage limit: don't start sessions that are bound to fail ---
+                with self._lock:
+                    usage_limited = self._usage_limit_until is not None
+                if usage_limited:
+                    await self._wait_for_usage_limit_reset()
+                    continue
 
                 # Maintain testing agents independently (runs every iteration)
                 self._maintain_testing_agents(feature_dicts)

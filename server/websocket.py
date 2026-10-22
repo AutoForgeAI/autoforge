@@ -82,6 +82,8 @@ ORCHESTRATOR_PATTERNS = {
     'drain_start': re.compile(r'Graceful pause requested'),
     'drain_complete': re.compile(r'All agents drained'),
     'drain_resume': re.compile(r'Resuming from graceful pause'),
+    'usage_limit_pause': re.compile(r'Claude usage limit reached - pausing new agent sessions until (.+?) \('),
+    'usage_limit_resume': re.compile(r'Usage limit reset - resuming feature scheduling'),
 }
 
 
@@ -588,6 +590,21 @@ class OrchestratorTracker:
                 update = self._create_update(
                     'drain_resume',
                     'Resuming feature scheduling'
+                )
+
+            # Claude usage limit pause events
+            elif match := ORCHESTRATOR_PATTERNS['usage_limit_pause'].search(line):
+                self.state = 'usage_limited'
+                update = self._create_update(
+                    'usage_limit_pause',
+                    f'Claude usage limit reached. Waiting until {match.group(1)} before starting new sessions.'
+                )
+
+            elif ORCHESTRATOR_PATTERNS['usage_limit_resume'].search(line):
+                self.state = 'scheduling'
+                update = self._create_update(
+                    'usage_limit_resume',
+                    'Usage limit reset, resuming feature scheduling'
                 )
 
             return update

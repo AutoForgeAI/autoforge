@@ -7,12 +7,10 @@ Core agent interaction functions for running autonomous coding sessions.
 
 import asyncio
 import io
-import re
 import sys
-from datetime import datetime, timedelta
+from datetime import datetime
 from pathlib import Path
 from typing import Optional
-from zoneinfo import ZoneInfo
 
 from claude_agent_sdk import ClaudeSDKClient
 
@@ -42,8 +40,13 @@ from rate_limit_utils import (
     calculate_error_backoff,
     calculate_rate_limit_backoff,
     clamp_retry_delay,
+    format_reset_time,
+    format_usage_limit_banner,
     is_rate_limit_error,
+    is_usage_limit_message,
+    parse_reset_time,
     parse_retry_after,
+    usage_limit_delay_seconds,
 )
 
 # Configuration
@@ -66,6 +69,8 @@ async def run_agent_session(
     Returns:
         (status, response_text) where status is:
         - "continue" if agent should continue working
+        - "rate_limit" if rate limited (response is retry seconds or "unknown")
+        - "usage_limit" if a usage limit was hit (response is the ISO reset time)
         - "error" if an error occurred
     """
     print("Sending prompt to Claude Agent SDK...\n")
@@ -141,6 +146,12 @@ async def run_agent_session(
     except Exception as e:
         error_str = str(e)
         print(f"Error during agent session: {error_str}")
+
+        # Detect usage limits with a known reset time - these outlast any backoff
+        if is_usage_limit_message(error_str):
+            reset_at = parse_reset_time(error_str)
+            if reset_at is not None:
+                return "usage_limit", reset_at.isoformat()
 
         # Detect rate limit errors from exception message
         if is_rate_limit_error(error_str):
@@ -330,46 +341,16 @@ async def run_autonomous_agent(
                     delay_seconds = calculate_rate_limit_backoff(rate_limit_retries)
                     rate_limit_retries += 1
 
-                # Try to parse reset time from response (more specific format)
-                match = re.search(
-                    r"(?i)\bresets(?:\s+at)?\s+(\d+)(?::(\d+))?\s*(am|pm)\s*\(([^)]+)\)",
-                    response,
-                )
-                if match:
-                    hour = int(match.group(1))
-                    minute = int(match.group(2)) if match.group(2) else 0
-                    period = match.group(3).lower()
-                    tz_name = match.group(4).strip()
-
-                    # Convert to 24-hour format
-                    if period == "pm" and hour != 12:
-                        hour += 12
-                    elif period == "am" and hour == 12:
-                        hour = 0
-
-                    try:
-                        tz = ZoneInfo(tz_name)
-                        now = datetime.now(tz)
-                        target = now.replace(
-                            hour=hour, minute=minute, second=0, microsecond=0
-                        )
-
-                        # If target time has already passed today, wait until tomorrow
-                        if target <= now:
-                            target += timedelta(days=1)
-
-                        delta = target - now
-                        delay_seconds = min(max(int(delta.total_seconds()), 1), 24 * 60 * 60)
-                        target_time_str = target.strftime("%B %d, %Y at %I:%M %p %Z")
-
-                    except Exception as e:
-                        print(f"Error parsing reset time: {e}, using default delay")
+                # Usage limits (e.g. "Limit reached · resets 6pm (America/New_York)")
+                # won't clear until the reported reset time, so wait until then
+                # instead of opening sessions that are bound to fail.
+                reset_at = parse_reset_time(response)
+                if reset_at is not None:
+                    delay_seconds = usage_limit_delay_seconds(reset_at)
+                    target_time_str = format_reset_time(reset_at)
 
             if target_time_str:
-                print(
-                    f"\nClaude Code Limit Reached. Agent will auto-continue in {delay_seconds:.0f}s ({target_time_str})...",
-                    flush=True,
-                )
+                print(format_usage_limit_banner(target_time_str, delay_seconds), flush=True)
             else:
                 print(
                     f"\nAgent will auto-continue in {delay_seconds:.0f}s...", flush=True
@@ -426,6 +407,21 @@ async def run_autonomous_agent(
                 print(f"\nRate limit hit. Backoff wait: {delay_seconds} seconds (attempt #{rate_limit_retries})...")
             else:
                 print(f"\nRate limit hit. Waiting {delay_seconds} seconds before retry...")
+
+            await asyncio.sleep(delay_seconds)
+
+        elif status == "usage_limit":
+            # Usage limit with a known reset time: sleep until then instead of
+            # retrying with backoff (every retry before the reset would fail)
+            error_retries = 0
+            rate_limit_retries = 0
+            reset_at = datetime.fromisoformat(response).astimezone()
+            delay_seconds = usage_limit_delay_seconds(reset_at)
+            print(format_usage_limit_banner(format_reset_time(reset_at), delay_seconds), flush=True)
+
+            # Agents spawned by the orchestrator exit and let it pause scheduling
+            if feature_id is not None or feature_ids or agent_type == "testing":
+                break
 
             await asyncio.sleep(delay_seconds)
 
