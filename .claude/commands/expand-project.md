@@ -170,6 +170,11 @@ feature_create_bulk(features=[
 - Each feature needs: category, name, description, steps (array of strings)
 - The tool will return the count of created features - verify it matches your expected count
 
+**If the tool is unavailable or returns an error:**
+- The `feature_create_bulk` / `feature_create` MCP tools are the ONLY way to add features. There is no CLI, npm package, or script for importing features (e.g. `npx claude-spec ...` does not exist) - never tell the user to run a command to import them.
+- Do NOT write the features to a JSON file as a workaround.
+- Tell the user plainly that feature creation failed, quote the error message the tool returned, and suggest closing and reopening this chat to retry. If the tool returned a validation error, fix the feature data and call the tool again.
+
 ---
 
 # FEATURE QUALITY STANDARDS

@@ -1,6 +1,8 @@
 # Production runtime dependencies only
 # For development, use requirements.txt (includes ruff, mypy, pytest)
 claude-agent-sdk>=0.1.39,<0.2.0
+# feature_mcp.py uses FastMCP, which mcp 2.x renamed/removed
+mcp>=1.19.0,<2.0.0
 python-dotenv>=1.0.0
 sqlalchemy>=2.0.0
 fastapi>=0.115.0

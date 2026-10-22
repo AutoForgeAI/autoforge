@@ -44,6 +44,77 @@ EXPAND_FEATURE_TOOLS = [
     "mcp__features__feature_get_stats",
 ]
 
+# MCP tools whose results add features to the database
+FEATURE_CREATE_TOOLS = {
+    "mcp__features__feature_create",
+    "mcp__features__feature_create_bulk",
+}
+
+
+def _tool_result_text(content: Any) -> str:
+    """Flatten a ToolResultBlock's content (str or list of content dicts) into text."""
+    if content is None:
+        return ""
+    if isinstance(content, str):
+        return content
+    if isinstance(content, list):
+        parts = []
+        for item in content:
+            if isinstance(item, dict) and item.get("type") == "text":
+                parts.append(str(item.get("text", "")))
+        return "".join(parts)
+    return str(content)
+
+
+def parse_created_features(
+    tool_name: str,
+    tool_input: dict[str, Any],
+    result_content: Any,
+) -> list[dict[str, Any]]:
+    """
+    Extract the features created by a feature_create / feature_create_bulk call.
+
+    Combines the tool input (names and categories) with the JSON the MCP tool
+    returned (IDs and created count). Returns an empty list when the tool
+    reported an error or the result can't be parsed.
+    """
+    try:
+        result = json.loads(_tool_result_text(result_content))
+    except (TypeError, ValueError):
+        return []
+    if not isinstance(result, dict) or "error" in result:
+        return []
+
+    if tool_name == "mcp__features__feature_create":
+        feature = result.get("feature")
+        if not isinstance(feature, dict):
+            return []
+        return [{
+            "id": feature.get("id"),
+            "name": feature.get("name", tool_input.get("name", "")),
+            "category": feature.get("category", tool_input.get("category", "")),
+        }]
+
+    if tool_name == "mcp__features__feature_create_bulk":
+        created = result.get("created")
+        if not isinstance(created, int) or created <= 0:
+            return []
+        inputs = tool_input.get("features") or []
+        if not isinstance(inputs, list):
+            inputs = []
+        ids = result.get("feature_ids") or []
+        features = []
+        for i in range(created):
+            data = inputs[i] if i < len(inputs) and isinstance(inputs[i], dict) else {}
+            features.append({
+                "id": ids[i] if i < len(ids) else None,
+                "name": data.get("name", ""),
+                "category": data.get("category", ""),
+            })
+        return features
+
+    return []
+
 
 class ExpandChatSession:
     """
@@ -286,7 +357,8 @@ class ExpandChatSession:
         Internal method to query Claude and stream responses.
 
         Feature creation is handled by Claude calling the feature_create_bulk
-        MCP tool directly -- no text parsing needed.
+        MCP tool directly -- no text parsing needed. Tool calls are tracked so
+        successful creations can be reported to the UI as features_created.
         """
         if not self.client:
             return
@@ -309,6 +381,9 @@ class ExpandChatSession:
         else:
             await self.client.query(message)
 
+        # Feature-creation tool calls awaiting their result, keyed by tool_use_id
+        pending_creates: dict[str, tuple[str, dict[str, Any]]] = {}
+
         # Stream the response
         try:
             async for msg in safe_receive_response(self.client, logger):
@@ -328,6 +403,36 @@ class ExpandChatSession:
                                     "content": text,
                                     "timestamp": datetime.now().isoformat()
                                 })
+
+                        elif block_type == "ToolUseBlock" and getattr(block, "name", "") in FEATURE_CREATE_TOOLS:
+                            tool_input = getattr(block, "input", None)
+                            pending_creates[getattr(block, "id", "")] = (
+                                block.name,
+                                tool_input if isinstance(tool_input, dict) else {},
+                            )
+
+                elif msg_type == "UserMessage" and isinstance(getattr(msg, "content", None), list):
+                    for block in msg.content:
+                        if type(block).__name__ != "ToolResultBlock":
+                            continue
+                        pending = pending_creates.pop(getattr(block, "tool_use_id", ""), None)
+                        if pending is None:
+                            continue
+                        tool_name, tool_input = pending
+                        if getattr(block, "is_error", False):
+                            logger.warning(f"{tool_name} failed: {_tool_result_text(block.content)}")
+                            continue
+                        created = parse_created_features(tool_name, tool_input, block.content)
+                        if not created:
+                            logger.warning(f"{tool_name} created no features: {_tool_result_text(block.content)}")
+                            continue
+                        self.features_created += len(created)
+                        self.created_feature_ids.extend(f["id"] for f in created if f["id"] is not None)
+                        yield {
+                            "type": "features_created",
+                            "count": len(created),
+                            "features": created,
+                        }
         except Exception as exc:
             is_rate_limit, _ = check_rate_limit_error(exc)
             if is_rate_limit:

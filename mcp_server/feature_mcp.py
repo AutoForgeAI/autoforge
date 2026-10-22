@@ -555,7 +555,8 @@ def feature_create_bulk(
               Example: [0, 2] means this feature depends on features at index 0 and 2.
 
     Returns:
-        JSON with: created (int) - number of features created, with_dependencies (int)
+        JSON with: created (int) - number of features created, with_dependencies (int),
+        feature_ids (list[int]) - IDs of the created features in input order
     """
     try:
         # Use atomic transaction for bulk inserts to prevent priority conflicts
@@ -629,7 +630,8 @@ def feature_create_bulk(
             # Commit happens automatically on context manager exit
             return json.dumps({
                 "created": len(created_features),
-                "with_dependencies": deps_count
+                "with_dependencies": deps_count,
+                "feature_ids": [f.id for f in created_features],
             })
     except Exception as e:
         return json.dumps({"error": str(e)})
