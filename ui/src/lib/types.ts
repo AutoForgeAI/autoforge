@@ -728,3 +728,22 @@ export interface NextRunResponse {
   is_currently_running: boolean
   active_schedule_count: number
 }
+
+// ============================================================================
+// Project Knowledge Types
+// ============================================================================
+
+export interface KnowledgeFileInfo {
+  name: string
+  size: number
+  modified_at: string
+}
+
+export interface KnowledgeListResponse {
+  files: KnowledgeFileInfo[]
+}
+
+export interface KnowledgeFileContent {
+  name: string
+  content: string
+}

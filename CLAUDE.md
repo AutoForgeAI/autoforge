@@ -202,6 +202,7 @@ The FastAPI server provides REST and WebSocket endpoints for the UI:
 - `devserver.py` - Dev server control (start/stop) and config
 - `schedules.py` - CRUD for time-based agent scheduling
 - `settings.py` - Global settings management (model selection, YOLO, batch size, headless browser)
+- `knowledge.py` - Upload/list/read/delete project knowledge documents (`.autoforge/knowledge/*.md`)
 
 **Services** (`server/services/`):
 - `process_manager.py` - Agent process lifecycle management
@@ -287,6 +288,7 @@ Projects can be stored in any directory (registered in `~/.autoforge/registry.db
 - `.autoforge/features.db` - SQLite database with feature test cases
 - `.autoforge/.agent.lock` - Lock file to prevent multiple agent instances
 - `.autoforge/allowed_commands.yaml` - Project-specific bash command allowlist (optional)
+- `.autoforge/knowledge/` - User-uploaded markdown docs (requirements, research); every agent prompt is prefixed with a list of these files (`prompts.with_project_knowledge`). Managed via the book icon in the agent controls
 - `.autoforge/.gitignore` - Ignores runtime files
 - `.claude/skills/playwright-cli/` - Playwright CLI skill for browser automation
 - `.playwright/cli.config.json` - Browser configuration (headless, viewport, etc.)

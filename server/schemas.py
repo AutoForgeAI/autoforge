@@ -717,3 +717,31 @@ class NextRunResponse(BaseModel):
     next_end: datetime | None  # UTC (latest end if overlapping)
     is_currently_running: bool
     active_schedule_count: int
+
+
+# ============================================================================
+# Knowledge Document Schemas
+# ============================================================================
+
+class KnowledgeFileInfo(BaseModel):
+    """Metadata for a project knowledge document."""
+    name: str
+    size: int
+    modified_at: datetime
+
+
+class KnowledgeListResponse(BaseModel):
+    """List of project knowledge documents."""
+    files: list[KnowledgeFileInfo]
+
+
+class KnowledgeFileContent(BaseModel):
+    """A knowledge document with its content."""
+    name: str
+    content: str
+
+
+class KnowledgeFileUpload(BaseModel):
+    """Request to create or overwrite a knowledge document."""
+    filename: str = Field(..., min_length=1, max_length=255)
+    content: str

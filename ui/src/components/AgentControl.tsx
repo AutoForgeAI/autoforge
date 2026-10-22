@@ -1,5 +1,5 @@
 import { useState, useEffect, useRef, useCallback } from 'react'
-import { Play, Square, Loader2, GitBranch, Clock, Pause, PlayCircle, Sparkles } from 'lucide-react'
+import { Play, Square, Loader2, GitBranch, Clock, Pause, PlayCircle, Sparkles, BookOpen } from 'lucide-react'
 import {
   useStartAgent,
   useStopAgent,
@@ -10,9 +10,11 @@ import {
   useProject,
 } from '../hooks/useProjects'
 import { useNextScheduledRun } from '../hooks/useSchedules'
+import { useKnowledgeFiles } from '../hooks/useKnowledge'
 import { formatNextRun, formatEndTime } from '../lib/timeUtils'
 import { ScheduleModal } from './ScheduleModal'
 import { AutoImproveModal } from './AutoImproveModal'
+import { KnowledgeModal } from './KnowledgeModal'
 import type { AgentStatus } from '../lib/types'
 import { Button } from '@/components/ui/button'
 import { Badge } from '@/components/ui/badge'
@@ -73,6 +75,9 @@ export function AgentControl({ projectName, status, defaultConcurrency = 3 }: Ag
 
   const [showScheduleModal, setShowScheduleModal] = useState(false)
   const [showAutoImproveModal, setShowAutoImproveModal] = useState(false)
+  const [showKnowledgeModal, setShowKnowledgeModal] = useState(false)
+  const { data: knowledge } = useKnowledgeFiles(projectName)
+  const knowledgeCount = knowledge?.files.length ?? 0
 
   const isLoading = startAgent.isPending || stopAgent.isPending || gracefulPause.isPending || gracefulResume.isPending
   const isRunning = status === 'running' || status === 'paused' || status === 'pausing' || status === 'paused_graceful'
@@ -231,6 +236,22 @@ export function AgentControl({ projectName, status, defaultConcurrency = 3 }: Ag
           <Clock size={18} />
         </Button>
 
+        {/* Book button to open project knowledge modal */}
+        <Button
+          variant="outline"
+          size="sm"
+          onClick={() => setShowKnowledgeModal(true)}
+          title={
+            knowledgeCount > 0
+              ? `Project knowledge (${knowledgeCount} document${knowledgeCount === 1 ? '' : 's'})`
+              : 'Upload project knowledge documents'
+          }
+          className="gap-1"
+        >
+          <BookOpen size={18} />
+          {knowledgeCount > 0 && <span className="text-xs">{knowledgeCount}</span>}
+        </Button>
+
         {/* Sparkles button to open auto-improve modal */}
         <Button
           variant={autoImproveEnabled ? 'default' : 'outline'}
@@ -251,6 +272,13 @@ export function AgentControl({ projectName, status, defaultConcurrency = 3 }: Ag
         projectName={projectName}
         isOpen={showScheduleModal}
         onClose={() => setShowScheduleModal(false)}
+      />
+
+      {/* Knowledge Modal */}
+      <KnowledgeModal
+        projectName={projectName}
+        isOpen={showKnowledgeModal}
+        onClose={() => setShowKnowledgeModal(false)}
       />
 
       {/* Auto-Improve Modal */}
