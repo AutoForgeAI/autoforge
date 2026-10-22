@@ -18,6 +18,7 @@ from client import (
     EXTRA_READ_PATHS_VAR,
     convert_model_for_vertex,
     get_extra_read_paths,
+    resolve_model_for_alternative_api,
 )
 
 
@@ -114,6 +115,56 @@ class TestConvertModelForVertex(unittest.TestCase):
     def test_empty_string_unchanged(self):
         os.environ["CLAUDE_CODE_USE_VERTEX"] = "1"
         self.assertEqual(convert_model_for_vertex(""), "")
+
+
+class TestResolveModelForAlternativeApi(unittest.TestCase):
+    """Tests for resolve_model_for_alternative_api (issue #107)."""
+
+    OLLAMA = "http://localhost:11434"
+
+    def test_no_base_url_leaves_model_unchanged(self):
+        env = {"ANTHROPIC_DEFAULT_OPUS_MODEL": "qwen2.5-coder"}
+        self.assertEqual(resolve_model_for_alternative_api("claude-opus-4-7", env), "claude-opus-4-7")
+
+    def test_opus_maps_to_opus_override(self):
+        env = {
+            "ANTHROPIC_BASE_URL": self.OLLAMA,
+            "ANTHROPIC_DEFAULT_OPUS_MODEL": "qwen2.5-coder",
+            "ANTHROPIC_DEFAULT_SONNET_MODEL": "qwen2.5-coder:7b",
+        }
+        self.assertEqual(resolve_model_for_alternative_api("claude-opus-4-5-20251101", env), "qwen2.5-coder")
+
+    def test_sonnet_maps_to_sonnet_override(self):
+        env = {
+            "ANTHROPIC_BASE_URL": self.OLLAMA,
+            "ANTHROPIC_DEFAULT_OPUS_MODEL": "big",
+            "ANTHROPIC_DEFAULT_SONNET_MODEL": "small",
+        }
+        self.assertEqual(resolve_model_for_alternative_api("claude-sonnet-4-6", env), "small")
+
+    def test_missing_tier_falls_back_to_any_override(self):
+        env = {"ANTHROPIC_BASE_URL": self.OLLAMA, "ANTHROPIC_DEFAULT_OPUS_MODEL": "qwen2.5-coder"}
+        self.assertEqual(resolve_model_for_alternative_api("claude-sonnet-4-6", env), "qwen2.5-coder")
+
+    def test_no_overrides_leaves_model_unchanged(self):
+        env = {"ANTHROPIC_BASE_URL": "https://proxy.example.com"}
+        self.assertEqual(resolve_model_for_alternative_api("claude-opus-4-7", env), "claude-opus-4-7")
+
+    def test_blank_override_ignored(self):
+        env = {"ANTHROPIC_BASE_URL": self.OLLAMA, "ANTHROPIC_DEFAULT_OPUS_MODEL": "  "}
+        self.assertEqual(resolve_model_for_alternative_api("claude-opus-4-7", env), "claude-opus-4-7")
+
+    def test_non_claude_model_passthrough(self):
+        env = {"ANTHROPIC_BASE_URL": self.OLLAMA, "ANTHROPIC_DEFAULT_OPUS_MODEL": "other"}
+        self.assertEqual(resolve_model_for_alternative_api("qwen2.5-coder", env), "qwen2.5-coder")
+
+    def test_vertex_leaves_model_unchanged(self):
+        env = {
+            "ANTHROPIC_BASE_URL": "https://example.com",
+            "CLAUDE_CODE_USE_VERTEX": "1",
+            "ANTHROPIC_DEFAULT_OPUS_MODEL": "claude-opus-4-6",
+        }
+        self.assertEqual(resolve_model_for_alternative_api("claude-opus-4-7", env), "claude-opus-4-7")
 
 
 class TestExtraReadPathsBlocklist(unittest.TestCase):

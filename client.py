@@ -63,6 +63,54 @@ def convert_model_for_vertex(model: str) -> str:
     return model
 
 
+# Claude model tier -> env var that overrides it (matches Claude CLI semantics)
+MODEL_TIER_OVERRIDE_VARS = {
+    "opus": "ANTHROPIC_DEFAULT_OPUS_MODEL",
+    "sonnet": "ANTHROPIC_DEFAULT_SONNET_MODEL",
+    "haiku": "ANTHROPIC_DEFAULT_HAIKU_MODEL",
+}
+
+
+def resolve_model_for_alternative_api(model: str, sdk_env: dict[str, str]) -> str:
+    """
+    Map a Claude model ID to the user's tier override when using an alternative API.
+
+    The Claude CLI only applies ANTHROPIC_DEFAULT_{OPUS,SONNET,HAIKU}_MODEL to
+    tier aliases ("opus", "sonnet"), not to full model IDs like
+    "claude-opus-4-7". Since AutoForge always passes a full Claude ID, endpoints
+    such as Ollama or a custom proxy would otherwise receive a model they don't
+    serve and fail with a 404. When ANTHROPIC_BASE_URL is set (and Vertex AI is
+    not in use), a Claude model ID is replaced with the matching tier override.
+
+    Args:
+        model: Model ID selected in settings or passed via --model
+        sdk_env: Effective SDK environment from get_effective_sdk_env()
+
+    Returns:
+        The override model if one applies, otherwise the model unchanged.
+    """
+    if not sdk_env.get("ANTHROPIC_BASE_URL") or sdk_env.get("CLAUDE_CODE_USE_VERTEX") == "1":
+        return model
+    if not model.startswith("claude-"):
+        # Already a provider-specific model name (e.g. "qwen2.5-coder")
+        return model
+
+    for tier, env_var in MODEL_TIER_OVERRIDE_VARS.items():
+        if tier in model:
+            override = (sdk_env.get(env_var) or "").strip()
+            if override:
+                return override
+            break
+
+    # Selected tier has no override: fall back to any configured override so a
+    # single-model setup (e.g. only ANTHROPIC_DEFAULT_OPUS_MODEL) still works.
+    for env_var in MODEL_TIER_OVERRIDE_VARS.values():
+        override = (sdk_env.get(env_var) or "").strip()
+        if override:
+            return override
+    return model
+
+
 def get_extra_read_paths() -> list[Path]:
     """
     Get extra read-only paths from EXTRA_READ_PATHS environment variable.
@@ -354,6 +402,10 @@ def create_client(
     is_ollama = "localhost:11434" in base_url or "127.0.0.1:11434" in base_url
     is_azure = "services.ai.azure.com" in base_url
     model = convert_model_for_vertex(model)
+    resolved_model = resolve_model_for_alternative_api(model, sdk_env)
+    if resolved_model != model:
+        print(f"   - Model: '{model}' mapped to '{resolved_model}' via tier override")
+        model = resolved_model
     if sdk_env:
         print(f"   - API overrides: {', '.join(sdk_env.keys())}")
         if is_vertex:
