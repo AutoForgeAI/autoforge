@@ -96,6 +96,49 @@ def format_client_init_error(exc: Exception) -> str:
     return f"Failed to initialize Claude: {exc}"
 
 
+# Opening lines of system prompts that older AutoForge versions wrote into the
+# project's root CLAUDE.md.  Used to recognise and remove those stale files.
+_LEGACY_CLAUDE_MD_PREFIXES = (
+    "You are a helpful project assistant and backlog manager for the",
+    "---\ndescription: Create an app spec for autonomous coding",
+)
+
+
+def write_system_prompt_file(project_dir: Path, name: str, content: str) -> Path:
+    """Write a chat session's system prompt to ``.autoforge/<name>_system_prompt.md``.
+
+    The prompt is handed to the Claude CLI via ``--system-prompt-file`` so it
+    neither hits the Windows command line length limit (~8191 chars) nor
+    lands in the project's CLAUDE.md, where Claude Code, Cursor and other
+    editors would pick up its restrictions outside AutoForge (issue #187).
+    Any CLAUDE.md left behind by older versions is removed.
+    """
+    remove_legacy_claude_md(project_dir)
+    prompt_path = project_dir / ".autoforge" / f"{name}_system_prompt.md"
+    prompt_path.parent.mkdir(parents=True, exist_ok=True)
+    prompt_path.write_text(content, encoding="utf-8")
+    return prompt_path
+
+
+def remove_legacy_claude_md(project_dir: Path) -> None:
+    """Delete a root CLAUDE.md that an older AutoForge chat session generated.
+
+    Only files that still start with one of the known generated prompts are
+    removed; a user-authored CLAUDE.md is never touched.
+    """
+    claude_md = project_dir / "CLAUDE.md"
+    try:
+        head = claude_md.read_text(encoding="utf-8", errors="replace")[:200].replace("\r\n", "\n")
+    except OSError:
+        return
+    if head.startswith(_LEGACY_CLAUDE_MD_PREFIXES):
+        try:
+            claude_md.unlink()
+            logger.info(f"Removed AutoForge-generated chat prompt from {claude_md}")
+        except OSError as e:
+            logger.warning(f"Failed to remove legacy {claude_md}: {e}")
+
+
 async def safe_receive_response(client: Any, log: logging.Logger) -> AsyncGenerator:
     """Wrap ``client.receive_response()`` to skip ``MessageParseError``.
 

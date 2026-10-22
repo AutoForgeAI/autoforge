@@ -288,6 +288,7 @@ Projects can be stored in any directory (registered in `~/.autoforge/registry.db
 - `.autoforge/.agent.lock` - Lock file to prevent multiple agent instances
 - `.autoforge/allowed_commands.yaml` - Project-specific bash command allowlist (optional)
 - `.autoforge/.gitignore` - Ignores runtime files
+- `.autoforge/{assistant,spec}_system_prompt.md` - Chat session system prompts (passed via `--system-prompt-file`; never written to the project's `CLAUDE.md`)
 - `.claude/skills/playwright-cli/` - Playwright CLI skill for browser automation
 - `.playwright/cli.config.json` - Browser configuration (headless, viewport, etc.)
 - `.playwright-cli/` - Playwright CLI daemon artifacts (screenshots, snapshots) - gitignored

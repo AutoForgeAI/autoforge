@@ -27,6 +27,7 @@ from .chat_constants import (
     format_client_init_error,
     make_multimodal_message,
     safe_receive_response,
+    write_system_prompt_file,
 )
 
 # Load environment variables from .env file if present
@@ -135,12 +136,10 @@ class SpecChatSession:
         project_path = str(self.project_dir.resolve())
         system_prompt = skill_content.replace("$ARGUMENTS", project_path)
 
-        # Write system prompt to CLAUDE.md file to avoid Windows command line length limit
-        # The SDK will read this via setting_sources=["project"]
-        claude_md_path = self.project_dir / "CLAUDE.md"
-        with open(claude_md_path, "w", encoding="utf-8") as f:
-            f.write(system_prompt)
-        logger.info(f"Wrote system prompt to {claude_md_path}")
+        # Write system prompt to a file under .autoforge/ (not CLAUDE.md, which
+        # external editors would also read) and pass it via --system-prompt-file
+        system_prompt_path = write_system_prompt_file(self.project_dir, "spec", system_prompt)
+        logger.info(f"Wrote system prompt to {system_prompt_path}")
 
         # Create Claude SDK client with limited tools for spec creation
         # Use Opus for best quality spec generation
@@ -161,7 +160,8 @@ class SpecChatSession:
                     model=model,
                     effort=effort,  # type: ignore[arg-type]  # SDK 0.1.61 Literal omits "xhigh"
                     cli_path=system_cli,
-                    # System prompt loaded from CLAUDE.md via setting_sources
+                    # Read from a file to avoid Windows command line length limit (~8191 chars)
+                    system_prompt={"type": "file", "path": str(system_prompt_path.resolve())},
                     # Include "user" for global skills and subagents from ~/.claude/
                     setting_sources=["project", "user"],
                     allowed_tools=[

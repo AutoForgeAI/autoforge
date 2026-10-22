@@ -30,6 +30,7 @@ from .chat_constants import (
     check_rate_limit_error,
     format_client_init_error,
     safe_receive_response,
+    write_system_prompt_file,
 )
 
 # Load environment variables from .env file if present
@@ -279,12 +280,10 @@ class AssistantChatSession:
         # Get system prompt with project context
         system_prompt = get_system_prompt(self.project_name, self.project_dir)
 
-        # Write system prompt to CLAUDE.md file to avoid Windows command line length limit
-        # The SDK will read this via setting_sources=["project"]
-        claude_md_path = self.project_dir / "CLAUDE.md"
-        with open(claude_md_path, "w", encoding="utf-8") as f:
-            f.write(system_prompt)
-        logger.info(f"Wrote assistant system prompt to {claude_md_path}")
+        # Write system prompt to a file under .autoforge/ (not CLAUDE.md, which
+        # external editors would also read) and pass it via --system-prompt-file
+        system_prompt_path = write_system_prompt_file(self.project_dir, "assistant", system_prompt)
+        logger.info(f"Wrote assistant system prompt to {system_prompt_path}")
 
         # Use system Claude CLI
         system_cli = shutil.which("claude")
@@ -304,8 +303,8 @@ class AssistantChatSession:
                     model=model,
                     effort=effort,  # type: ignore[arg-type]  # SDK 0.1.61 Literal omits "xhigh"
                     cli_path=system_cli,
-                    # System prompt loaded from CLAUDE.md via setting_sources
-                    # This avoids Windows command line length limit (~8191 chars)
+                    # Read from a file to avoid Windows command line length limit (~8191 chars)
+                    system_prompt={"type": "file", "path": str(system_prompt_path.resolve())},
                     setting_sources=["project"],
                     allowed_tools=[*READONLY_BUILTIN_TOOLS, *ASSISTANT_FEATURE_TOOLS],
                     disallowed_tools=DISALLOWED_ASSISTANT_TOOLS,

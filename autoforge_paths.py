@@ -43,6 +43,7 @@ assistant.db-shm
 .claude_settings.json
 .claude_assistant_settings.json
 .claude_settings.expand.*.json
+*_system_prompt.md
 .progress_cache
 .migration_version
 """
