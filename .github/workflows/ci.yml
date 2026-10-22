@@ -20,6 +20,8 @@ jobs:
         run: ruff check .
       - name: Run security tests
         run: python test_security.py
+      - name: Run quality gate tests
+        run: python -m pytest test_quality_gates.py
 
   ui:
     runs-on: ubuntu-latest

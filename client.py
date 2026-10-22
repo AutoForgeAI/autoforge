@@ -16,6 +16,7 @@ from claude_agent_sdk import ClaudeAgentOptions, ClaudeSDKClient
 from claude_agent_sdk.types import HookContext, HookInput, HookMatcher, SyncHookJSONOutput
 from dotenv import load_dotenv
 
+from quality_gates import QUALITY_GATE_ENV_VARS
 from security import SENSITIVE_DIRECTORIES, bash_security_hook
 
 # Load environment variables from .env file if present
@@ -159,6 +160,8 @@ CODING_AGENT_TOOLS = [
     "mcp__features__feature_mark_failing",
     "mcp__features__feature_skip",
     "mcp__features__feature_clear_in_progress",
+    "mcp__features__feature_verify_quality",
+    "mcp__features__feature_report_failure",
 ]
 
 TESTING_AGENT_TOOLS = [
@@ -170,6 +173,7 @@ TESTING_AGENT_TOOLS = [
     "mcp__features__feature_get_graph",
     "mcp__features__feature_mark_passing",
     "mcp__features__feature_mark_failing",
+    "mcp__features__feature_verify_quality",
 ]
 
 INITIALIZER_AGENT_TOOLS = [
@@ -335,6 +339,9 @@ def create_client(
                 # (subprocess inherits parent environment automatically)
                 "PROJECT_DIR": str(project_dir.resolve()),
                 "PYTHONPATH": str(Path(__file__).parent.resolve()),
+                # Trusted quality-gate switch: comes from the host environment only,
+                # never from files the agent can write inside the project
+                **{k: os.environ[k] for k in QUALITY_GATE_ENV_VARS if k in os.environ},
             },
         },
     }

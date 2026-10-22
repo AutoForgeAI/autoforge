@@ -146,6 +146,11 @@ After thorough verification, mark the feature as passing:
 Use the feature_mark_passing tool with feature_id=42
 ```
 
+If the project has quality gates enabled, `feature_mark_passing` first runs the project's
+lint and type checks. If it responds that quality gates failed, the feature was NOT marked
+passing: fix the reported errors and call it again. You can run the same checks earlier with
+`feature_verify_quality` (it returns an error when quality gates are not enabled; that is fine, just continue).
+
 **NEVER:**
 
 - Delete features
@@ -240,6 +245,12 @@ feature_skip with feature_id={id}
 
 # 7. Clear in-progress status (when abandoning a feature)
 feature_clear_in_progress with feature_id={id}
+
+# 8. Run lint/type-check quality gates (before marking passing)
+feature_verify_quality with feature_id={id}
+
+# 9. Record why an attempt failed (before skipping/abandoning a feature)
+feature_report_failure with feature_id={id} and reason="..."
 ```
 
 ### RULES:

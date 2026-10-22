@@ -66,6 +66,11 @@ class Feature(Base):
     human_input_request = Column(JSON, nullable=True, default=None)   # Agent's structured request
     human_input_response = Column(JSON, nullable=True, default=None)  # Human's response
 
+    # Quality gates: evidence from the last lint/type-check run and failure tracking
+    quality_result = Column(JSON, nullable=True, default=None)  # Last quality report (see quality_gates.py)
+    failure_reason = Column(Text, nullable=True, default=None)  # Why the last attempt failed
+    failure_count = Column(Integer, nullable=False, default=0)  # Number of failed attempts
+
     def to_dict(self) -> dict:
         """Convert feature to dictionary for JSON serialization."""
         return {
@@ -84,6 +89,10 @@ class Feature(Base):
             "needs_human_input": self.needs_human_input if self.needs_human_input is not None else False,
             "human_input_request": self.human_input_request,
             "human_input_response": self.human_input_response,
+            # Quality gate fields
+            "quality_result": self.quality_result,
+            "failure_reason": self.failure_reason,
+            "failure_count": self.failure_count if self.failure_count is not None else 0,
         }
 
     def get_dependencies_safe(self) -> list[int]:
@@ -326,6 +335,21 @@ def _migrate_add_human_input_columns(engine) -> None:
         conn.commit()
 
 
+def _migrate_add_quality_columns(engine) -> None:
+    """Add quality gate columns to existing databases that don't have them."""
+    with engine.connect() as conn:
+        result = conn.execute(text("PRAGMA table_info(features)"))
+        columns = [row[1] for row in result.fetchall()]
+
+        if "quality_result" not in columns:
+            conn.execute(text("ALTER TABLE features ADD COLUMN quality_result TEXT DEFAULT NULL"))
+        if "failure_reason" not in columns:
+            conn.execute(text("ALTER TABLE features ADD COLUMN failure_reason TEXT DEFAULT NULL"))
+        if "failure_count" not in columns:
+            conn.execute(text("ALTER TABLE features ADD COLUMN failure_count INTEGER NOT NULL DEFAULT 0"))
+        conn.commit()
+
+
 def _migrate_add_schedules_tables(engine) -> None:
     """Create schedules and schedule_overrides tables if they don't exist."""
     from sqlalchemy import inspect
@@ -450,6 +474,7 @@ def create_database(project_dir: Path) -> tuple:
     _migrate_add_dependencies_column(engine)
     _migrate_add_testing_columns(engine)
     _migrate_add_human_input_columns(engine)
+    _migrate_add_quality_columns(engine)
 
     # Migrate to add schedules tables
     _migrate_add_schedules_tables(engine)

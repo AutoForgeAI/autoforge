@@ -110,7 +110,8 @@ A regression has been introduced. You MUST fix it:
 - `feature_get_stats` - Get progress overview (passing/in_progress/total counts)
 - `feature_get_by_id` - Get your assigned feature details
 - `feature_mark_failing` - Mark a feature as failing (when you find a regression)
-- `feature_mark_passing` - Mark a feature as passing (after fixing a regression)
+- `feature_mark_passing` - Mark a feature as passing (after fixing a regression; may be rejected if quality gates fail)
+- `feature_verify_quality` - Run the project's lint/type-check quality gates
 
 ### Browser Automation (Playwright CLI)
 Use `playwright-cli` commands for browser interaction. Key commands:

@@ -32,6 +32,7 @@
     "parallel_orchestrator.py",
     "progress.py",
     "prompts.py",
+    "quality_gates.py",
     "registry.py",
     "rate_limit_utils.py",
     "security.py",

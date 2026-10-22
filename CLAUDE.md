@@ -120,6 +120,7 @@ python test_security_integration.py   # Integration tests (9 tests)
 python -m pytest test_client.py       # Client tests (20 tests)
 python -m pytest test_dependency_resolver.py  # Dependency resolver tests (12 tests)
 python -m pytest test_rate_limit_utils.py     # Rate limit tests (22 tests)
+python -m pytest test_quality_gates.py        # Quality gate tests
 ```
 
 ### React UI
@@ -172,6 +173,7 @@ Publishing: `npm publish` (triggers `prepublishOnly` which builds UI, then publi
 - `auth.py` - Authentication error detection for Claude CLI
 - `env_constants.py` - Shared environment variable constants (API_ENV_VARS) used by client.py and chat sessions
 - `rate_limit_utils.py` - Rate limit detection, retry parsing, exponential backoff with jitter
+- `quality_gates.py` - Lint/type-check auto-detection and enforcement before `feature_mark_passing`
 - `api/database.py` - SQLAlchemy models (Feature, Schedule, ScheduleOverride)
 - `api/dependency_resolver.py` - Cycle detection (Kahn's algorithm + DFS) and dependency validation
 - `api/migration.py` - JSON-to-SQLite migration utility
@@ -244,6 +246,24 @@ MCP tools available to the agent:
 - `feature_add_dependency` - Add dependency between features (with cycle detection)
 - `feature_remove_dependency` - Remove a dependency
 - `feature_set_dependencies` - Set all dependencies for a feature at once
+- `feature_verify_quality` - Run lint/type-check quality gates and store the result on the feature
+- `feature_report_failure` - Record why a feature attempt failed (increments `failure_count`)
+
+#### Quality Gates
+
+`quality_gates.py` auto-detects a project's linters (ESLint, Biome, ruff, flake8) and type checkers (tsc, mypy) from its config files and runs them. Node tools only run from the project's `node_modules/.bin`; Python tools from the project's `.venv`/`venv` or PATH.
+
+Disabled by default. Configured **only** via environment variables of the AutoForge process (e.g. `~/.autoforge/.env`, see `.env.example`), which `client.py` forwards to the feature MCP server. Nothing inside the project directory (which the agent can write) can enable or weaken the gates:
+
+```bash
+AUTOFORGE_QUALITY_GATES=strict        # off (default) | strict | warn
+AUTOFORGE_QUALITY_GATES_TIMEOUT=120   # per-check timeout in seconds (max 600)
+AUTOFORGE_QUALITY_GATES_CHECKS=lint,type_check
+```
+
+When enabled, `feature_mark_passing` runs the checks first. In `strict` mode a failing check blocks marking the feature passing, records `failure_reason`, and increments `failure_count`; in `warn` mode it only warns. The latest report is stored in the feature's `quality_result` column as test evidence. While disabled, `feature_verify_quality` returns an error and runs nothing.
+
+**Security / trust:** the checks run inside the feature MCP server, outside the agent's Bash sandbox and the `security.py` allowlist, and execute project-local tooling and config the agent can modify (`node_modules/.bin/*`, `.venv`, `eslint.config.js`, ...). Enabling quality gates is a trust decision; only enable them for projects you trust to run unsandboxed.
 
 ### React UI (ui/)
 
