@@ -48,6 +48,14 @@ function setStoredConversationId(projectName: string, conversationId: number | n
 }
 
 export function AssistantPanel({ projectName, isOpen, onClose }: AssistantPanelProps) {
+  // Keep the chat mounted after it has been opened for this project so closing
+  // the panel doesn't drop the WebSocket (and any response still streaming in).
+  const [openedForProject, setOpenedForProject] = useState<string | null>(isOpen ? projectName : null)
+  if (isOpen && openedForProject !== projectName) {
+    setOpenedForProject(projectName)
+  }
+  const keepChatMounted = openedForProject === projectName
+
   // Load initial conversation ID from localStorage
   const [conversationId, setConversationId] = useState<number | null>(() =>
     getStoredConversationId(projectName)
@@ -172,6 +180,7 @@ export function AssistantPanel({ projectName, isOpen, onClose }: AssistantPanelP
         role="dialog"
         aria-label="Project Assistant"
         aria-hidden={!isOpen}
+        inert={!isOpen}
       >
         {/* Resize handle */}
         <div
@@ -206,8 +215,9 @@ export function AssistantPanel({ projectName, isOpen, onClose }: AssistantPanelP
 
         {/* Chat area */}
         <div className="flex-1 overflow-hidden">
-          {isOpen && (
+          {keepChatMounted && (
             <AssistantChat
+              key={projectName}
               projectName={projectName}
               conversationId={conversationId}
               initialMessages={initialMessages}

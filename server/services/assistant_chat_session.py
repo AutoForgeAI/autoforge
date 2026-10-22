@@ -7,12 +7,14 @@ The assistant can answer questions about the codebase and features
 but cannot modify any files.
 """
 
+import asyncio
 import json
 import logging
 import os
 import shutil
 import sys
 import threading
+from contextlib import aclosing
 from datetime import datetime
 from pathlib import Path
 from typing import AsyncGenerator, Optional
@@ -208,6 +210,19 @@ class AssistantChatSession:
         self._client_entered: bool = False
         self.created_at = datetime.now()
         self._history_loaded: bool = False  # Track if we've loaded history for resumed conversations
+        # Serializes queries so a response that is still streaming (e.g. after the
+        # browser disconnected) finishes and is persisted before the next one starts.
+        self._query_lock = asyncio.Lock()
+
+    @property
+    def is_ready(self) -> bool:
+        """Whether the Claude client is initialized and can accept messages."""
+        return self.client is not None and self._client_entered
+
+    async def wait_until_idle(self) -> None:
+        """Wait for any in-flight response to finish streaming and be persisted."""
+        async with self._query_lock:
+            pass
 
     async def close(self) -> None:
         """Clean up resources and close the Claude client."""
@@ -349,6 +364,17 @@ class AssistantChatSession:
             # _history_loaded stays False so send_message() will include history
             yield {"type": "response_done"}
 
+    async def resume(self) -> AsyncGenerator[dict, None]:
+        """
+        Re-attach a client to an already running session.
+
+        Waits for any response still being generated (e.g. one that was in
+        flight when the browser disconnected) so it is persisted before the
+        client reloads the conversation history.
+        """
+        await self.wait_until_idle()
+        yield {"type": "response_done"}
+
     async def send_message(self, user_message: str) -> AsyncGenerator[dict, None]:
         """
         Send user message and stream Claude's response.
@@ -370,6 +396,15 @@ class AssistantChatSession:
         if self.conversation_id is None:
             yield {"type": "error", "content": "No conversation ID set."}
             return
+
+        # aclosing() propagates an early close so partial responses get persisted
+        async with self._query_lock, aclosing(self._send_message_locked(user_message)) as chunks:
+            async for chunk in chunks:
+                yield chunk
+
+    async def _send_message_locked(self, user_message: str) -> AsyncGenerator[dict, None]:
+        """Body of send_message(); caller must hold self._query_lock."""
+        assert self.conversation_id is not None
 
         # Store user message in database
         add_message(self.project_dir, self.conversation_id, "user", user_message)
@@ -399,8 +434,9 @@ class AssistantChatSession:
                 logger.info(f"Loaded {len(history)} messages from conversation history")
 
         try:
-            async for chunk in self._query_claude(message_to_send):
-                yield chunk
+            async with aclosing(self._query_claude(message_to_send)) as chunks:
+                async for chunk in chunks:
+                    yield chunk
             yield {"type": "response_done"}
         except Exception as e:
             logger.exception("Error during Claude query")
@@ -461,10 +497,11 @@ class AssistantChatSession:
                 yield {"type": "error", "content": "Rate limited. Please try again later."}
                 return
             raise
-
-        # Store the complete response in the database
-        if full_response and self.conversation_id:
-            add_message(self.project_dir, self.conversation_id, "assistant", full_response)
+        finally:
+            # Persist the response even if streaming was interrupted (client
+            # disconnected, session closed) so it shows up when history reloads.
+            if full_response and self.conversation_id:
+                add_message(self.project_dir, self.conversation_id, "assistant", full_response)
 
     def get_conversation_id(self) -> Optional[int]:
         """Get the current conversation ID."""
@@ -490,6 +527,10 @@ async def create_session(
     """
     Create a new session for a project, closing any existing one.
 
+    If the existing session is already serving the requested conversation it is
+    returned as-is (check ``session.is_ready`` and use ``resume()`` instead of
+    ``start()``).
+
     Args:
         project_name: Name of the project
         project_dir: Absolute path to the project directory
@@ -498,6 +539,17 @@ async def create_session(
     old_session: Optional[AssistantChatSession] = None
 
     with _sessions_lock:
+        existing = _sessions.get(project_name)
+        if (
+            existing is not None
+            and conversation_id is not None
+            and existing.conversation_id == conversation_id
+            and existing.project_dir == project_dir
+            and existing.is_ready
+        ):
+            # Reconnecting to the same conversation (e.g. the panel was closed and
+            # reopened): keep the live session so an in-flight response isn't lost.
+            return existing
         old_session = _sessions.pop(project_name, None)
         session = AssistantChatSession(project_name, project_dir, conversation_id)
         _sessions[project_name] = session

@@ -7,7 +7,7 @@ WebSocket and REST endpoints for the read-only project assistant.
 
 import json
 import logging
-from typing import Optional
+from typing import AsyncIterator, Optional
 
 from fastapi import APIRouter, HTTPException, WebSocket, WebSocketDisconnect
 from pydantic import BaseModel
@@ -197,6 +197,29 @@ async def close_session(project_name: str):
 # WebSocket Endpoint
 # ============================================================================
 
+async def _forward_chunks(websocket: WebSocket, chunks: AsyncIterator[dict]) -> bool:
+    """
+    Forward streamed chunks to the WebSocket.
+
+    If the client goes away mid-response (panel closed, tab hidden, network
+    blip), keep consuming the stream so Claude's answer still completes and is
+    persisted to the conversation history.
+
+    Returns:
+        True if the WebSocket is still usable, False if it disconnected.
+    """
+    connected = True
+    async for chunk in chunks:
+        if not connected:
+            continue
+        try:
+            await websocket.send_json(chunk)
+        except Exception:
+            connected = False
+            logger.info("Assistant WebSocket closed mid-response; finishing response in background")
+    return connected
+
+
 @router.websocket("/ws/{project_name}")
 async def assistant_chat_websocket(websocket: WebSocket, project_name: str):
     """
@@ -270,11 +293,11 @@ async def assistant_chat_websocket(websocket: WebSocket, project_name: str):
                         )
                         logger.debug("Session created, starting...")
 
-                        # Stream the initial greeting
-                        async for chunk in session.start():
-                            if logger.isEnabledFor(logging.DEBUG):
-                                logger.debug(f"Sending chunk: {chunk.get('type')}")
-                            await websocket.send_json(chunk)
+                        # Re-attach to a live session for the same conversation, or
+                        # start a fresh one (streams the greeting for new chats)
+                        chunks = session.resume() if session.is_ready else session.start()
+                        if not await _forward_chunks(websocket, chunks):
+                            break
                         logger.debug("Session start complete")
                     except Exception as e:
                         logger.exception(f"Error starting assistant session for {project_name}")
@@ -302,8 +325,8 @@ async def assistant_chat_websocket(websocket: WebSocket, project_name: str):
                         continue
 
                     # Stream Claude's response
-                    async for chunk in session.send_message(user_content):
-                        await websocket.send_json(chunk)
+                    if not await _forward_chunks(websocket, session.send_message(user_content)):
+                        break
 
                 elif msg_type == "answer":
                     # User answered a structured question
@@ -330,8 +353,8 @@ async def assistant_chat_websocket(websocket: WebSocket, project_name: str):
                         user_response = str(answers)
 
                     # Stream Claude's response
-                    async for chunk in session.send_message(user_response):
-                        await websocket.send_json(chunk)
+                    if not await _forward_chunks(websocket, session.send_message(user_response)):
+                        break
 
                 else:
                     await websocket.send_json({

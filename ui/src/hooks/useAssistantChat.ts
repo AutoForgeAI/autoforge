@@ -3,6 +3,7 @@
  */
 
 import { useState, useCallback, useRef, useEffect } from "react";
+import { useQueryClient } from "@tanstack/react-query";
 import type { ChatMessage, AssistantChatServerMessage, SpecQuestion } from "../lib/types";
 
 type ConnectionStatus = "disconnected" | "connecting" | "connected" | "error";
@@ -40,6 +41,7 @@ export function useAssistantChat({
   const [conversationId, setConversationId] = useState<number | null>(null);
   const [currentQuestions, setCurrentQuestions] = useState<SpecQuestion[] | null>(null);
 
+  const queryClient = useQueryClient();
   const wsRef = useRef<WebSocket | null>(null);
   const currentAssistantMessageRef = useRef<string | null>(null);
   const reconnectAttempts = useRef(0);
@@ -47,10 +49,19 @@ export function useAssistantChat({
   const pingIntervalRef = useRef<number | null>(null);
   const reconnectTimeoutRef = useRef<number | null>(null);
   const checkAndSendTimeoutRef = useRef<number | null>(null);
+  // Mirrors conversationId so WebSocket callbacks can read the latest value
+  const conversationIdRef = useRef<number | null>(null);
+  // Conversation being resumed; set while waiting for the server to confirm
+  const resumingConversationIdRef = useRef<number | null>(null);
+
+  useEffect(() => {
+    conversationIdRef.current = conversationId;
+  }, [conversationId]);
 
   // Clean up on unmount
   useEffect(() => {
     return () => {
+      reconnectAttempts.current = maxReconnectAttempts; // Prevent reconnection after unmount
       if (pingIntervalRef.current) {
         clearInterval(pingIntervalRef.current);
       }
@@ -87,7 +98,19 @@ export function useAssistantChat({
 
     ws.onopen = () => {
       setConnectionStatus("connected");
+      const isReconnect = reconnectAttempts.current > 0;
       reconnectAttempts.current = 0;
+
+      // After an unexpected disconnect, re-attach to the conversation. The
+      // server finishes any in-flight response, then we reload history so a
+      // reply that streamed while we were offline isn't lost.
+      if (isReconnect && conversationIdRef.current) {
+        resumingConversationIdRef.current = conversationIdRef.current;
+        setIsLoading(true);
+        ws.send(
+          JSON.stringify({ type: "start", conversation_id: conversationIdRef.current }),
+        );
+      }
 
       // Start ping interval to keep connection alive
       pingIntervalRef.current = window.setInterval(() => {
@@ -232,8 +255,25 @@ export function useAssistantChat({
           }
 
           case "response_done": {
-            setIsLoading(false);
             currentAssistantMessageRef.current = null;
+
+            const resumedId = resumingConversationIdRef.current;
+            if (resumedId !== null) {
+              // The stored history is now complete (including any reply that
+              // finished while disconnected). Reload it and let it replace the
+              // live messages to avoid duplicates.
+              resumingConversationIdRef.current = null;
+              queryClient
+                .invalidateQueries({ queryKey: ["conversation", projectName, resumedId] })
+                .finally(() => {
+                  setMessages([]);
+                  setIsLoading(false);
+                });
+              queryClient.invalidateQueries({ queryKey: ["conversations", projectName] });
+              break;
+            }
+
+            setIsLoading(false);
 
             // Mark current message as done streaming
             setMessages((prev) => {
@@ -253,6 +293,7 @@ export function useAssistantChat({
           }
 
           case "error": {
+            resumingConversationIdRef.current = null;
             setIsLoading(false);
             onError?.(data.content);
 
@@ -278,7 +319,7 @@ export function useAssistantChat({
         console.error("Failed to parse WebSocket message:", e);
       }
     };
-  }, [projectName, onError]);
+  }, [projectName, onError, queryClient]);
 
   const start = useCallback(
     (existingConversationId?: number | null) => {
@@ -301,6 +342,9 @@ export function useAssistantChat({
           if (existingConversationId) {
             payload.conversation_id = existingConversationId;
             setConversationId(existingConversationId);
+            resumingConversationIdRef.current = existingConversationId;
+          } else {
+            resumingConversationIdRef.current = null;
           }
           if (import.meta.env.DEV) {
             console.debug('[useAssistantChat] Sending start message:', payload);

@@ -38,7 +38,7 @@ export function AssistantChat({
 }: AssistantChatProps) {
   const [inputValue, setInputValue] = useState('')
   const [showHistory, setShowHistory] = useState(false)
-  const messagesEndRef = useRef<HTMLDivElement>(null)
+  const messagesContainerRef = useRef<HTMLDivElement>(null)
   const inputRef = useRef<HTMLTextAreaElement>(null)
   const hasStartedRef = useRef(false)
   const lastConversationIdRef = useRef<number | null | undefined>(undefined)
@@ -77,10 +77,12 @@ export function AssistantChat({
     previousActiveConversationIdRef.current = activeConversationId
   }, [activeConversationId, onConversationCreated])
 
-  // Auto-scroll to bottom on new messages
+  // Auto-scroll to bottom on new messages. Scroll the container directly rather
+  // than using scrollIntoView, which can scroll the page while the panel is hidden.
   useEffect(() => {
-    messagesEndRef.current?.scrollIntoView({ behavior: 'smooth' })
-  }, [messages])
+    const container = messagesContainerRef.current
+    container?.scrollTo({ top: container.scrollHeight, behavior: 'smooth' })
+  }, [messages, initialMessages])
 
   // Start or resume the chat session when component mounts or conversationId changes
   useEffect(() => {
@@ -228,7 +230,7 @@ export function AssistantChat({
       </div>
 
       {/* Messages area */}
-      <div className="flex-1 overflow-y-auto bg-background">
+      <div ref={messagesContainerRef} className="flex-1 overflow-y-auto bg-background">
         {isLoadingConversation ? (
           <div className="flex items-center justify-center h-full text-muted-foreground text-sm">
             <div className="flex items-center gap-2">
@@ -252,7 +254,6 @@ export function AssistantChat({
             {displayMessages.map((message) => (
               <ChatMessageComponent key={message.id} message={message} />
             ))}
-            <div ref={messagesEndRef} />
           </div>
         )}
       </div>
