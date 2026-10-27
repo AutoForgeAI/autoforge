@@ -124,6 +124,23 @@ def get_blocked_paths() -> frozenset[Path]:
     return frozenset(blocked)
 
 
+@functools.lru_cache(maxsize=1)
+def get_home_dir() -> Path | None:
+    """Get the resolved home directory of the user running the server."""
+    try:
+        return Path.home().resolve()
+    except (OSError, RuntimeError):
+        return None
+
+
+def _is_within(path: Path, parent: Path) -> bool:
+    try:
+        path.relative_to(parent)
+        return True
+    except ValueError:
+        return False
+
+
 def is_path_blocked(path: Path) -> bool:
     """Check if a path is in the blocked list."""
     try:
@@ -132,6 +149,17 @@ def is_path_blocked(path: Path) -> bool:
         return True  # Can't resolve = blocked
 
     blocked_paths = get_blocked_paths()
+
+    # The user's own home directory is always browsable, even when it lives
+    # under a blocked system path. This matters when the server runs as root
+    # (common in WSL and containers), where home is /root (issue #159).
+    # Inside home, only blocked paths nested within home (the sensitive
+    # credential directories such as ~/.ssh) apply.
+    home = get_home_dir()
+    if home is not None and _is_within(resolved, home):
+        blocked_paths = frozenset(
+            b for b in blocked_paths if b != home and _is_within(b, home)
+        )
 
     # Check if path is exactly a blocked path or inside one
     for blocked in blocked_paths:
