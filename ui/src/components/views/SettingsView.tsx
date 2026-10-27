@@ -50,6 +50,12 @@ export function SettingsView() {
     }
   }
 
+  const handleTestingModelChange = (modelId: string) => {
+    if (!updateSettings.isPending) {
+      updateSettings.mutate({ testing_model: modelId })
+    }
+  }
+
   const handleTestingRatioChange = (ratio: number) => {
     if (!updateSettings.isPending) {
       updateSettings.mutate({ testing_agent_ratio: ratio })
@@ -360,6 +366,11 @@ export function SettingsView() {
                 {/* Model Selection */}
                 <div className="space-y-2">
                   <Label className="font-medium">Model</Label>
+                  {!isAlternativeProvider && (
+                    <p className="text-sm text-muted-foreground">
+                      Used by the initializer and coding agents
+                    </p>
+                  )}
                   {models.length > 0 && (
                     <div className="flex rounded-lg border overflow-hidden">
                       {models.map((model) => (
@@ -400,6 +411,33 @@ export function SettingsView() {
                     </div>
                   )}
                 </div>
+
+                {/* Testing Agent Model (Claude only - alternative providers pin a single model) */}
+                {!isAlternativeProvider && models.length > 0 && (
+                  <div className="space-y-2">
+                    <Label className="font-medium">Testing Agent Model</Label>
+                    <p className="text-sm text-muted-foreground">
+                      Model used by regression testing agents
+                    </p>
+                    <div className="flex rounded-lg border overflow-hidden" role="group" aria-label="Testing agent model">
+                      {[{ id: '', name: 'Same as coding' }, ...models].map((model) => (
+                        <button
+                          key={model.id || 'same'}
+                          onClick={() => handleTestingModelChange(model.id)}
+                          disabled={isSaving}
+                          aria-pressed={(settings.testing_model ?? '') === model.id}
+                          className={`flex-1 py-2 px-3 text-sm font-medium transition-colors ${
+                            (settings.testing_model ?? '') === model.id
+                              ? 'bg-primary text-primary-foreground'
+                              : 'bg-background text-foreground hover:bg-muted'
+                          } ${isSaving ? 'opacity-50 cursor-not-allowed' : ''}`}
+                        >
+                          {model.name}
+                        </button>
+                      ))}
+                    </div>
+                  </div>
+                )}
               </CardContent>
             </Card>
 

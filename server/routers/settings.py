@@ -28,6 +28,7 @@ from registry import (
     get_all_settings,
     get_effort_setting,
     get_setting,
+    get_testing_model_setting,
     set_setting,
 )
 
@@ -111,6 +112,7 @@ async def get_settings():
     return SettingsResponse(
         yolo_mode=_parse_yolo_mode(all_settings.get("yolo_mode")),
         model=all_settings.get("model", DEFAULT_MODEL),
+        testing_model=get_testing_model_setting(),
         glm_mode=glm_mode,
         ollama_mode=ollama_mode,
         testing_agent_ratio=_parse_int(all_settings.get("testing_agent_ratio"), 1),
@@ -133,6 +135,9 @@ async def update_settings(update: SettingsUpdate):
 
     if update.model is not None:
         set_setting("model", update.model)
+
+    if update.testing_model is not None:
+        set_setting("testing_model", update.testing_model)
 
     if update.testing_agent_ratio is not None:
         set_setting("testing_agent_ratio", str(update.testing_agent_ratio))
@@ -183,6 +188,7 @@ async def update_settings(update: SettingsUpdate):
     return SettingsResponse(
         yolo_mode=_parse_yolo_mode(all_settings.get("yolo_mode")),
         model=all_settings.get("model", DEFAULT_MODEL),
+        testing_model=get_testing_model_setting(),
         glm_mode=glm_mode,
         ollama_mode=ollama_mode,
         testing_agent_ratio=_parse_int(all_settings.get("testing_agent_ratio"), 1),

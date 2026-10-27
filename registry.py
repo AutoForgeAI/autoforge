@@ -704,6 +704,25 @@ def get_effort_setting() -> EffortLevel:
     return DEFAULT_EFFORT
 
 
+def get_testing_model_setting() -> str | None:
+    """
+    Read the global testing-agent model override.
+
+    Returns None (meaning "use the same model as coding agents") when unset,
+    when the stored value is not a known Claude model, or when an alternative
+    API provider is active (those providers pin every model tier to a single
+    ``api_model``, so a separate testing model would have no effect).
+    """
+    if (get_setting("api_provider", "claude") or "claude") != "claude":
+        return None
+    value = get_setting("testing_model")
+    if value in LEGACY_MODEL_MAP:
+        value = LEGACY_MODEL_MAP[value]
+    if value in VALID_MODELS:
+        return value
+    return None
+
+
 def set_setting(key: str, value: str) -> None:
     """
     Set a setting value (creates or updates).
@@ -747,7 +766,7 @@ def get_all_settings() -> dict[str, str]:
 
             # Auto-migrate legacy model IDs
             migrated = False
-            for key in ("model", "api_model"):
+            for key in ("model", "api_model", "testing_model"):
                 old_id = result.get(key)
                 if old_id and old_id in LEGACY_MODEL_MAP:
                     new_id = LEGACY_MODEL_MAP[old_id]

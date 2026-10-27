@@ -110,6 +110,7 @@ async def start_agent(
     testing_batch_size = default_testing_batch_size
 
     # Always run headless - the embedded browser view panel replaces desktop windows
+    # testing_model=None lets the process manager fall back to global settings
     success, message = await manager.start(
         yolo_mode=yolo_mode,
         model=model,
@@ -118,6 +119,7 @@ async def start_agent(
         playwright_headless=True,
         batch_size=batch_size,
         testing_batch_size=testing_batch_size,
+        testing_model=request.testing_model,
     )
 
     # Notify scheduler of manual start (to prevent auto-stop during scheduled window)

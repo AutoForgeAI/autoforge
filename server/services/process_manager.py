@@ -377,6 +377,7 @@ class AgentProcessManager:
         batch_size: int = 3,
         testing_batch_size: int = 3,
         auto_improve: bool = False,
+        testing_model: str | None = None,
     ) -> tuple[bool, str]:
         """
         Start the agent as a subprocess.
@@ -392,6 +393,9 @@ class AgentProcessManager:
                 execution (concurrency=1, testing_ratio=0) and passes
                 --auto-improve to the subprocess so it runs exactly one
                 improvement session and exits.
+            testing_model: Model for regression testing agents. None falls back
+                to the global ``testing_model`` setting, and if that is unset
+                testing agents use the same model as coding agents.
 
         Returns:
             Tuple of (success, message)
@@ -440,6 +444,13 @@ class AgentProcessManager:
         # Add --model flag if model is specified
         if model:
             cmd.extend(["--model", model])
+
+        # Add --testing-model flag when testing agents should use a different model
+        if testing_model is None:
+            from registry import get_testing_model_setting
+            testing_model = get_testing_model_setting()
+        if testing_model and testing_model != model:
+            cmd.extend(["--testing-model", testing_model])
 
         # Add --yolo flag if YOLO mode is enabled
         if yolo_mode:

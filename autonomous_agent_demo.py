@@ -72,6 +72,9 @@ Examples:
   # Configure testing agent ratio (2 testing agents per coding agent)
   python autonomous_agent_demo.py --project-dir my-app --testing-ratio 2
 
+  # Use Opus for coding agents and Sonnet for testing agents
+  python autonomous_agent_demo.py --project-dir my-app --model claude-opus-4-7 --testing-model claude-sonnet-4-6
+
   # Disable testing agents (similar to YOLO but with verification)
   python autonomous_agent_demo.py --project-dir my-app --testing-ratio 0
 
@@ -100,6 +103,13 @@ Authentication:
         type=str,
         default=DEFAULT_MODEL,
         help=f"Claude model to use (default: {DEFAULT_MODEL})",
+    )
+
+    parser.add_argument(
+        "--testing-model",
+        type=str,
+        default=None,
+        help="Claude model to use for regression testing agents (default: same as --model)",
     )
 
     parser.add_argument(
@@ -332,6 +342,7 @@ def main() -> None:
                     testing_agent_ratio=args.testing_ratio,
                     testing_batch_size=args.testing_batch_size,
                     batch_size=args.batch_size,
+                    testing_model=args.testing_model,
                 )
             )
     except KeyboardInterrupt:

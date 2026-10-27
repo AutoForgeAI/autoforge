@@ -221,6 +221,7 @@ class AgentStartRequest(BaseModel):
     """Request schema for starting the agent."""
     yolo_mode: bool | None = None  # None means use global settings
     model: str | None = None  # None means use global settings
+    testing_model: str | None = None  # Model for testing agents; None means use global settings
     parallel_mode: bool | None = None  # DEPRECATED: Use max_concurrency instead
     max_concurrency: int | None = None  # Max concurrent coding agents (1-5)
     testing_agent_ratio: int | None = None  # Regression testing agents (0-3)
@@ -234,6 +235,17 @@ class AgentStartRequest(BaseModel):
             settings = get_all_settings()
             if settings.get("api_provider", "claude") == "claude":
                 raise ValueError(f"Invalid model. Must be one of: {VALID_MODELS}")
+        return v
+
+    @field_validator('testing_model')
+    @classmethod
+    def validate_testing_model(cls, v: str | None) -> str | None:
+        """Validate testing model is in the allowed list (Claude) or allow any model for alternative providers."""
+        if v is not None and v not in VALID_MODELS:
+            from registry import get_all_settings
+            settings = get_all_settings()
+            if settings.get("api_provider", "claude") == "claude":
+                raise ValueError(f"Invalid testing model. Must be one of: {VALID_MODELS}")
         return v
 
     @field_validator('max_concurrency')
@@ -478,6 +490,7 @@ class SettingsResponse(BaseModel):
     """Response schema for global settings."""
     yolo_mode: bool = False
     model: str = DEFAULT_MODEL
+    testing_model: str | None = None  # None means testing agents use `model`
     glm_mode: bool = False  # True when api_provider is "glm"
     ollama_mode: bool = False  # True when api_provider is "ollama"
     testing_agent_ratio: int = 1  # Regression testing agents (0-3)
@@ -501,6 +514,7 @@ class SettingsUpdate(BaseModel):
     """Request schema for updating global settings."""
     yolo_mode: bool | None = None
     model: str | None = None
+    testing_model: str | None = None  # "" clears the override (use coding model)
     testing_agent_ratio: int | None = None  # 0-3
     playwright_headless: bool | None = None
     batch_size: int | None = None  # Features per agent batch (1-15)
@@ -534,6 +548,16 @@ class SettingsUpdate(BaseModel):
                 v = LEGACY_MODEL_MAP[v]
             if v not in VALID_MODELS:
                 raise ValueError(f"Invalid model. Must be one of: {VALID_MODELS}")
+        return v
+
+    @field_validator('testing_model')
+    @classmethod
+    def validate_testing_model(cls, v: str | None) -> str | None:
+        if v is not None and v != "":
+            if v in LEGACY_MODEL_MAP:
+                v = LEGACY_MODEL_MAP[v]
+            if v not in VALID_MODELS:
+                raise ValueError(f"Invalid testing model. Must be one of: {VALID_MODELS}")
         return v
 
     @field_validator('testing_agent_ratio')
