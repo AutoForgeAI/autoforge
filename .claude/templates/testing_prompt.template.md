@@ -11,7 +11,10 @@ You are assigned to test the following features: {{TESTING_FEATURE_IDS}}
 2. Read the feature's verification steps
 3. Test the feature in the browser
 4. Call `feature_mark_passing` or `feature_mark_failing`
-5. Move to the next feature
+5. Make sure the feature has an automated regression script (STEP 4)
+6. Move to the next feature
+
+**Why scripts matter:** Before your session starts, the orchestrator runs each assigned feature's script from `tests/regression/manifest.json`. Features whose script passes are never sent to an agent again, which saves a full LLM session per feature. You are only seeing features that have **no script yet** or whose **script failed**.
 
 ---
 
@@ -62,7 +65,7 @@ For the feature returned:
 
 #### If the feature PASSES:
 
-The feature still works correctly. **DO NOT** call feature_mark_passing again -- it's already passing. End your session.
+The feature still works correctly. **DO NOT** call feature_mark_passing again -- it's already passing. Continue to STEP 4.
 
 #### If the feature FAILS (regression found):
 
@@ -102,6 +105,34 @@ A regression has been introduced. You MUST fix it:
    - Verified with browser automation"
    ```
 
+### STEP 4: AUTOMATE THE CHECK (REGRESSION SCRIPT)
+
+Once a feature is verified (passing, or fixed and passing again), make sure future regression runs can be done **without an agent** by giving it a deterministic test script.
+
+1. Write a script under `tests/regression/` that reproduces the feature's verification steps, e.g. `tests/regression/feature_<id>.spec.ts` (Playwright Test), or a Node script / npm script for API-only features. Prefer the test tooling the project already has. If you need `@playwright/test`, install it as a dev dependency.
+2. The script must:
+   - Exit with code **0** on success and **non-zero** on any failure
+   - Be non-interactive and headless
+   - Assume the app's dev server is already running if it needs it (or start/stop it itself)
+   - Create its own uniquely-named test data and clean it up
+   - Finish in well under 5 minutes
+3. Register it in `tests/regression/manifest.json` (create the file if missing), keyed by feature ID:
+   ```json
+   {
+     "12": {"command": "npx playwright test tests/regression/feature_12.spec.ts"},
+     "15": {"command": "node tests/regression/feature_15.mjs", "timeout": 120}
+   }
+   ```
+   `timeout` is optional (seconds, default 300, max 900). The command runs from the project root and must only use allowed bash commands.
+4. **Run the exact command from the manifest** and confirm it passes. If the feature arrived here because its script failed, fix whichever is wrong -- the app (regression) or the script (broken/flaky test) -- and re-run until it passes.
+5. Commit the script and manifest:
+   ```bash
+   git add tests/regression
+   git commit -m "Add regression script for feature #<id>"
+   ```
+
+Keep scripts focused on the feature's verification steps; don't duplicate the whole suite in one script.
+
 ---
 
 ## AVAILABLE TOOLS
@@ -128,7 +159,7 @@ Use `playwright-cli` commands for browser interaction. Key commands:
 
 ## IMPORTANT REMINDERS
 
-**Your Goal:** Test each assigned feature thoroughly. Verify it still works, and fix any regression found. Process ALL features in your list before ending your session.
+**Your Goal:** Test each assigned feature thoroughly. Verify it still works, fix any regression found, and leave a passing regression script registered in `tests/regression/manifest.json` for it. Process ALL features in your list before ending your session.
 
 **Quality Bar:**
 - Zero console errors

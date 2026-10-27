@@ -45,6 +45,7 @@ from rate_limit_utils import (
     is_rate_limit_error,
     parse_retry_after,
 )
+from regression_runner import format_failures_for_prompt, run_scripted_regression
 
 # Configuration
 AUTO_CONTINUE_DELAY_SECONDS = 3
@@ -218,6 +219,7 @@ async def run_autonomous_agent(
             agent_type = "coding"
 
     is_initializer = agent_type == "initializer"
+    scripted_failures_context = ""
 
     if is_initializer:
         print("Running as INITIALIZER agent")
@@ -233,6 +235,21 @@ async def run_autonomous_agent(
     elif agent_type == "testing":
         print("Running as TESTING agent (regression testing)")
         print_progress_summary(project_dir)
+
+        # Run automated regression scripts first; only features without a
+        # script (or whose script failed) need an LLM session.
+        assigned_ids = testing_feature_ids or ([testing_feature_id] if testing_feature_id is not None else [])
+        if assigned_ids:
+            report = run_scripted_regression(project_dir, assigned_ids)
+            if report.passed:
+                print(f"Scripted regression passed for: {', '.join(f'#{fid}' for fid in report.passed)}")
+            remaining_ids = report.needs_agent
+            if not remaining_ids:
+                print("All assigned features passed their regression scripts - no agent session needed.")
+                return
+            testing_feature_id = None
+            testing_feature_ids = remaining_ids
+            scripted_failures_context = format_failures_for_prompt(report.failed)
     else:
         print("Running as CODING agent")
         print_progress_summary(project_dir)
@@ -278,6 +295,8 @@ async def run_autonomous_agent(
             prompt = get_initializer_prompt(project_dir)
         elif agent_type == "testing":
             prompt = get_testing_prompt(project_dir, testing_feature_id, testing_feature_ids)
+            if scripted_failures_context:
+                prompt = f"{scripted_failures_context}\n\n---\n\n{prompt}"
         elif feature_ids and len(feature_ids) > 1:
             # Batch mode (used by orchestrator for multi-feature coding agents)
             prompt = get_batch_feature_prompt(feature_ids, project_dir, yolo_mode)

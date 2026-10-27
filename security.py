@@ -893,6 +893,87 @@ def is_command_allowed(command: str, allowed_commands: set[str]) -> bool:
     return False
 
 
+def validate_bash_command(command: str, project_dir: Optional[Path] = None) -> tuple[bool, str]:
+    """
+    Validate a bash command string against the effective allow/block lists.
+
+    This is the synchronous core of bash_security_hook, reusable by callers
+    that execute commands outside the agent's tool loop (e.g. scripted
+    regression tests run by regression_runner.py).
+
+    Args:
+        command: The full command string to validate
+        project_dir: Project directory used to resolve project/org config
+
+    Returns:
+        Tuple of (allowed, reason). reason is empty when allowed.
+    """
+    # Extract all commands from the command string
+    commands = extract_commands(command)
+
+    if not commands:
+        # Could not parse - fail safe by blocking
+        return False, f"Could not parse command for security validation: {command}"
+
+    # Get effective commands using hierarchy resolution
+    allowed_commands, blocked_commands = get_effective_commands(project_dir)
+
+    # Get effective pkill processes (includes org/project config)
+    pkill_processes = get_effective_pkill_processes(project_dir)
+
+    # Split into segments for per-command validation
+    segments = split_command_segments(command)
+
+    # Check each command against the blocklist and allowlist
+    for cmd in commands:
+        # Check blocklist first (highest priority)
+        if cmd in blocked_commands:
+            return False, f"Command '{cmd}' is blocked at organization level and cannot be approved."
+
+        # Check allowlist (with pattern matching)
+        if not is_command_allowed(cmd, allowed_commands):
+            # Provide helpful error message with config hint
+            error_msg = f"Command '{cmd}' is not allowed.\n"
+            error_msg += "To allow this command:\n"
+            error_msg += "  1. Add to .autoforge/allowed_commands.yaml for this project, OR\n"
+            error_msg += "  2. Request mid-session approval (the agent can ask)\n"
+            error_msg += "Note: Some commands are blocked at org-level and cannot be overridden."
+            return False, error_msg
+
+        # Additional validation for sensitive commands
+        if cmd in COMMANDS_NEEDING_EXTRA_VALIDATION:
+            # Find the specific segment containing this command by searching
+            # each segment's extracted commands for a match
+            cmd_segment = ""
+            for segment in segments:
+                if cmd in extract_commands(segment):
+                    cmd_segment = segment
+                    break
+            if not cmd_segment:
+                cmd_segment = command  # Fallback to full command
+
+            if cmd == "pkill":
+                # Pass configured extra processes (beyond defaults)
+                extra_procs = pkill_processes - DEFAULT_PKILL_PROCESSES
+                allowed, reason = validate_pkill_command(cmd_segment, extra_procs if extra_procs else None)
+                if not allowed:
+                    return False, reason
+            elif cmd == "chmod":
+                allowed, reason = validate_chmod_command(cmd_segment)
+                if not allowed:
+                    return False, reason
+            elif cmd == "init.sh":
+                allowed, reason = validate_init_script(cmd_segment)
+                if not allowed:
+                    return False, reason
+            elif cmd == "playwright-cli":
+                allowed, reason = validate_playwright_command(cmd_segment)
+                if not allowed:
+                    return False, reason
+
+    return True, ""
+
+
 async def bash_security_hook(input_data, tool_use_id=None, context=None):
     """
     Pre-tool-use hook that validates bash commands using an allowlist.
@@ -914,16 +995,6 @@ async def bash_security_hook(input_data, tool_use_id=None, context=None):
     if not command:
         return {}
 
-    # Extract all commands from the command string
-    commands = extract_commands(command)
-
-    if not commands:
-        # Could not parse - fail safe by blocking
-        return {
-            "decision": "block",
-            "reason": f"Could not parse command for security validation: {command}",
-        }
-
     # Get project directory from context
     project_dir = None
     if context and isinstance(context, dict):
@@ -931,66 +1002,7 @@ async def bash_security_hook(input_data, tool_use_id=None, context=None):
         if project_dir_str:
             project_dir = Path(project_dir_str)
 
-    # Get effective commands using hierarchy resolution
-    allowed_commands, blocked_commands = get_effective_commands(project_dir)
-
-    # Get effective pkill processes (includes org/project config)
-    pkill_processes = get_effective_pkill_processes(project_dir)
-
-    # Split into segments for per-command validation
-    segments = split_command_segments(command)
-
-    # Check each command against the blocklist and allowlist
-    for cmd in commands:
-        # Check blocklist first (highest priority)
-        if cmd in blocked_commands:
-            return {
-                "decision": "block",
-                "reason": f"Command '{cmd}' is blocked at organization level and cannot be approved.",
-            }
-
-        # Check allowlist (with pattern matching)
-        if not is_command_allowed(cmd, allowed_commands):
-            # Provide helpful error message with config hint
-            error_msg = f"Command '{cmd}' is not allowed.\n"
-            error_msg += "To allow this command:\n"
-            error_msg += "  1. Add to .autoforge/allowed_commands.yaml for this project, OR\n"
-            error_msg += "  2. Request mid-session approval (the agent can ask)\n"
-            error_msg += "Note: Some commands are blocked at org-level and cannot be overridden."
-            return {
-                "decision": "block",
-                "reason": error_msg,
-            }
-
-        # Additional validation for sensitive commands
-        if cmd in COMMANDS_NEEDING_EXTRA_VALIDATION:
-            # Find the specific segment containing this command by searching
-            # each segment's extracted commands for a match
-            cmd_segment = ""
-            for segment in segments:
-                if cmd in extract_commands(segment):
-                    cmd_segment = segment
-                    break
-            if not cmd_segment:
-                cmd_segment = command  # Fallback to full command
-
-            if cmd == "pkill":
-                # Pass configured extra processes (beyond defaults)
-                extra_procs = pkill_processes - DEFAULT_PKILL_PROCESSES
-                allowed, reason = validate_pkill_command(cmd_segment, extra_procs if extra_procs else None)
-                if not allowed:
-                    return {"decision": "block", "reason": reason}
-            elif cmd == "chmod":
-                allowed, reason = validate_chmod_command(cmd_segment)
-                if not allowed:
-                    return {"decision": "block", "reason": reason}
-            elif cmd == "init.sh":
-                allowed, reason = validate_init_script(cmd_segment)
-                if not allowed:
-                    return {"decision": "block", "reason": reason}
-            elif cmd == "playwright-cli":
-                allowed, reason = validate_playwright_command(cmd_segment)
-                if not allowed:
-                    return {"decision": "block", "reason": reason}
-
+    allowed, reason = validate_bash_command(command, project_dir)
+    if not allowed:
+        return {"decision": "block", "reason": reason}
     return {}
